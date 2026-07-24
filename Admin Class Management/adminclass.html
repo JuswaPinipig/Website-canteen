@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Admin Portal — School Management System</title>
+  <link rel="stylesheet" href="adminclass.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════
+     LOADING SCREEN
+══════════════════════════════════════════ -->
+<div id="loadingScreen" class="loading-screen">
+  <div class="loading-content">
+    <div class="loading-logo-wrap">
+      <img src="admin media/school no bg.png" alt="School Logo" class="loading-logo" onerror="this.style.display='none';document.getElementById('logoFallback').style.display='flex'"/>
+      <div id="logoFallback" class="logo-fallback" style="display:none">
+        <i class="fa-solid fa-school"></i>
+      </div>
+    </div>
+    <div class="loading-school-name">Junior High School</div>
+    <div class="loading-subtitle">Management System</div>
+    <div class="loading-bar-track">
+      <div class="loading-bar-fill" id="loadingBar"></div>
+    </div>
+    <div class="loading-status" id="loadingStatus">Initializing system...</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     GREETING OVERLAY
+══════════════════════════════════════════ -->
+<div id="greetingOverlay" class="greeting-overlay" style="display:none">
+  <div class="greeting-content">
+    <div class="greeting-icon"><i class="fa-solid fa-shield-halved"></i></div>
+    <div class="greeting-hello">Good <span id="greetingTime">Morning</span>,</div>
+    <div class="greeting-name" id="greetingName">Administrator</div>
+    <div class="greeting-role">System Administrator · Admin Portal</div>
+    <div class="greeting-progress">
+      <div class="greeting-progress-fill"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     MAIN APP
+══════════════════════════════════════════ -->
+<div id="app" class="app-shell" style="display:none">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">
+        <img src="admin media/school no bg.png" alt="Logo" class="sidebar-logo-img" onerror="this.style.display='none';document.getElementById('sideLogoFallback').style.display='flex'"/>
+        <div id="sideLogoFallback" class="sidebar-logo-fallback" style="display:none"><i class="fa-solid fa-school"></i></div>
+      </div>
+      <div class="sidebar-brand">
+        <span class="sidebar-brand-name">JHS System</span>
+        <span class="sidebar-brand-role">Admin Portal</span>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Overview</div>
+      <a href="#" class="nav-item active" data-module="dashboard">
+        <i class="fa-solid fa-gauge-high"></i>
+        <span>Dashboard</span>
+      </a>
+
+      <div class="nav-section-label">Academic Structure</div>
+      <a href="#" class="nav-item" data-module="school-years">
+        <i class="fa-solid fa-calendar-days"></i>
+        <span>School Year</span>
+      </a>
+      <a href="#" class="nav-item" data-module="class-management">
+        <i class="fa-solid fa-door-open"></i>
+        <span>Section Management</span>
+        <span class="nav-badge" id="badgeSections">—</span>
+      </a>
+      <a href="#" class="nav-item" data-module="subjects">
+        <i class="fa-solid fa-book-open"></i>
+        <span>Subjects</span>
+      </a>
+      <a href="#" class="nav-item" data-module="rooms">
+        <i class="fa-solid fa-building"></i>
+        <span>Room Management</span>
+        <span class="nav-badge" id="badgeRooms">—</span>
+      </a>
+
+      <div class="nav-section-label">Cafeteria</div>
+      <div class="nav-group" id="navGroupCafeteria">
+        <a href="#" class="nav-item nav-group-toggle" data-group="cafeteria">
+          <i class="fa-solid fa-utensils"></i>
+          <span>Cafeteria</span>
+          <i class="fa-solid fa-chevron-down nav-group-chevron"></i>
+        </a>
+        <div class="nav-submenu" id="navSubmenu-cafeteria">
+          <a href="#" class="nav-item nav-subitem" data-module="cafeteria-wallet">
+            <i class="fa-solid fa-wallet"></i>
+            <span>Student Wallet</span>
+          </a>
+          <a href="#" class="nav-item nav-subitem" data-module="cafeteria-menu">
+            <i class="fa-solid fa-bowl-food"></i>
+            <span>Food Menu</span>
+          </a>
+          <a href="#" class="nav-item nav-subitem" data-module="cafeteria-inventory">
+            <i class="fa-solid fa-boxes-stacked"></i>
+            <span>Inventory</span>
+          </a>
+        </div>
+      </div>
+
+      <div class="nav-section-label">System</div>
+      <a href="#" class="nav-item" data-module="deadlines">
+        <i class="fa-solid fa-clock"></i>
+        <span>Academic Deadlines</span>
+      </a>
+      <a href="#" class="nav-item" data-module="student-accounts">
+        <i class="fa-solid fa-user-graduate"></i>
+        <span>Student Accounts</span>
+      </a>
+      <a href="#" class="nav-item" data-module="users">
+        <i class="fa-solid fa-users-gear"></i>
+        <span>Faculty Accounts</span>
+      </a>
+      <a href="#" class="nav-item" data-module="audit">
+        <i class="fa-solid fa-scroll"></i>
+        <span>Audit Logs</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-user">
+        <div class="sidebar-user-avatar" id="sidebarAvatar">A</div>
+        <div class="sidebar-user-info">
+          <div class="sidebar-user-name" id="sidebarUserName">Administrator</div>
+          <div class="sidebar-user-role">System Admin</div>
+        </div>
+        <button class="sidebar-logout-btn" id="logoutBtn" title="Logout">
+          <i class="fa-solid fa-right-from-bracket"></i>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <div class="main-wrap">
+    <header class="topbar">
+      <button class="topbar-toggle" id="sidebarToggle"><i class="fa-solid fa-bars"></i></button>
+      <div class="topbar-breadcrumb">
+        <span class="topbar-module" id="topbarModule">Dashboard</span>
+      </div>
+      <div class="topbar-actions">
+        <div class="topbar-school-badge">
+          <img src="admin media/school no bg.png" alt="" class="topbar-school-logo" onerror="this.style.display='none'"/>
+          <span>JHS Admin Portal</span>
+        </div>
+        <button class="theme-toggle-btn" id="themeToggleBtn" title="Toggle light / dark mode" aria-label="Toggle theme">
+          <i class="fa-solid fa-sun  icon-sun"></i>
+          <i class="fa-solid fa-moon icon-moon"></i>
+          <span class="theme-label" id="themeLabel">Dark</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="content-area" id="contentArea">
+      <!-- Modules injected by JS -->
+    </main>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     MODAL CONTAINER
+══════════════════════════════════════════ -->
+<div id="modalOverlay" class="modal-overlay" style="display:none">
+  <div class="modal-box" id="modalBox">
+    <div class="modal-header">
+      <h3 class="modal-title" id="modalTitle">Modal</h3>
+      <button class="modal-close" id="modalClose"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-footer" id="modalFooter"></div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toastContainer" class="toast-container"></div>
+
+<script src="adminclass.js"></script>
+</body>
+</html>

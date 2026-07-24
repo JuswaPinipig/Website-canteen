@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Portal — SJC</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../Student/student.css">
+</head>
+<body>
+
+    <!-- ═══════════════ LOADING SCREEN ═══════════════ -->
+    <div id="loadingScreen" class="loading-screen">
+        <div class="loading-particles" id="particles"></div>
+        <div class="loading-content">
+            <div class="loading-logo-wrap">
+                <div class="loading-logo-ring"></div>
+                <div class="loading-logo-ring ring-2"></div>
+                <img src="../Student/student media/school no bg.png" alt="SJC Logo" class="loading-logo">
+            </div>
+            <div class="loading-school-name">St. Joseph College</div>
+            <div class="loading-message">
+                Welcome, <span class="loading-name" id="loadingStudentName">Josephite</span>
+            </div>
+            <div class="loading-sub">Directing to your Student Portal&hellip;</div>
+            <div class="loading-bar-track">
+                <div class="loading-bar-fill" id="loadingBar"></div>
+                <div class="loading-bar-glow"></div>
+            </div>
+            <div class="loading-percent" id="loadingPercent">0%</div>
+        </div>
+        <div class="loading-crest" id="loadingYear">S.Y. 2025–2026</div>
+    </div>
+
+    <!-- ═══════════════ HEADER ═══════════════ -->
+    <header class="portal-header" id="portalHeader">
+        <div class="header-content">
+            <div class="logo-section">
+                <div class="logo-badge">
+                    <img src="../Student/student media/school no bg.png" alt="Logo" class="school-logo-img">
+                </div>
+                <div class="header-titles">
+                    <h1 class="portal-title">Student Portal</h1>
+                    <span class="portal-subtitle">St. Joseph College</span>
+                </div>
+            </div>
+            <div class="header-actions">
+                <span class="sy-indicator">
+                    <span class="sy-dot"></span>
+                    <span id="syHeaderYear">S.Y. 2025–2026</span>
+                </span>
+                <a href="../Login/Maininterface.html" class="logout-btn" id="logoutTrigger">
+                    <span>Logout</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                        <polyline points="16 17 21 12 16 7"/>
+                        <line x1="21" y1="12" x2="9" y2="12"/>
+                    </svg>
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <!-- ═══════════════ REGISTRATION BANNER ═══════════════ -->
+    <div id="registrationBanner" class="reg-banner" role="alert" aria-live="polite" style="display:none;">
+        <div class="reg-banner-content">
+            <div class="reg-banner-icon">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="8" x2="12" y2="12"/>
+                    <line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+            </div>
+            <p class="reg-banner-text">
+                Registered students must settle their balance or enrollment fee to gain full access to the portal.
+                Kindly select the <a href="../Student/student enrollment/studentenroll.html" class="reg-banner-link">Enrollment</a> section to view and settle your enrollment fee.
+            </p>
+        </div>
+        <button class="reg-banner-close" id="regBannerClose" aria-label="Dismiss banner">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+        </button>
+    </div>
+
+    <!-- ═══════════════ MAIN CONTENT ═══════════════ -->
+    <main class="container" id="mainContent">
+
+        <!-- Welcome Banner -->
+        <section class="welcome-card">
+            <div class="welcome-bg-art">
+                <div class="art-circle c1"></div>
+                <div class="art-circle c2"></div>
+                <div class="art-circle c3"></div>
+            </div>
+            <div class="welcome-body">
+                <div class="welcome-left">
+                    <span class="sy-badge">
+                        <span class="badge-dot"></span>
+                        <span id="syBadgeYear">Active · S.Y. 2025–2026</span>
+                    </span>
+                    <h2 class="welcome-title">
+                        Good to have you back,<br>
+                        <em class="student-firstname" id="welcomeName">Josephite!</em>
+                    </h2>
+                    <p class="welcome-text">
+                        Your academic world is at your fingertips &mdash; track your progress,<br class="br-hide">
+                        stay on top of schedules, and make every school year count.
+                    </p>
+                    <div class="welcome-meta">
+                        <div class="meta-chip">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                                <circle cx="12" cy="7" r="4"/>
+                            </svg>
+                            <span id="lrnChip">Student</span>
+                        </div>
+                        <div class="meta-chip">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                                <line x1="16" y1="2" x2="16" y2="6"/>
+                                <line x1="8" y1="2" x2="8" y2="6"/>
+                                <line x1="3" y1="10" x2="21" y2="10"/>
+                            </svg>
+                            <span id="gradeChip">Grade Level</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="welcome-crest">
+                    <div class="crest-inner">
+                        <img src="../Student/student media/school no bg.png" alt="SJC">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section Label -->
+        <div class="section-label">
+            <span>Your Portal</span>
+            <div class="section-line"></div>
+        </div>
+
+        <!-- Dashboard Grid -->
+        <nav class="dashboard-grid">
+
+            <!-- Profile Viewing — always accessible -->
+            <a href="../Student/student profile/studentprofile.html" class="portal-card" data-index="0">
+                <div class="card-accent"></div>
+                <div class="card-icon-wrap">
+                    <div class="card-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                            <circle cx="12" cy="7" r="4"/>
+                        </svg>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="card-label">Student</div>
+                    <div class="card-title">Profile Viewing</div>
+                    <div class="card-desc">View and manage your personal information and academic records.</div>
+                </div>
+                <div class="card-arrow">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                    </svg>
+                </div>
+                <div class="card-shine"></div>
+            </a>
+
+            <!-- Grade Viewing — restricted -->
+            <a href="../Student/student grades/studentgrades.php" class="portal-card" data-index="1" data-restricted>
+                <div class="card-accent"></div>
+                <div class="card-icon-wrap">
+                    <div class="card-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                        </svg>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="card-label">Academic</div>
+                    <div class="card-title">Grade Viewing</div>
+                    <div class="card-desc">Access your quarterly grades and academic performance reports.</div>
+                </div>
+                <div class="card-arrow">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                    </svg>
+                </div>
+                <div class="card-lock-badge">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                    </svg>
+                    Restricted
+                </div>
+                <div class="card-shine"></div>
+            </a>
+
+            <!-- Schedule Viewing — restricted -->
+            <a href="../Student/student schedule/schedule.php" class="portal-card" data-index="2" data-restricted>
+                <div class="card-accent"></div>
+                <div class="card-icon-wrap">
+                    <div class="card-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                            <line x1="16" y1="2" x2="16" y2="6"/>
+                            <line x1="8" y1="2" x2="8" y2="6"/>
+                            <line x1="3" y1="10" x2="21" y2="10"/>
+                        </svg>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="card-label">Weekly</div>
+                    <div class="card-title">Schedule Viewing</div>
+                    <div class="card-desc">Check your class schedule, room assignments, and time slots.</div>
+                </div>
+                <div class="card-arrow">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                    </svg>
+                </div>
+                <div class="card-lock-badge">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                    </svg>
+                    Restricted
+                </div>
+                <div class="card-shine"></div>
+            </a>
+
+            <!-- Enrollment Viewing — always accessible -->
+            <a href="../Student/student enrollment/studentenroll.html" class="portal-card" data-index="3">
+                <div class="card-accent"></div>
+                <div class="card-icon-wrap">
+                    <div class="card-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                            <line x1="16" y1="13" x2="8" y2="13"/>
+                            <line x1="16" y1="17" x2="8" y2="17"/>
+                        </svg>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="card-label">Status</div>
+                    <div class="card-title">Enrollment Viewing</div>
+                    <div class="card-desc">Track your enrollment status and submission history.</div>
+                </div>
+                <div class="card-arrow">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                    </svg>
+                </div>
+                <div class="card-shine"></div>
+            </a>
+
+        </nav>
+    </main>
+
+    <!-- ═══════════════ LOGOUT OVERLAY ═══════════════ -->
+    <div id="logoutOverlay" class="logout-simple-overlay">
+        <div class="logout-box">
+            <div class="logout-rings">
+                <div class="logout-ring lr1"></div>
+                <div class="logout-ring lr2"></div>
+            </div>
+            <img src="../Student/student media/school no bg.png" alt="Logo" class="logout-logo">
+            <p>Logging out&hellip;</p>
+            <span>Returning to login page</span>
+        </div>
+    </div>
+
+    <script src="../Student/student.js"></script>
+</body>
+</html>
