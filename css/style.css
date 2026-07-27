@@ -1,0 +1,344 @@
+/* ==========================================================================
+   St. Jude College (SJC) Smart Canteen POS - Official Design System
+   Brand Palette: Deep Navy Blue (#0F172A), SJC Royal Blue (#1E3A8A), 
+   SJC Accent Gold/Yellow (#F59E0B), Emerald Green (#10B981)
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap');
+
+:root {
+  /* Official SJC School Colors */
+  --sjc-navy: #0f172a;
+  --sjc-blue-dark: #1e3a8a;
+  --sjc-blue-primary: #2563eb;
+  --sjc-gold: #f59e0b;
+  --sjc-gold-hover: #d97706;
+
+  --bg-primary: #090d16;
+  --bg-secondary: #0f172a;
+  --bg-card: rgba(15, 23, 42, 0.85);
+  --bg-card-hover: rgba(30, 58, 138, 0.25);
+  
+  --border-color: rgba(255, 255, 255, 0.1);
+  --border-glow: rgba(37, 99, 235, 0.4);
+
+  --accent-primary: #10b981;    /* Money / Success status */
+  --accent-primary-hover: #059669;
+  --accent-cyan: #38bdf8;       /* SJC Sky Blue / AI Status */
+  --accent-amber: #f59e0b;      /* SJC Gold / RFID indicator */
+  --accent-purple: #8b5cf6;
+  --accent-rose: #f43f5e;       /* Danger/Delete */
+
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+
+  --font-main: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-code: 'JetBrains Mono', monospace;
+
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+
+  --glass-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.6), 0 0 20px 0 rgba(37, 99, 235, 0.08);
+  --glass-border: 1px solid rgba(255, 255, 255, 0.12);
+  --backdrop-blur: blur(16px);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-main);
+  background-color: var(--bg-primary);
+  color: var(--text-main);
+  min-height: 100vh;
+  overflow-x: hidden;
+  line-height: 1.5;
+  background-image: 
+    radial-gradient(circle at 15% 15%, rgba(37, 99, 235, 0.12) 0%, transparent 45%),
+    radial-gradient(circle at 85% 85%, rgba(245, 158, 11, 0.08) 0%, transparent 45%);
+}
+
+/* App Header & Navbar */
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 2rem;
+  background: rgba(15, 23, 42, 0.9);
+  backdrop-filter: var(--backdrop-blur);
+  border-bottom: var(--glass-border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.brand-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--text-main);
+  text-decoration: none;
+  letter-spacing: -0.5px;
+}
+
+.brand-logo span {
+  background: linear-gradient(135deg, var(--sjc-gold), var(--sjc-blue-primary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.brand-badge {
+  font-size: 0.7rem;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--sjc-gold);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.role-switcher {
+  display: flex;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 4px;
+  border-radius: 12px;
+  gap: 4px;
+  border: var(--glass-border);
+}
+
+.role-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.role-btn:hover {
+  color: var(--text-main);
+}
+
+.role-btn.active {
+  background: linear-gradient(135deg, var(--sjc-blue-primary), var(--sjc-blue-dark));
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+}
+
+/* Layout Containers */
+.app-container {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+/* Glass Card Component */
+.glass-card {
+  background: var(--bg-card);
+  backdrop-filter: var(--backdrop-blur);
+  border: var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  box-shadow: var(--glass-shadow);
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.glass-card:hover {
+  border-color: var(--border-glow);
+}
+
+/* Dashboard Views Layout */
+.view-section {
+  display: none;
+  animation: fadeIn 0.3s ease forwards;
+}
+
+.view-section.active {
+  display: block;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Self-Checkout Kiosk Grid */
+.kiosk-grid {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 1.5rem;
+  height: calc(100vh - 120px);
+}
+
+.camera-box {
+  position: relative;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgba(37, 99, 235, 0.4);
+}
+
+.camera-box video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ai-overlay-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.scanner-status {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  background: rgba(15, 23, 42, 0.9);
+  backdrop-filter: blur(8px);
+  padding: 8px 16px;
+  border-radius: 30px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: var(--glass-border);
+}
+
+.pulse-dot {
+  width: 10px;
+  height: 10px;
+  background: var(--accent-primary);
+  border-radius: 50%;
+  box-shadow: 0 0 10px var(--accent-primary);
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { transform: scale(0.95); opacity: 0.7; }
+  50% { transform: scale(1.15); opacity: 1; box-shadow: 0 0 15px var(--accent-primary); }
+  100% { transform: scale(0.95); opacity: 0.7; }
+}
+
+/* Kiosk Order Summary */
+.checkout-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.cart-list {
+  flex: 1;
+  overflow-y: auto;
+  margin: 1rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.cart-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.cart-item-info h4 {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.cart-item-info span {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.rfid-pay-card {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.15), rgba(245, 158, 11, 0.1));
+  border: 1px solid var(--sjc-gold);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  text-align: center;
+  margin-top: auto;
+}
+
+.rfid-icon {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+  display: inline-block;
+  animation: float 2s infinite ease-in-out;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+/* Buttons & Controls */
+.btn-primary {
+  background: linear-gradient(135deg, var(--sjc-blue-primary), var(--sjc-blue-dark));
+  color: #fff;
+  border: none;
+  padding: 12px 24px;
+  border-radius: var(--radius-md);
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-primary:hover {
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+  transform: translateY(-2px);
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-main);
+  border: var(--glass-border);
+  padding: 10px 20px;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Responsive Table */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+
+.data-table th, .data-table td {
+  padding: 12px 16px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.data-table th {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}

@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>St. Jude College - Smart Canteen AI POS & Self Checkout</title>
+  <meta name="description" content="St. Jude College (SJC) Web-Based Canteen POS AI Vision Camera Self Checkout and RFID Card Payment System.">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body>
+
+  <!-- Top Navigation & Role Switcher -->
+  <nav class="navbar">
+    <a href="#" class="brand-logo">
+      <i class="fa-solid fa-utensils" style="color: var(--sjc-gold);"></i>
+      <span>St. Jude College Canteen</span>
+      <span class="brand-badge">SJC AI POS</span>
+    </a>
+
+    <div class="role-switcher">
+      <button class="role-btn active" data-role="kiosk">
+        <i class="fa-solid fa-camera"></i> Kiosk (Student)
+      </button>
+      <button class="role-btn" data-role="cashier">
+        <i class="fa-solid fa-cash-register"></i> Cashier Terminal
+      </button>
+      <button class="role-btn" data-role="parent">
+        <i class="fa-solid fa-user-shield"></i> Parent Portal
+      </button>
+      <button class="role-btn" data-role="admin">
+        <i class="fa-solid fa-sliders"></i> Admin Dashboard
+      </button>
+    </div>
+  </nav>
+
+  <main class="app-container">
+
+    <!-- 1. STUDENT AI SELF-CHECKOUT KIOSK VIEW -->
+    <section id="view-kiosk" class="view-section active">
+      <div class="kiosk-grid">
+        
+        <!-- Left: AI Vision Camera Scanner -->
+        <div class="camera-box glass-card">
+          <div class="scanner-status">
+            <div class="pulse-dot"></div>
+            <span>SJC AI Camera Active • Scanning Tray</span>
+          </div>
+          <video id="kiosk-camera" autoplay playsinline muted></video>
+          <canvas id="ai-canvas" class="ai-overlay-canvas"></canvas>
+        </div>
+
+        <!-- Right: Real-time Cart & RFID Checkout -->
+        <div class="checkout-panel glass-card">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h3><i class="fa-solid fa-basket-shopping" style="color:var(--accent-cyan);"></i> Tray Cart Summary</h3>
+            <button id="btn-simulate-ai" class="btn-secondary" style="font-size:0.8rem;">
+              <i class="fa-solid fa-wand-magic-sparkles"></i> + AI Scan Item
+            </button>
+          </div>
+
+          <div id="cart-items-container" class="cart-list">
+            <!-- Dynamically populated -->
+          </div>
+
+          <div style="border-top: 1px solid var(--border-color); padding-top: 1rem; margin-top: auto;">
+            <div style="display:flex; justify-content:space-between; font-size: 1.2rem; font-weight:700; margin-bottom: 1rem;">
+              <span>Total Amount:</span>
+              <span id="kiosk-total" style="color:var(--accent-primary);">₱0.00</span>
+            </div>
+
+            <!-- RFID Payment Area -->
+            <div class="rfid-pay-card">
+              <i class="fa-solid fa-id-card rfid-icon" style="color:var(--sjc-gold);"></i>
+              <h4 style="margin-bottom:0.25rem;">Tap SJC Student RFID Card to Pay</h4>
+              <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:0.75rem;">Place card on reader or enter RFID Tag below</p>
+              
+              <input type="text" id="rfid-tap-input" placeholder="Scan or type RFID Tag (e.g. RFID-881923)" 
+                     style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border-color); background:rgba(0,0,0,0.4); color:#fff; text-align:center; font-family:var(--font-code);">
+            </div>
+
+            <button id="btn-clear-cart" class="btn-secondary" style="width:100%; margin-top:0.5rem;">
+              Clear Cart
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- 2. CASHIER TERMINAL VIEW -->
+    <section id="view-cashier" class="view-section">
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1.5rem;">
+        
+        <!-- Cashier Student Top-up Station -->
+        <div class="glass-card">
+          <h3><i class="fa-solid fa-wallet" style="color:var(--sjc-gold);"></i> SJC Student RFID Wallet Top-Up</h3>
+          <p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:1.5rem;">Over-the-counter cash balance reloading for St. Jude College students</p>
+
+          <div style="display:flex; flex-direction:column; gap:1rem;">
+            <div>
+              <label style="display:block; font-size:0.85rem; margin-bottom:6px; color:var(--text-muted);">Select Student Account:</label>
+              <select id="topup-student-select" style="width:100%; padding:12px; border-radius:8px; border:var(--glass-border); background:var(--bg-secondary); color:#fff;">
+                <!-- Populated dynamically -->
+              </select>
+            </div>
+
+            <div>
+              <label style="display:block; font-size:0.85rem; margin-bottom:6px; color:var(--text-muted);">Top-Up Amount (₱):</label>
+              <input type="number" id="topup-amount-input" placeholder="e.g. 100, 200, 500" 
+                     style="width:100%; padding:12px; border-radius:8px; border:var(--glass-border); background:var(--bg-secondary); color:#fff;">
+            </div>
+
+            <button id="btn-cashier-topup" class="btn-primary" style="margin-top:0.5rem;">
+              <i class="fa-solid fa-plus-circle"></i> Add Funds to Wallet
+            </button>
+          </div>
+        </div>
+
+        <!-- Recent System Transactions -->
+        <div class="glass-card">
+          <h3><i class="fa-solid fa-clock-rotate-left"></i> Live Canteen POS Transactions</h3>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Tx ID</th>
+                <th>Student</th>
+                <th>Items</th>
+                <th>Total</th>
+                <th>Method</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody id="recent-tx-table">
+              <!-- Populated dynamically -->
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- 3. PARENT PORTAL VIEW -->
+    <section id="view-parent" class="view-section">
+      <div style="display:grid; grid-template-columns: 1fr 2fr; gap:1.5rem;">
+        
+        <div class="glass-card">
+          <h3><i class="fa-solid fa-child" style="color:var(--sjc-gold);"></i> Linked SJC Student Account</h3>
+          <div id="parent-student-bal" style="margin-top:1.5rem;">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+
+        <div class="glass-card">
+          <h3><i class="fa-solid fa-receipt"></i> Student Canteen Purchase History</h3>
+          <p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:1rem;">Real-time breakdown of cafeteria purchases for your child</p>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Date & Time</th>
+                <th>Items Purchased</th>
+                <th>Total</th>
+                <th>Payment</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>2026-07-28 12:15 PM</td>
+                <td>Spaghetti Bolognese, Orange Juice</td>
+                <td><strong>₱95.00</strong></td>
+                <td><span class="brand-badge">SJC RFID Card</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- 4. ADMIN DASHBOARD VIEW -->
+    <section id="view-admin" class="view-section">
+      <div class="glass-card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+          <div>
+            <h3><i class="fa-solid fa-boxes-stacked" style="color:var(--sjc-gold);"></i> SJC Canteen Inventory & AI Labels</h3>
+            <p style="color:var(--text-muted); font-size:0.85rem;">Manage food menu items, pricing, stock levels, and AI vision tags</p>
+          </div>
+          <button id="btn-add-product" class="btn-primary">
+            <i class="fa-solid fa-plus"></i> Add New Product
+          </button>
+        </div>
+
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Product Name</th>
+              <th>Category</th>
+              <th>Price</th>
+              <th>Stock</th>
+              <th>AI Model Tag</th>
+            </tr>
+          </thead>
+          <tbody id="admin-product-table">
+            <!-- Populated dynamically -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
