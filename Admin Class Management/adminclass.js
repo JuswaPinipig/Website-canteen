@@ -7,7 +7,7 @@
 'use strict';
 
 /* ─── SCHOOL YEAR STATE (declared here to avoid TDZ errors) ── */
-let _syPending        = null;
+let _syPending = null;
 let _syCountdownTimer = null;
 
 /* ─── API HELPERS ─────────────────────────────────────────── */
@@ -77,9 +77,9 @@ function toggleTheme() {
   if (_themeSwitching) return;               // anti-spam lock
   _themeSwitching = true;
 
-  const btn     = document.getElementById('themeToggleBtn');
+  const btn = document.getElementById('themeToggleBtn');
   const current = document.documentElement.getAttribute('data-theme') || 'dark';
-  const next    = current === 'dark' ? 'light' : 'dark';
+  const next = current === 'dark' ? 'light' : 'dark';
 
   // Step 1 — animate icons out
   btn.classList.add('theme-switching');
@@ -95,7 +95,7 @@ function toggleTheme() {
     btn.classList.remove('theme-switching');
 
     setTimeout(() => {
-      btn.disabled    = false;
+      btn.disabled = false;
       _themeSwitching = false;
     }, 420); // matches CSS cubic-bezier duration
   }, 260); // icons fully faded after 250ms
@@ -130,12 +130,12 @@ const LOAD_STEPS = [
 ];
 
 async function runLoadingSequence() {
-  const bar    = document.getElementById('loadingBar');
+  const bar = document.getElementById('loadingBar');
   const status = document.getElementById('loadingStatus');
 
   // Fetch current admin name during loading
   const sessionRes = await api('get_session');
-  const adminName  = sessionRes.success ? sessionRes.data.name : 'Administrator';
+  const adminName = sessionRes.success ? sessionRes.data.name : 'Administrator';
 
   for (const step of LOAD_STEPS) {
     bar.style.width = step.pct + '%';
@@ -148,7 +148,7 @@ async function runLoadingSequence() {
   // Hide loading screen
   const loadingScreen = document.getElementById('loadingScreen');
   loadingScreen.style.transition = 'opacity 0.4s ease';
-  loadingScreen.style.opacity    = '0';
+  loadingScreen.style.opacity = '0';
   await delay(400);
   loadingScreen.style.display = 'none';
 
@@ -157,14 +157,14 @@ async function runLoadingSequence() {
   document.getElementById('greetingTime').textContent = getTimeOfDay();
   document.getElementById('greetingName').textContent = adminName;
   document.getElementById('sidebarUserName').textContent = adminName;
-  document.getElementById('sidebarAvatar').textContent  = adminName.charAt(0).toUpperCase();
-  document.getElementById('greetingName').textContent   = adminName;
+  document.getElementById('sidebarAvatar').textContent = adminName.charAt(0).toUpperCase();
+  document.getElementById('greetingName').textContent = adminName;
   greetingOverlay.style.display = 'flex';
 
   await delay(2700); // Show greeting for ~2.7s (progress bar duration matches)
 
   greetingOverlay.style.transition = 'opacity 0.4s ease';
-  greetingOverlay.style.opacity    = '0';
+  greetingOverlay.style.opacity = '0';
   await delay(400);
   greetingOverlay.style.display = 'none';
 
@@ -182,17 +182,17 @@ function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
    NAVIGATION
 ════════════════════════════════════════════════════════════ */
 const MODULE_LABELS = {
-  dashboard:        'Dashboard',
-  'school-years':   'School Year',
+  dashboard: 'Dashboard',
+  'school-years': 'School Year',
   'class-management': 'Section Management',
-  subjects:         'Subjects',
-  deadlines:        'Academic Deadlines',
-  users:            'Faculty Accounts',
+  subjects: 'Subjects',
+  deadlines: 'Academic Deadlines',
+  users: 'Faculty Accounts',
   'student-accounts': 'Student Accounts',
-  rooms:            'Room Management',
-  audit:            'Audit Logs',
-  'cafeteria-wallet':    'Cafeteria · Student Wallet',
-  'cafeteria-menu':      'Cafeteria · Food Menu',
+  rooms: 'Room Management',
+  audit: 'Audit Logs',
+  'cafeteria-wallet': 'Cafeteria · Student Wallet',
+  'cafeteria-menu': 'Cafeteria · Food Menu',
   'cafeteria-inventory': 'Cafeteria · Inventory',
 };
 
@@ -229,11 +229,11 @@ document.querySelectorAll('.nav-item').forEach(el => {
 
     // Reset subject state when the user explicitly clicks the Subjects nav link
     if (el.dataset.module === 'subjects') {
-      _subjFilterMode  = 'active';
+      _subjFilterMode = 'active';
       _subjGradeFilter = '';
-      _subjSearch      = '';
-      _subjPage        = 1;
-      _subjTab         = 'list';
+      _subjSearch = '';
+      _subjPage = 1;
+      _subjTab = 'list';
     }
     activateModule(el.dataset.module);
   });
@@ -241,8 +241,8 @@ document.querySelectorAll('.nav-item').forEach(el => {
 
 // Sidebar toggle
 document.getElementById('sidebarToggle').addEventListener('click', () => {
-  const sidebar   = document.getElementById('sidebar');
-  const mainWrap  = document.querySelector('.main-wrap');
+  const sidebar = document.getElementById('sidebar');
+  const mainWrap = document.querySelector('.main-wrap');
   if (window.innerWidth <= 900) {
     sidebar.classList.toggle('mobile-open');
   } else {
@@ -270,17 +270,17 @@ async function renderModule(module) {
   ca.innerHTML = `<div class="flex-center" style="height:200px"><div class="spinner"></div></div>`;
 
   switch (module) {
-    case 'dashboard':        return renderDashboard(ca);
-    case 'school-years':     return renderSchoolYears(ca);
+    case 'dashboard': return renderDashboard(ca);
+    case 'school-years': return renderSchoolYears(ca);
     case 'class-management': return renderClassManagement(ca);
-    case 'subjects':         return renderSubjects(ca, 'active');
-    case 'deadlines':        return renderDeadlines(ca);
-    case 'users':            return renderUsers(ca);
+    case 'subjects': return renderSubjects(ca, 'active');
+    case 'deadlines': return renderDeadlines(ca);
+    case 'users': return renderUsers(ca);
     case 'student-accounts': return renderStudentAccounts(ca);
-    case 'rooms':            return renderRooms(ca);
-    case 'audit':            return renderAudit(ca);
-    case 'cafeteria-wallet':    return renderCafeteriaWallet(ca);
-    case 'cafeteria-menu':      return renderCafeteriaMenu(ca);
+    case 'rooms': return renderRooms(ca);
+    case 'audit': return renderAudit(ca);
+    case 'cafeteria-wallet': return renderCafeteriaWallet(ca);
+    case 'cafeteria-menu': return renderCafeteriaMenu(ca);
     case 'cafeteria-inventory': return renderCafeteriaInventory(ca);
   }
 }
@@ -290,7 +290,7 @@ async function renderModule(module) {
 ════════════════════════════════════════════════════════════ */
 async function renderDashboard(ca) {
   const res = await api('get_dashboard_stats');
-  const d   = res.success ? res.data : {};
+  const d = res.success ? res.data : {};
 
   ca.innerHTML = `
   <div class="page-header">
@@ -351,21 +351,32 @@ function renderDeadlinesMini(list) {
   if (!list || !list.length) return `<div class="empty-state"><i class="fa-solid fa-clock"></i><p>No upcoming deadlines</p></div>`;
   return list.map(d => {
     const startVal = d.start_datetime || d.start_date || '';
-    const endVal   = d.end_datetime   || d.end_date   || '';
+    const endVal = d.end_datetime || d.end_date || '';
     return `
     <div class="deadline-row">
-      <div class="deadline-type-badge">${(d.type_label || d.type).replace(/_/g,' ').toUpperCase()}</div>
+      <div class="deadline-type-badge">${(d.type_label || d.type).replace(/_/g, ' ').toUpperCase()}</div>
       <div class="deadline-dates">${formatDT(startVal)} → ${formatDT(endVal)}</div>
       <div class="deadline-status"><span class="badge badge-active badge-dot">${d.status}</span></div>
     </div>`;
   }).join('');
 }
 
+/* Human-friendly labels for audit log actions. The underlying `action`
+   value stored in the DB / used for CSS classes stays unchanged
+   (e.g. 'added', 'deducted') — this only affects what's displayed. */
+function auditActionLabel(action) {
+  const labels = {
+    added: 'Add Funds',
+    deducted: 'Deduction',
+  };
+  return labels[action] || (action ? action.charAt(0).toUpperCase() + action.slice(1) : '');
+}
+
 function renderAuditMini(list) {
   if (!list || !list.length) return `<div class="empty-state"><i class="fa-solid fa-scroll"></i><p>No recent activity</p></div>`;
   return list.map(a => `
     <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">
-      <span class="audit-action-badge audit-${a.action}">${a.action}</span>
+      <span class="audit-action-badge audit-${a.action}">${auditActionLabel(a.action)}</span>
       <span style="font-size:12px;color:var(--text-secondary);flex:1">${a.table_name} #${a.record_id}</span>
       <span style="font-size:11px;font-family:var(--font-mono);color:var(--text-muted)">${a.created_at}</span>
     </div>`).join('');
@@ -386,8 +397,8 @@ async function renderSchoolYears(ca) {
   // Find the next queued SY (earliest start after activeSY's end, not finalized, not active)
   const nextSY = hasActiveSY
     ? rows
-        .filter(r => r.id != activeSY.id && r.is_finalized != 1 && r.is_active != 1 && r.start_date > activeSY.end_date)
-        .sort((a, b) => a.start_date.localeCompare(b.start_date))[0] || null
+      .filter(r => r.id != activeSY.id && r.is_finalized != 1 && r.is_active != 1 && r.start_date > activeSY.end_date)
+      .sort((a, b) => a.start_date.localeCompare(b.start_date))[0] || null
     : null;
 
   // Active SY policy banner shown at the top when a SY is currently active
@@ -404,14 +415,14 @@ async function renderSchoolYears(ca) {
         once it reaches its set end date of <strong>${activeSY.end_date}</strong> and
         auto-advances to the next school year.
         ${nextSY
-          ? `<span class="sy-active-policy-next"><i class="fa-solid fa-forward-step"></i>
+      ? `<span class="sy-active-policy-next"><i class="fa-solid fa-forward-step"></i>
              <strong>S.Y. ${escHTML(nextSY.label)}</strong> is queued and will be activated
              automatically when S.Y. ${escHTML(activeSY.label)} ends.</span>`
-          : `<span class="sy-active-policy-next sy-active-policy-next--warn">
+      : `<span class="sy-active-policy-next sy-active-policy-next--warn">
              <i class="fa-solid fa-triangle-exclamation"></i>
              No next school year is queued. Create one before <strong>${activeSY.end_date}</strong>
              to enable automatic transition.</span>`
-        }
+    }
       </div>
       <div class="sy-active-policy-rule">
         <i class="fa-solid fa-lock"></i>
@@ -453,74 +464,74 @@ async function renderSchoolYears(ca) {
         </thead>
         <tbody>
           ${rows.length ? rows.map(r => {
-            const isFinalized  = r.is_finalized == 1;
-            const isActive     = r.is_active == 1;
-            const isConfirmed  = r.is_confirmed == 1;
-            const isPast       = today >= r.end_date;
-            const isFuture     = today < r.start_date;
+    const isFinalized = r.is_finalized == 1;
+    const isActive = r.is_active == 1;
+    const isConfirmed = r.is_confirmed == 1;
+    const isPast = today >= r.end_date;
+    const isFuture = today < r.start_date;
 
-            // status column from DB — fall back to deriving from flags
-            const dbStatus = r.status || (
-              isFinalized  ? 'completed' :
-              isActive     ? 'active'    :
-              isPast       ? 'completed' : 'upcoming'
-            );
+    // status column from DB — fall back to deriving from flags
+    const dbStatus = r.status || (
+      isFinalized ? 'completed' :
+        isActive ? 'active' :
+          isPast ? 'completed' : 'upcoming'
+    );
 
-            const isLocked    = isConfirmed && !isPast;
-            const canFinalize = !isFinalized && isPast && isActive;
-            const canEdit     = !isFinalized && !isLocked && !isActive;
-            // Can only activate if: not finalized, not already active, upcoming status,
-            // AND no other SY is currently active
-            const canActivate = !isFinalized && !isActive && dbStatus === 'upcoming' && !hasActiveSY;
+    const isLocked = isConfirmed && !isPast;
+    const canFinalize = !isFinalized && isPast && isActive;
+    const canEdit = !isFinalized && !isLocked && !isActive;
+    // Can only activate if: not finalized, not already active, upcoming status,
+    // AND no other SY is currently active
+    const canActivate = !isFinalized && !isActive && dbStatus === 'upcoming' && !hasActiveSY;
 
-            // Status badge
-            let statusBadge = '';
-            if (isFinalized || dbStatus === 'completed') {
-              statusBadge = '<span class="badge badge-archived"><i class="fa-solid fa-lock" style="margin-right:4px"></i>Completed</span>';
-            } else if (isActive || dbStatus === 'active') {
-              statusBadge = '<span class="badge badge-active badge-dot"><i class="fa-solid fa-circle-check" style="margin-right:4px;font-size:10px"></i>Active</span>';
-            } else {
-              const upcomingLabel = isFuture ? 'Upcoming' : 'Upcoming (Ready)';
-              statusBadge = '<span class="badge badge-upcoming"><i class="fa-solid fa-calendar-check" style="margin-right:4px;font-size:10px"></i>' + upcomingLabel + '</span>';
-            }
+    // Status badge
+    let statusBadge = '';
+    if (isFinalized || dbStatus === 'completed') {
+      statusBadge = '<span class="badge badge-archived"><i class="fa-solid fa-lock" style="margin-right:4px"></i>Completed</span>';
+    } else if (isActive || dbStatus === 'active') {
+      statusBadge = '<span class="badge badge-active badge-dot"><i class="fa-solid fa-circle-check" style="margin-right:4px;font-size:10px"></i>Active</span>';
+    } else {
+      const upcomingLabel = isFuture ? 'Upcoming' : 'Upcoming (Ready)';
+      statusBadge = '<span class="badge badge-upcoming"><i class="fa-solid fa-calendar-check" style="margin-right:4px;font-size:10px"></i>' + upcomingLabel + '</span>';
+    }
 
-            const confirmedLockChip = isLocked && !isActive
-              ? '<span class="sy-lock-chip" title="Dates locked until end date"><i class="fa-solid fa-lock"></i> Dates locked</span>'
-              : '';
+    const confirmedLockChip = isLocked && !isActive
+      ? '<span class="sy-lock-chip" title="Dates locked until end date"><i class="fa-solid fa-lock"></i> Dates locked</span>'
+      : '';
 
-            const editBtn = canEdit
-              ? '<button class="btn-icon sy-edit-btn" data-syid="'+r.id+'" title="Edit dates"><i class="fa-solid fa-pen"></i></button>'
-              : '';
+    const editBtn = canEdit
+      ? '<button class="btn-icon sy-edit-btn" data-syid="' + r.id + '" title="Edit dates"><i class="fa-solid fa-pen"></i></button>'
+      : '';
 
-            // Activate button: grayed out (disabled) when another SY is already active
-            let switchBtn = '';
-            if (isActive) {
-              switchBtn = '<span style="font-size:11px;color:var(--success,#22c55e);font-family:var(--font-mono);padding:4px 6px"><i class="fa-solid fa-toggle-on"></i> Active</span>';
-            } else if (!isFinalized && dbStatus === 'upcoming') {
-              if (hasActiveSY) {
-                // Grayed-out disabled button with tooltip explaining why
-                switchBtn = '<button class="btn-icon sy-switch-btn sy-switch-btn--blocked" data-syid="'+r.id+'" disabled title="Cannot activate — S.Y. '+escHTML(activeSY.label)+' is currently active. It must complete first."><i class="fa-solid fa-toggle-off"></i></button>';
-              } else {
-                switchBtn = '<button class="btn-icon sy-switch-btn sy-switch-btn--upcoming" data-syid="'+r.id+'" title="Activate this school year"><i class="fa-solid fa-toggle-off"></i></button>';
-              }
-            }
+    // Activate button: grayed out (disabled) when another SY is already active
+    let switchBtn = '';
+    if (isActive) {
+      switchBtn = '<span style="font-size:11px;color:var(--success,#22c55e);font-family:var(--font-mono);padding:4px 6px"><i class="fa-solid fa-toggle-on"></i> Active</span>';
+    } else if (!isFinalized && dbStatus === 'upcoming') {
+      if (hasActiveSY) {
+        // Grayed-out disabled button with tooltip explaining why
+        switchBtn = '<button class="btn-icon sy-switch-btn sy-switch-btn--blocked" data-syid="' + r.id + '" disabled title="Cannot activate — S.Y. ' + escHTML(activeSY.label) + ' is currently active. It must complete first."><i class="fa-solid fa-toggle-off"></i></button>';
+      } else {
+        switchBtn = '<button class="btn-icon sy-switch-btn sy-switch-btn--upcoming" data-syid="' + r.id + '" title="Activate this school year"><i class="fa-solid fa-toggle-off"></i></button>';
+      }
+    }
 
-            const finalBtn = canFinalize
-              ? '<button class="btn-icon btn-icon-warn sy-final-btn" data-syid="'+r.id+'" data-sylabel="'+r.label+'" title="Complete &amp; Lock"><i class="fa-solid fa-flag-checkered"></i></button>'
-              : '';
-            const lockedTag = isFinalized
-              ? '<span style="font-size:10px;font-family:var(--font-mono);color:var(--text-muted);padding:4px 6px"><i class="fa-solid fa-lock"></i> Locked</span>'
-              : '';
+    const finalBtn = canFinalize
+      ? '<button class="btn-icon btn-icon-warn sy-final-btn" data-syid="' + r.id + '" data-sylabel="' + r.label + '" title="Complete &amp; Lock"><i class="fa-solid fa-flag-checkered"></i></button>'
+      : '';
+    const lockedTag = isFinalized
+      ? '<span style="font-size:10px;font-family:var(--font-mono);color:var(--text-muted);padding:4px 6px"><i class="fa-solid fa-lock"></i> Locked</span>'
+      : '';
 
-            return '<tr data-syid="'+r.id+'" data-sylabel="'+r.label+'" data-systart="'+r.start_date+'" data-syend="'+r.end_date+'" data-syactive="'+r.is_active+'" data-systatus="'+(dbStatus)+'">' +
-              '<td class="td-primary td-mono">'+r.label+'</td>' +
-              '<td class="td-mono">'+r.start_date+'</td>' +
-              '<td class="td-mono">'+r.end_date+'</td>' +
-              '<td>'+statusBadge+'</td>' +
-              '<td class="td-mono">'+r.created_at+'</td>' +
-              '<td><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'+confirmedLockChip+editBtn+switchBtn+finalBtn+lockedTag+'</div></td>' +
-              '</tr>';
-          }).join('') : '<tr><td colspan="6"><div class="empty-state"><i class="fa-solid fa-calendar-days"></i><p>No school years yet. Create one to get started.</p></div></td></tr>'}
+    return '<tr data-syid="' + r.id + '" data-sylabel="' + r.label + '" data-systart="' + r.start_date + '" data-syend="' + r.end_date + '" data-syactive="' + r.is_active + '" data-systatus="' + (dbStatus) + '">' +
+      '<td class="td-primary td-mono">' + r.label + '</td>' +
+      '<td class="td-mono">' + r.start_date + '</td>' +
+      '<td class="td-mono">' + r.end_date + '</td>' +
+      '<td>' + statusBadge + '</td>' +
+      '<td class="td-mono">' + r.created_at + '</td>' +
+      '<td><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">' + confirmedLockChip + editBtn + switchBtn + finalBtn + lockedTag + '</div></td>' +
+      '</tr>';
+  }).join('') : '<tr><td colspan="6"><div class="empty-state"><i class="fa-solid fa-calendar-days"></i><p>No school years yet. Create one to get started.</p></div></td></tr>'}
         </tbody>
       </table>
     </div>
@@ -528,9 +539,9 @@ async function renderSchoolYears(ca) {
 
   // ── Event delegation for SY table action buttons ──────────
   function _syCaClickHandler(e) {
-    const editBtn  = e.target.closest('.sy-edit-btn');
-    const swBtn    = e.target.closest('.sy-switch-btn');
-    const finBtn   = e.target.closest('.sy-final-btn');
+    const editBtn = e.target.closest('.sy-edit-btn');
+    const swBtn = e.target.closest('.sy-switch-btn');
+    const finBtn = e.target.closest('.sy-final-btn');
     if (editBtn) {
       const tr = editBtn.closest('tr[data-syid]');
       openEditSchoolYear(
@@ -556,7 +567,7 @@ function openAddSchoolYear() {
   const today = new Date();
   const currentYear = today.getFullYear();
   const minStart = `${currentYear}-01-01`;
-  const maxEnd   = `${currentYear + 3}-12-31`;
+  const maxEnd = `${currentYear + 3}-12-31`;
 
   openModal('New School Year',
     `<div class="sy-label-preview-wrap">
@@ -589,8 +600,8 @@ function openAddSchoolYear() {
 
 function syncSYLabel() {
   const startVal = document.getElementById('syStart')?.value;
-  const endVal   = document.getElementById('syEnd')?.value;
-  const previewTag  = document.getElementById('syLabelPreview');
+  const endVal = document.getElementById('syEnd')?.value;
+  const previewTag = document.getElementById('syLabelPreview');
   const previewText = document.getElementById('syLabelText');
   if (startVal && endVal) {
     const sy = startVal.slice(0, 4);
@@ -600,11 +611,11 @@ function syncSYLabel() {
       const hiddenLabel = document.getElementById('syLabel');
       if (hiddenLabel) hiddenLabel.value = label;
       if (previewText) previewText.textContent = `S.Y. ${label}`;
-      if (previewTag)  previewTag.classList.add('sy-label-preview-tag--set');
+      if (previewTag) previewTag.classList.add('sy-label-preview-tag--set');
     }
   } else {
     if (previewText) previewText.textContent = 'Set dates below to generate label';
-    if (previewTag)  previewTag.classList.remove('sy-label-preview-tag--set');
+    if (previewTag) previewTag.classList.remove('sy-label-preview-tag--set');
   }
 }
 
@@ -621,20 +632,20 @@ function validateSYDates(label, start, end) {
   if (ls < currentYear || ls > currentYear + 2)
     return `Start year must be between ${currentYear} and ${currentYear + 2}.`;
 
-  const sy = parseInt(start.slice(0,4), 10);
-  const ey = parseInt(end.slice(0,4), 10);
+  const sy = parseInt(start.slice(0, 4), 10);
+  const ey = parseInt(end.slice(0, 4), 10);
   if (ls !== sy || le !== ey)
     return `Label "${label}" does not match the start/end years (${sy}–${ey}).`;
   if (new Date(end) <= new Date(start)) return 'End date must be after start date.';
-  const diffMonths = (ey - sy) * 12 + (parseInt(end.slice(5,7),10) - parseInt(start.slice(5,7),10));
+  const diffMonths = (ey - sy) * 12 + (parseInt(end.slice(5, 7), 10) - parseInt(start.slice(5, 7), 10));
   if (diffMonths > 14) return 'A school year cannot span more than 14 months.';
   return null; // valid
 }
 
 async function submitAddSchoolYear() {
-  const label  = document.getElementById('syLabel').value.trim();
-  const start  = document.getElementById('syStart').value;
-  const end    = document.getElementById('syEnd').value;
+  const label = document.getElementById('syLabel').value.trim();
+  const start = document.getElementById('syStart').value;
+  const end = document.getElementById('syEnd').value;
   const err = validateSYDates(label, start, end);
   if (err) return toast(err, 'warn');
 
@@ -655,7 +666,7 @@ async function submitAddSchoolYear() {
 /* ─── 5-SECOND COUNTDOWN CONFIRMATION FOR SCHOOL YEAR ─── */
 function _startSYCountdown() {
   const TOTAL = 5;
-  const CIRC  = 213.6;
+  const CIRC = 213.6;
   let remaining = TOTAL;
 
   if (_syCountdownTimer) { clearInterval(_syCountdownTimer); _syCountdownTimer = null; }
@@ -669,12 +680,12 @@ function _startSYCountdown() {
   _syCountdownTimer = setInterval(() => {
     remaining--;
     // Re-query elements each tick — guarantees we have live DOM references
-    const circleEl  = document.getElementById('syCountdownCircle');
-    const numEl     = document.getElementById('syCountdownNum');
+    const circleEl = document.getElementById('syCountdownCircle');
+    const numEl = document.getElementById('syCountdownNum');
     const confirmBtn = document.getElementById('syConfirmBtn');
-    const lblEl     = document.getElementById('syCountdownLabelText');
+    const lblEl = document.getElementById('syCountdownLabelText');
 
-    if (numEl)    numEl.textContent = remaining;
+    if (numEl) numEl.textContent = remaining;
     if (circleEl) circleEl.style.strokeDashoffset = CIRC * (1 - remaining / TOTAL);
 
     if (remaining <= 0) {
@@ -684,8 +695,8 @@ function _startSYCountdown() {
         confirmBtn.removeAttribute('disabled');
         confirmBtn.classList.add('btn-pulse');
       }
-      if (numEl)  numEl.textContent = '✓';
-      if (lblEl)  lblEl.textContent = 'Review complete — you may now confirm';
+      if (numEl) numEl.textContent = '✓';
+      if (lblEl) lblEl.textContent = 'Review complete — you may now confirm';
     }
   }, 1000);
 }
@@ -762,7 +773,7 @@ async function doConfirmSY() {
 function openEditSchoolYear(id, label, start, end, active) {
   const currentYear = new Date().getFullYear();
   const minStart = `${currentYear}-01-01`;
-  const maxEnd   = `${currentYear + 2}-12-31`;
+  const maxEnd = `${currentYear + 2}-12-31`;
 
   openModal('Edit School Year',
     `<div class="sy-label-preview-wrap">
@@ -796,7 +807,7 @@ function openEditSchoolYear(id, label, start, end, active) {
 async function submitEditSchoolYear(id, active) {
   const label = document.getElementById('syLabel').value.trim();
   const start = document.getElementById('syStart').value;
-  const end   = document.getElementById('syEnd').value;
+  const end = document.getElementById('syEnd').value;
   const err = validateSYDates(label, start, end);
   if (err) return toast(err, 'warn');
   openSYEditCountdownConfirm(id, label, start, end, active || 0);
@@ -1017,13 +1028,13 @@ async function doFinalizeSY(id) {
 async function renderClassManagement(ca) {
   const [syRes, secRes] = await Promise.all([api('get_active_school_year'), api('get_sections_by_grade')]);
   const activeSY = syRes.success ? syRes.data : null;
-  const grades   = secRes.success ? secRes.data : {};
+  const grades = secRes.success ? secRes.data : {};
 
   // Split sections into active and archived per grade
-  const activeGrades   = {};
-  const archivedAll    = []; // flat list of archived sections across all grades
+  const activeGrades = {};
+  const archivedAll = []; // flat list of archived sections across all grades
   Object.entries(grades).forEach(([gradeId, g]) => {
-    const activeSecs   = (g.sections || []).filter(s => s.status !== 'archived');
+    const activeSecs = (g.sections || []).filter(s => s.status !== 'archived');
     const archivedSecs = (g.sections || []).filter(s => s.status === 'archived');
     activeGrades[gradeId] = { ...g, sections: activeSecs };
     archivedSecs.forEach(s => archivedAll.push({ ...s, grade_display: g.display_name, grade_level: g.level }));
@@ -1062,9 +1073,9 @@ async function renderClassManagement(ca) {
   // Attach cabinet toggles
   document.querySelectorAll('.cabinet-header').forEach(h => {
     h.addEventListener('click', () => {
-      const body    = h.nextElementSibling;
+      const body = h.nextElementSibling;
       const chevron = h.querySelector('.cabinet-chevron');
-      const open    = body.style.display !== 'none';
+      const open = body.style.display !== 'none';
       body.style.display = open ? 'none' : 'block';
       chevron.classList.toggle('open', !open);
     });
@@ -1074,8 +1085,8 @@ async function renderClassManagement(ca) {
 function buildGradeCabinet(gradeId, g, activeSY) {
   const sections = g.sections || [];
   const sectionCards = sections.map(s => {
-    const pct  = s.capacity > 0 ? (s.enrolled_count / s.capacity) * 100 : 0;
-    const cls  = pct >= 100 ? 'full' : pct >= 80 ? 'warn' : '';
+    const pct = s.capacity > 0 ? (s.enrolled_count / s.capacity) * 100 : 0;
+    const cls = pct >= 100 ? 'full' : pct >= 80 ? 'warn' : '';
     return `
     <div class="section-card" onclick="openSectionPanel(${s.id})">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -1083,7 +1094,7 @@ function buildGradeCabinet(gradeId, g, activeSY) {
         <span class="badge badge-${s.status === 'active' ? 'open' : 'archived'}">${s.status}</span>
       </div>
       <div class="section-capacity-bar">
-        <div class="section-capacity-fill ${cls}" style="width:${Math.min(pct,100)}%"></div>
+        <div class="section-capacity-fill ${cls}" style="width:${Math.min(pct, 100)}%"></div>
       </div>
       <div class="section-stats">
         <span><span class="section-stat-val">${s.enrolled_count}</span>/${s.capacity} enrolled</span>
@@ -1197,9 +1208,9 @@ async function openAddSection(preGradeId = null) {
   const [glRes, syRes, advRes] = await Promise.all([
     api('get_grade_levels'), api('get_active_school_year'), api('get_available_teachers', { current_section_id: 0 })
   ]);
-  const grades    = glRes.success ? glRes.data : [];
-  const activeSY  = syRes.success ? syRes.data : null;
-  const advisers  = advRes.success ? (advRes.data.teachers || []) : [];
+  const grades = glRes.success ? glRes.data : [];
+  const activeSY = syRes.success ? syRes.data : null;
+  const advisers = advRes.success ? (advRes.data.teachers || []) : [];
 
   if (!activeSY) return toast('No active school year. Please set one first.', 'warn');
 
@@ -1240,12 +1251,12 @@ async function openAddSection(preGradeId = null) {
 }
 
 function updateCapacityPreview() {
-  const val  = parseInt(document.getElementById('secCap')?.value) || 0;
+  const val = parseInt(document.getElementById('secCap')?.value) || 0;
   const hint = document.getElementById('capHint');
   if (!hint) return;
-  if (val < 25)      hint.textContent = `Minimum is 25 students`;
+  if (val < 25) hint.textContent = `Minimum is 25 students`;
   else if (val > 40) hint.textContent = `Maximum is 40 students`;
-  else               hint.textContent = `${val} student${val !== 1 ? 's' : ''} (min 25 · max 40)`;
+  else hint.textContent = `${val} student${val !== 1 ? 's' : ''} (min 25 · max 40)`;
 }
 
 let _creatingSection = false;
@@ -1253,13 +1264,13 @@ let _creatingSection = false;
 async function submitAddSection(syId) {
   if (_creatingSection) return; // prevent double-submit
   const grade_level_id = document.getElementById('secGrade').value;
-  const name           = document.getElementById('secName').value.trim();
-  const capacity       = document.getElementById('secCap').value;
-  const adviser_id     = document.getElementById('secAdviser').value;
-  if (!name)     return toast('Section name is required.', 'warn');
+  const name = document.getElementById('secName').value.trim();
+  const capacity = document.getElementById('secCap').value;
+  const adviser_id = document.getElementById('secAdviser').value;
+  if (!name) return toast('Section name is required.', 'warn');
   const capNum = parseInt(capacity);
   if (!capacity || capNum < 25) return toast('Section capacity must be at least 25 students.', 'warn');
-  if (capNum > 40)              return toast('Section capacity cannot exceed 40 students.', 'warn');
+  if (capNum > 40) return toast('Section capacity cannot exceed 40 students.', 'warn');
 
   // Disable button immediately to block double-clicks
   _creatingSection = true;
@@ -1286,17 +1297,17 @@ async function openSectionPanel(id) {
     api('get_available_teachers', { current_section_id: id }),
     api('get_section_students', { section_id: id }),
   ]);
-  const sd       = sdRes.success ? sdRes.data : {};
+  const sd = sdRes.success ? sdRes.data : {};
   const advisers = advRes.success ? (advRes.data.teachers || []) : [];
   const students = studRes.success ? studRes.data : [];
 
-  const name     = sd.name || '—';
-  const status   = sd.status || 'active';
+  const name = sd.name || '—';
+  const status = sd.status || 'active';
   const capacity = sd.capacity || 40;
   // Use actual fetched student roster as source of truth — keeps bar & counts in sync
   const enrolled = students.length > 0 ? students.length : (sd.enrolled_count || 0);
-  const pct      = capacity > 0 ? Math.round((enrolled / capacity) * 100) : 0;
-  const barCls   = pct >= 100 ? 'full' : pct >= 80 ? 'warn' : '';
+  const pct = capacity > 0 ? Math.round((enrolled / capacity) * 100) : 0;
+  const barCls = pct >= 100 ? 'full' : pct >= 80 ? 'warn' : '';
 
   const advOpts = `<option value="">— None —</option>` +
     advisers.map(a => `<option value="${a.id}" ${a.id == sd.adviser_id ? 'selected' : ''}>${escHTML(a.full_name)}</option>`).join('');
@@ -1328,7 +1339,7 @@ async function openSectionPanel(id) {
        <div class="sm-cap-stat"><span class="sm-cap-num">${pct}%</span><span class="sm-cap-lbl">Full</span></div>
      </div>
      <div class="section-capacity-bar" style="margin-bottom:16px;height:6px">
-       <div class="section-capacity-fill ${barCls}" style="width:${Math.min(pct,100)}%"></div>
+       <div class="section-capacity-fill ${barCls}" style="width:${Math.min(pct, 100)}%"></div>
      </div>
 
      <!-- TABS -->
@@ -1441,14 +1452,14 @@ function switchSMTab(btn, tabId) {
   // Swap footer save buttons based on active tab
   const saveDetails = document.getElementById('smFooterSaveDetails');
   const saveAdviser = document.getElementById('smFooterSaveAdviser');
-  if (saveDetails) saveDetails.style.display = tabId === 'sm-tab-details'  ? '' : 'none';
-  if (saveAdviser) saveAdviser.style.display  = tabId === 'sm-tab-adviser' ? '' : 'none';
+  if (saveDetails) saveDetails.style.display = tabId === 'sm-tab-details' ? '' : 'none';
+  if (saveAdviser) saveAdviser.style.display = tabId === 'sm-tab-adviser' ? '' : 'none';
 }
 
 function toggleDangerZone(header) {
-  const body    = header.nextElementSibling;
+  const body = header.nextElementSibling;
   const chevron = header.querySelector('.sm-danger-chevron');
-  const open    = body.style.display !== 'none';
+  const open = body.style.display !== 'none';
   body.style.display = open ? 'none' : 'flex';
   if (chevron) chevron.style.transform = open ? '' : 'rotate(180deg)';
 }
@@ -1471,16 +1482,16 @@ function toggleAllRemove(checked) {
 function updateRemoveCount() {
   const checked = document.querySelectorAll('#smStudentsTbody .sm-rem-check:checked').length;
   const countEl = document.getElementById('smRemoveCount');
-  const btn     = document.getElementById('smBatchRemoveBtn');
+  const btn = document.getElementById('smBatchRemoveBtn');
   if (countEl) countEl.textContent = `${checked} selected`;
   if (btn) {
     btn.disabled = checked === 0;
-    btn.classList.toggle('btn-danger',  checked > 0);
-    btn.classList.toggle('btn-ghost',   checked === 0);
+    btn.classList.toggle('btn-danger', checked > 0);
+    btn.classList.toggle('btn-ghost', checked === 0);
   }
   // Sync select-all checkbox state
-  const all     = document.querySelectorAll('#smStudentsTbody .sm-enrolled-row:not([style*="display: none"]) .sm-rem-check').length;
-  const selAll  = document.getElementById('smRemSelectAll');
+  const all = document.querySelectorAll('#smStudentsTbody .sm-enrolled-row:not([style*="display: none"]) .sm-rem-check').length;
+  const selAll = document.getElementById('smRemSelectAll');
   if (selAll) selAll.indeterminate = checked > 0 && checked < all;
   if (selAll) selAll.checked = all > 0 && checked === all;
 }
@@ -1495,7 +1506,7 @@ async function submitBatchRemoveStudents(sectionId) {
   // Capture IDs NOW — openModal() will destroy #smStudentsTbody
   _pendingRemoveIds = checked.map(cb => cb.value);
 
-  const count  = _pendingRemoveIds.length;
+  const count = _pendingRemoveIds.length;
   const plural = count !== 1 ? 's' : '';
 
   openModal('Remove Students',
@@ -1519,7 +1530,7 @@ async function confirmBatchRemove(sectionId) {
     return;
   }
   const studentIds = _pendingRemoveIds.join(',');
-  const count      = _pendingRemoveIds.length;
+  const count = _pendingRemoveIds.length;
   _pendingRemoveIds = []; // clear immediately to prevent double-submit
 
   const res = await api('batch_remove_students_from_section', { section_id: sectionId, student_ids: studentIds });
@@ -1533,8 +1544,8 @@ async function confirmBatchRemove(sectionId) {
 
 /* ── Edit section details (from panel Details tab) ─────────── */
 async function submitEditSection(id) {
-  const name       = document.getElementById('eSName').value.trim();
-  const capacity   = document.getElementById('eSCap').value;
+  const name = document.getElementById('eSName').value.trim();
+  const capacity = document.getElementById('eSCap').value;
   const adviser_id = document.getElementById('eSAdv')?.value || '';
   if (!name) return toast('Section name is required.', 'warn');
   const res = await api('update_section', { id, name, capacity, adviser_id });
@@ -1544,8 +1555,8 @@ async function submitEditSection(id) {
 
 /* ── Save adviser only (from Adviser tab) ─────────────────── */
 async function submitAdviserOnly(id) {
-  const name       = document.getElementById('eSName')?.value.trim() || '';
-  const capacity   = document.getElementById('eSCap')?.value || '40';
+  const name = document.getElementById('eSName')?.value.trim() || '';
+  const capacity = document.getElementById('eSCap')?.value || '40';
   const adviser_id = document.getElementById('eSAdv').value;
   const res = await api('update_section', { id, name, capacity, adviser_id });
   if (res.success) {
@@ -1637,12 +1648,12 @@ async function refreshSectionCard(sectionId) {
     api('get_section_students', { section_id: sectionId }),
   ]);
   if (!sdRes.success) return;
-  const sd       = sdRes.data;
+  const sd = sdRes.data;
   const students = studRes.success ? studRes.data : [];
   const capacity = sd.capacity || 40;
   const enrolled = students.length > 0 ? students.length : (sd.enrolled_count || 0);
-  const pct      = capacity > 0 ? Math.round((enrolled / capacity) * 100) : 0;
-  const barCls   = pct >= 100 ? 'full' : pct >= 80 ? 'warn' : '';
+  const pct = capacity > 0 ? Math.round((enrolled / capacity) * 100) : 0;
+  const barCls = pct >= 100 ? 'full' : pct >= 80 ? 'warn' : '';
 
   // Find the card in the background DOM by its onclick attribute
   const card = document.querySelector(`.section-card[onclick="openSectionPanel(${sectionId})"]`);
@@ -1686,7 +1697,7 @@ function openSectionDetail(id, name, status, capacity, enrolled, adviser, room) 
 
 /* ── Archive Section (smart: room-aware + student/adviser-aware modals) ── */
 function confirmArchiveSectionWithStudents(id, name, enrolled, room, adviserName) {
-  const hasRoom    = !!(room && room.trim());
+  const hasRoom = !!(room && room.trim());
   const hasAdviser = !!(adviserName && adviserName.trim());
   const hasStudents = enrolled > 0;
 
@@ -1695,8 +1706,8 @@ function confirmArchiveSectionWithStudents(id, name, enrolled, room, adviserName
   if (hasRoom && (hasStudents || hasAdviser)) {
     const detailLines = [];
     if (hasStudents) detailLines.push(`<li><i class="fa-solid fa-users" style="width:14px;color:var(--warn,#f59e0b)"></i> <strong>${enrolled}</strong> assigned student${enrolled !== 1 ? 's' : ''}</li>`);
-    if (hasAdviser)  detailLines.push(`<li><i class="fa-solid fa-chalkboard-teacher" style="width:14px;color:var(--warn,#f59e0b)"></i> Advisory teacher: <strong>${escHTML(adviserName)}</strong></li>`);
-    if (hasRoom)     detailLines.push(`<li><i class="fa-solid fa-building" style="width:14px;color:var(--warn,#f59e0b)"></i> Assigned to <strong>Room ${escHTML(room)}</strong></li>`);
+    if (hasAdviser) detailLines.push(`<li><i class="fa-solid fa-chalkboard-teacher" style="width:14px;color:var(--warn,#f59e0b)"></i> Advisory teacher: <strong>${escHTML(adviserName)}</strong></li>`);
+    if (hasRoom) detailLines.push(`<li><i class="fa-solid fa-building" style="width:14px;color:var(--warn,#f59e0b)"></i> Assigned to <strong>Room ${escHTML(room)}</strong></li>`);
 
     openModal('Archive Section',
       `<div class="confirm-body">
@@ -1782,22 +1793,22 @@ async function doUnarchiveSection(id) {
 ════════════════════════════════════════════════════════════ */
 
 /* Module-level state — survives re-renders (create/edit/archive) */
-let _subjFilterMode  = 'active'; // 'active' | 'archived' | 'all'
+let _subjFilterMode = 'active'; // 'active' | 'archived' | 'all'
 let _subjGradeFilter = '';       // '' | 'Grade 7' | 'Grade 8' | 'Grade 9' | 'Grade 10'
-let _subjSearch      = '';       // free-text search string
-let _subjPage        = 1;        // current pagination page
-const SUBJ_PER_PAGE  = 10;
-let _subjTab         = 'list';   // 'list' | 'curriculum'
+let _subjSearch = '';       // free-text search string
+let _subjPage = 1;        // current pagination page
+const SUBJ_PER_PAGE = 10;
+let _subjTab = 'list';   // 'list' | 'curriculum'
 
 /* All rows fetched from the server (unfiltered master copy) */
-let _subjAllRows     = [];
-let _subjIsLocked    = false;
+let _subjAllRows = [];
+let _subjIsLocked = false;
 
 async function renderSubjects(ca, filterMode = null) {
   // Only override state when explicitly navigating (first load or filter dropdown change)
   if (filterMode !== null) {
     _subjFilterMode = filterMode;
-    _subjPage       = 1; // reset page when switching filter mode
+    _subjPage = 1; // reset page when switching filter mode
   }
 
   // If curriculum tab is active, delegate to the curriculum renderer
@@ -1812,11 +1823,11 @@ async function renderSubjects(ca, filterMode = null) {
   ]);
 
   _subjAllRows = subRes.success ? subRes.data : [];
-  const activeSY  = syRes.success ? syRes.data : null;
-  _subjIsLocked   = !!(activeSY && activeSY.is_finalized == 1);
+  const activeSY = syRes.success ? syRes.data : null;
+  _subjIsLocked = !!(activeSY && activeSY.is_finalized == 1);
 
   // Apply status filter
-  if (_subjFilterMode === 'active')   _subjAllRows = _subjAllRows.filter(r => r.is_archived == 0);
+  if (_subjFilterMode === 'active') _subjAllRows = _subjAllRows.filter(r => r.is_archived == 0);
   if (_subjFilterMode === 'archived') _subjAllRows = _subjAllRows.filter(r => r.is_archived == 1);
 
   // Grade counts from full unfiltered (status-filtered) set
@@ -1855,8 +1866,8 @@ async function renderSubjects(ca, filterMode = null) {
       <i class="fa-solid fa-layer-group"></i> All Grades
       <span class="subj-grade-chip-count">${_subjAllRows.length}</span>
     </button>
-    ${[7,8,9,10].map(g => `
-    <button class="subj-grade-chip ${_subjGradeFilter === 'Grade '+g ? 'active' : ''}" onclick="setSubjGradeFilter('Grade ${g}')">
+    ${[7, 8, 9, 10].map(g => `
+    <button class="subj-grade-chip ${_subjGradeFilter === 'Grade ' + g ? 'active' : ''}" onclick="setSubjGradeFilter('Grade ${g}')">
       Grade ${g}
       <span class="subj-grade-chip-count">${gradeCounts[g]}</span>
     </button>`).join('')}
@@ -1872,9 +1883,9 @@ async function renderSubjects(ca, filterMode = null) {
             oninput="_subjSearch=this.value;_subjPage=1;renderSubjPage()"/>
         </div>
         <select id="subjFilter" onchange="renderSubjects(document.getElementById('contentArea'), this.value)">
-          <option value="active"   ${_subjFilterMode==='active'   ? 'selected':''}>Active</option>
-          <option value="archived" ${_subjFilterMode==='archived' ? 'selected':''}>Archived</option>
-          <option value="all"      ${_subjFilterMode==='all'      ? 'selected':''}>All</option>
+          <option value="active"   ${_subjFilterMode === 'active' ? 'selected' : ''}>Active</option>
+          <option value="archived" ${_subjFilterMode === 'archived' ? 'selected' : ''}>Archived</option>
+          <option value="all"      ${_subjFilterMode === 'all' ? 'selected' : ''}>All</option>
         </select>
       </div>
     </div>
@@ -1906,7 +1917,7 @@ async function renderSubjects(ca, filterMode = null) {
 /* ── Filter helpers ── */
 function setSubjGradeFilter(grade) {
   _subjGradeFilter = grade;
-  _subjPage        = 1;
+  _subjPage = 1;
   // Update chip active states without full re-render
   document.querySelectorAll('.subj-grade-chip').forEach(c => {
     const chipGrade = c.textContent.trim().replace(/\d+$/, '').trim(); // strip count
@@ -1923,9 +1934,9 @@ function _getFilteredSubjRows() {
   const q = _subjSearch.toLowerCase();
   return _subjAllRows.filter(r => {
     const gradeMatch = !_subjGradeFilter || (r.grade_display || '') === _subjGradeFilter;
-    const textMatch  = !q
-      || (r.name  || '').toLowerCase().includes(q)
-      || (r.code  || '').toLowerCase().includes(q)
+    const textMatch = !q
+      || (r.name || '').toLowerCase().includes(q)
+      || (r.code || '').toLowerCase().includes(q)
       || (r.grade_display || '').toLowerCase().includes(q);
     return gradeMatch && textMatch;
   });
@@ -1933,11 +1944,11 @@ function _getFilteredSubjRows() {
 
 /* ── Page renderer — called after any filter / page change ── */
 function renderSubjPage() {
-  const tbody      = document.getElementById('subjTbody');
-  const pagingEl   = document.getElementById('subjPagination');
+  const tbody = document.getElementById('subjTbody');
+  const pagingEl = document.getElementById('subjPagination');
   if (!tbody) return;
 
-  const filtered   = _getFilteredSubjRows();
+  const filtered = _getFilteredSubjRows();
   const totalPages = Math.max(1, Math.ceil(filtered.length / SUBJ_PER_PAGE));
   if (_subjPage > totalPages) _subjPage = totalPages;
 
@@ -1954,10 +1965,10 @@ function renderSubjPage() {
       <td><span style="font-size:12px;font-weight:600;color:var(--primary)">${escHTML(r.grade_display || '—')}</span></td>
       <td class="td-mono">${r.hours_per_week}</td>
       <td>${r.is_archived == 1
-            ? '<span class="badge badge-archived">Archived</span>'
-            : r.is_active == 1
-              ? '<span class="badge badge-active badge-dot">Active</span>'
-              : '<span class="badge badge-inactive">Inactive</span>'}</td>
+        ? '<span class="badge badge-archived">Archived</span>'
+        : r.is_active == 1
+          ? '<span class="badge badge-active badge-dot">Active</span>'
+          : '<span class="badge badge-inactive">Inactive</span>'}</td>
       <td>
         <div style="display:flex;gap:6px;align-items:center">
           ${r.is_archived == 0 && !_subjIsLocked ? `
@@ -2001,7 +2012,7 @@ function renderSubjPagination(totalPages, totalItems) {
   ).join('');
 
   const showing = Math.min(totalItems, (_subjPage - 1) * SUBJ_PER_PAGE + SUBJ_PER_PAGE);
-  const from    = (_subjPage - 1) * SUBJ_PER_PAGE + 1;
+  const from = (_subjPage - 1) * SUBJ_PER_PAGE + 1;
 
   container.innerHTML = `
     <div class="pagination-wrap">
@@ -2028,7 +2039,7 @@ async function _refreshSubjects() {
   const includeArchived = (_subjFilterMode === 'all' || _subjFilterMode === 'archived') ? '1' : '0';
   const subRes = await api('get_subjects', { include_archived: includeArchived });
   let rows = subRes.success ? subRes.data : [];
-  if (_subjFilterMode === 'active')   rows = rows.filter(r => r.is_archived == 0);
+  if (_subjFilterMode === 'active') rows = rows.filter(r => r.is_archived == 0);
   if (_subjFilterMode === 'archived') rows = rows.filter(r => r.is_archived == 1);
   _subjAllRows = rows;
   // Update grade chip counts
@@ -2053,10 +2064,10 @@ function openAddSubject() {
        <label>Grade Level <span style="color:var(--danger)">*</span></label>
        <select id="sGrade">
          <option value="" ${!preGrade ? 'selected' : ''}>— Select Grade Level —</option>
-         <option value="7"  ${preGrade==='7'  ? 'selected':''}>Grade 7</option>
-         <option value="8"  ${preGrade==='8'  ? 'selected':''}>Grade 8</option>
-         <option value="9"  ${preGrade==='9'  ? 'selected':''}>Grade 9</option>
-         <option value="10" ${preGrade==='10' ? 'selected':''}>Grade 10</option>
+         <option value="7"  ${preGrade === '7' ? 'selected' : ''}>Grade 7</option>
+         <option value="8"  ${preGrade === '8' ? 'selected' : ''}>Grade 8</option>
+         <option value="9"  ${preGrade === '9' ? 'selected' : ''}>Grade 9</option>
+         <option value="10" ${preGrade === '10' ? 'selected' : ''}>Grade 10</option>
        </select>
        <div class="form-note" style="font-size:11px;color:var(--text-muted);margin-top:4px">
          <i class="fa-solid fa-circle-info"></i>&nbsp;
@@ -2090,14 +2101,14 @@ function openAddSubject() {
 // Note: inform user that subjects are disabled by default — enable via Curriculum Matrix
 
 async function submitAddSubject() {
-  const name  = document.getElementById('sName').value.trim();
-  const code  = document.getElementById('sCode').value.trim().toUpperCase();
+  const name = document.getElementById('sName').value.trim();
+  const code = document.getElementById('sCode').value.trim().toUpperCase();
   const grade = document.getElementById('sGrade').value;
   const hours = document.getElementById('sHours').value;
 
   if (!grade) return toast('Please select a grade level.', 'warn');
-  if (!name)  return toast('Subject name is required.', 'warn');
-  if (!code)  return toast('Subject code is required.', 'warn');
+  if (!name) return toast('Subject name is required.', 'warn');
+  if (!code) return toast('Subject code is required.', 'warn');
 
   const res = await api('create_subject', { name, code, grade_level_id: grade, hours_per_week: hours, is_active: 0 });
   if (res.success) {
@@ -2116,10 +2127,10 @@ function openEditSubject(id, name, code, gradeId, hours, active) {
     `<div class="form-group">
        <label>Grade Level <span style="color:var(--danger)">*</span></label>
        <select id="sGrade">
-         <option value="7"  ${gradeId==7  ? 'selected':''}>Grade 7</option>
-         <option value="8"  ${gradeId==8  ? 'selected':''}>Grade 8</option>
-         <option value="9"  ${gradeId==9  ? 'selected':''}>Grade 9</option>
-         <option value="10" ${gradeId==10 ? 'selected':''}>Grade 10</option>
+         <option value="7"  ${gradeId == 7 ? 'selected' : ''}>Grade 7</option>
+         <option value="8"  ${gradeId == 8 ? 'selected' : ''}>Grade 8</option>
+         <option value="9"  ${gradeId == 9 ? 'selected' : ''}>Grade 9</option>
+         <option value="10" ${gradeId == 10 ? 'selected' : ''}>Grade 10</option>
        </select>
      </div>
      <div class="form-group">
@@ -2142,14 +2153,14 @@ function openEditSubject(id, name, code, gradeId, hours, active) {
 }
 
 async function submitEditSubject(id) {
-  const name  = document.getElementById('sName').value.trim();
-  const code  = document.getElementById('sCode').value.trim().toUpperCase();
+  const name = document.getElementById('sName').value.trim();
+  const code = document.getElementById('sCode').value.trim().toUpperCase();
   const grade = document.getElementById('sGrade').value;
   const hours = document.getElementById('sHours').value;
 
   if (!grade) return toast('Please select a grade level.', 'warn');
-  if (!name)  return toast('Subject name is required.', 'warn');
-  if (!code)  return toast('Subject code is required.', 'warn');
+  if (!name) return toast('Subject name is required.', 'warn');
+  if (!code) return toast('Subject code is required.', 'warn');
 
   const res = await api('update_subject', { id, name, code, grade_level_id: grade, hours_per_week: hours });
   if (res.success) {
@@ -2254,23 +2265,23 @@ async function renderSubjectsWithCurriculumTab(ca) {
     api('get_school_years'), api('get_curriculum'), api('get_grade_levels'), api('get_subjects', { include_archived: '0' })
   ]);
 
-  const sysAll   = syRes.success  ? syRes.data  : [];
-  const grades   = glRes.success  ? glRes.data  : [];
+  const sysAll = syRes.success ? syRes.data : [];
+  const grades = glRes.success ? glRes.data : [];
   // Show ALL non-archived subjects regardless of is_active — activation managed here
   const subjects = subRes.success ? subRes.data.filter(s => s.is_archived != 1) : [];
   const curriculum = currRes.success ? currRes.data : [];
 
-  const activeSY   = sysAll.find(s => s.is_active) || sysAll[0];
+  const activeSY = sysAll.find(s => s.is_active) || sysAll[0];
   const activeSYId = activeSY ? activeSY.id : null;
-  const currSet    = new Set(curriculum.map(c => `${c.school_year_id}-${c.grade_level_id}-${c.subject_id}`));
+  const currSet = new Set(curriculum.map(c => `${c.school_year_id}-${c.grade_level_id}-${c.subject_id}`));
 
-  const syOpts     = sysAll.map(s => `<option value="${s.id}" ${s.is_active ? 'selected' : ''}>${s.label}</option>`).join('');
+  const syOpts = sysAll.map(s => `<option value="${s.id}" ${s.is_active ? 'selected' : ''}>${s.label}</option>`).join('');
   const headerCols = grades.map(g => `<th>${g.display_name}</th>`).join('');
 
   const rows = subjects.map(sub => {
     const isEnabled = sub.is_active == 1;
     const cells = grades.map(g => {
-      const key     = `${activeSYId}-${g.id}-${sub.id}`;
+      const key = `${activeSYId}-${g.id}-${sub.id}`;
       const checked = currSet.has(key);
       if (checked) {
         return `<td><span class="curr-check checked" onclick="confirmDisableSubjectFromCell(${sub.id},'${escHTML(sub.name)}')" title="Click to disable &amp; archive this subject">
@@ -2353,7 +2364,7 @@ async function renderCurriculum(ca) {
   const headerCols = grades.map(g => `<th>${g.display_name}</th>`).join('');
   const rows = subjects.map(sub => {
     const cells = grades.map(g => {
-      const key     = `${activeSYId}-${g.id}-${sub.id}`;
+      const key = `${activeSYId}-${g.id}-${sub.id}`;
       const checked = currSet.has(key);
       if (checked) {
         return `<td><span class="curr-check checked" onclick="confirmDisableSubjectFromCell(${sub.id},'${escHTML(sub.name)}')" title="Click to disable &amp; archive this subject">
@@ -2510,11 +2521,11 @@ async function doDisableSubjectFromMatrix(id) {
    DEADLINES
 ════════════════════════════════════════════════════════════ */
 const DEADLINE_TYPES = [
-  { value: 'enrollment',            label: 'Enrollment' },
-  { value: 'grade_encoding_term1',  label: 'Grade Encoding (1st Term)' },
-  { value: 'grade_encoding_term2',  label: 'Grade Encoding (2nd Term)' },
-  { value: 'grade_encoding_term3',  label: 'Grade Encoding (3rd Term)' },
-  { value: 'payments',              label: 'Payments' },
+  { value: 'enrollment', label: 'Enrollment' },
+  { value: 'grade_encoding_term1', label: 'Grade Encoding (1st Term)' },
+  { value: 'grade_encoding_term2', label: 'Grade Encoding (2nd Term)' },
+  { value: 'grade_encoding_term3', label: 'Grade Encoding (3rd Term)' },
+  { value: 'payments', label: 'Payments' },
 ];
 
 /* ─── DEADLINE DATETIME HELPERS ───────────────────────────── */
@@ -2549,7 +2560,7 @@ function formatDateOnly(dateStr) {
 
 async function renderDeadlines(ca) {
   const [syRes, dlRes] = await Promise.all([api('get_school_years'), api('get_deadlines')]);
-  const sysAll    = syRes.success ? syRes.data : [];
+  const sysAll = syRes.success ? syRes.data : [];
   const deadlines = dlRes.success ? dlRes.data : [];
 
   const activeSY = sysAll.find(s => s.is_active) || sysAll[0];
@@ -2561,16 +2572,16 @@ async function renderDeadlines(ca) {
   _dlUsedTypes = usedTypes;  // store for use in onclick attributes
 
   const rows = deadlines.map(d => {
-    const now   = new Date();
+    const now = new Date();
     const start = d.start_datetime ? new Date(d.start_datetime.replace(' ', 'T')) : new Date(d.start_date);
-    const end   = d.end_datetime   ? new Date(d.end_datetime.replace(' ', 'T'))   : new Date(d.end_date);
+    const end = d.end_datetime ? new Date(d.end_datetime.replace(' ', 'T')) : new Date(d.end_date);
     let statusBadge;
-    if (now < start)    statusBadge = `<span class="badge badge-closed">Upcoming</span>`;
+    if (now < start) statusBadge = `<span class="badge badge-closed">Upcoming</span>`;
     else if (now > end) statusBadge = `<span class="badge badge-archived">Closed</span>`;
-    else                statusBadge = `<span class="badge badge-active badge-dot">Open</span>`;
+    else statusBadge = `<span class="badge badge-active badge-dot">Open</span>`;
 
     const startVal = d.start_datetime || d.start_date || '';
-    const endVal   = d.end_datetime   || d.end_date   || '';
+    const endVal = d.end_datetime || d.end_date || '';
 
     return `
     <tr>
@@ -2578,12 +2589,12 @@ async function renderDeadlines(ca) {
       <td class="td-mono">${formatDT(startVal)}</td>
       <td class="td-mono">${formatDT(endVal)}</td>
       <td>${statusBadge}</td>
-      <td><button class="btn-icon" onclick="openEditDeadline(${d.id},'${d.type}','${escHTML(startVal)}','${escHTML(endVal)}','${escHTML(activeSY?.start_date||'')}','${escHTML(activeSY?.end_date||'')}')"><i class="fa-solid fa-pen"></i></button></td>
+      <td><button class="btn-icon" onclick="openEditDeadline(${d.id},'${d.type}','${escHTML(startVal)}','${escHTML(endVal)}','${escHTML(activeSY?.start_date || '')}','${escHTML(activeSY?.end_date || '')}')"><i class="fa-solid fa-pen"></i></button></td>
     </tr>`;
   }).join('');
 
-  const syLabel    = activeSY ? activeSY.label : 'No active school year';
-  const syEndDate  = activeSY?.end_date  || '';
+  const syLabel = activeSY ? activeSY.label : 'No active school year';
+  const syEndDate = activeSY?.end_date || '';
   const syStartDate = activeSY?.start_date || '';
 
   ca.innerHTML = `
@@ -2614,7 +2625,7 @@ async function renderDeadlines(ca) {
 }
 
 let _dlCountdownTimer = null;
-let _dlUsedTypes      = [];   // avoids JSON.stringify inside onclick attributes
+let _dlUsedTypes = [];   // avoids JSON.stringify inside onclick attributes
 
 function openAddDeadline(syId, syStart, syEnd, usedTypes = []) {
   _dlUsedTypes = usedTypes;
@@ -2627,7 +2638,7 @@ function openAddDeadline(syId, syStart, syEnd, usedTypes = []) {
 
   const firstAvail = DEADLINE_TYPES.find(t => !usedTypes.includes(t.value));
   const minDT = syStart ? syStart + 'T00:00' : '';
-  const maxDT = syEnd   ? syEnd   + 'T23:59' : '';
+  const maxDT = syEnd ? syEnd + 'T23:59' : '';
 
   const syHint = syEnd
     ? `<div class="dl-sy-hint-bar">
@@ -2656,7 +2667,7 @@ function openAddDeadline(syId, syStart, syEnd, usedTypes = []) {
            <div class="dt-split-field">
              <label class="dt-split-label"><i class="fa-solid fa-calendar-day"></i> Date</label>
              <input type="date" id="dlStartDate" class="dt-input dt-split-input"
-               ${minDT ? `min="${minDT.slice(0,10)}"` : ''} ${maxDT ? `max="${maxDT.slice(0,10)}"` : ''}/>
+               ${minDT ? `min="${minDT.slice(0, 10)}"` : ''} ${maxDT ? `max="${maxDT.slice(0, 10)}"` : ''}/>
            </div>
            <div class="dt-split-field">
              <label class="dt-split-label"><i class="fa-solid fa-clock"></i> Time</label>
@@ -2675,7 +2686,7 @@ function openAddDeadline(syId, syStart, syEnd, usedTypes = []) {
            <div class="dt-split-field">
              <label class="dt-split-label"><i class="fa-solid fa-calendar-check"></i> Date</label>
              <input type="date" id="dlEndDate" class="dt-input dt-split-input dt-split-input-end"
-               ${minDT ? `min="${minDT.slice(0,10)}"` : ''} ${maxDT ? `max="${maxDT.slice(0,10)}"` : ''}/>
+               ${minDT ? `min="${minDT.slice(0, 10)}"` : ''} ${maxDT ? `max="${maxDT.slice(0, 10)}"` : ''}/>
            </div>
            <div class="dt-split-field">
              <label class="dt-split-label"><i class="fa-solid fa-clock"></i> Time</label>
@@ -2697,17 +2708,17 @@ function openAddDeadline(syId, syStart, syEnd, usedTypes = []) {
 }
 
 function startDlCountdown(syId, syStart, syEnd, usedTypes = []) {
-  const type      = document.getElementById('dlType').value;
+  const type = document.getElementById('dlType').value;
   const startDate = document.getElementById('dlStartDate').value;
   const startTime = document.getElementById('dlStartTime').value;
-  const endDate   = document.getElementById('dlEndDate').value;
-  const endTime   = document.getElementById('dlEndTime').value;
-  const start     = combineDT(startDate, startTime);
-  const end       = combineDT(endDate, endTime);
+  const endDate = document.getElementById('dlEndDate').value;
+  const endTime = document.getElementById('dlEndTime').value;
+  const start = combineDT(startDate, startTime);
+  const end = combineDT(endDate, endTime);
 
   // Validation
   if (!startDate || !startTime) return toast('Opening date and time are required.', 'warn');
-  if (!endDate   || !endTime)   return toast('Closing date and time are required.', 'warn');
+  if (!endDate || !endTime) return toast('Closing date and time are required.', 'warn');
   if (new Date(end) <= new Date(start)) return toast('End date-time must be after start date-time.', 'warn');
 
   // Duplicate type check (client-side guard)
@@ -2724,9 +2735,9 @@ function startDlCountdown(syId, syStart, syEnd, usedTypes = []) {
     return toast(`End date cannot exceed the school year end (${formatDateOnly(syEnd)}).`, 'error');
   }
 
-  const banner    = document.getElementById('dlConfirmBanner');
-  const numEl     = document.getElementById('dlCountdownNum');
-  const setBtn    = document.getElementById('dlSetBtn');
+  const banner = document.getElementById('dlConfirmBanner');
+  const numEl = document.getElementById('dlCountdownNum');
+  const setBtn = document.getElementById('dlSetBtn');
   const cancelBtn = document.getElementById('dlCancelBtn');
 
   banner.style.display = 'flex';
@@ -2750,19 +2761,19 @@ function startDlCountdown(syId, syStart, syEnd, usedTypes = []) {
 
 function cancelDlCountdown() {
   if (_dlCountdownTimer) { clearInterval(_dlCountdownTimer); _dlCountdownTimer = null; }
-  const banner  = document.getElementById('dlConfirmBanner');
-  const setBtn  = document.getElementById('dlSetBtn');
+  const banner = document.getElementById('dlConfirmBanner');
+  const setBtn = document.getElementById('dlSetBtn');
   const cancelBtn = document.getElementById('dlCancelBtn');
-  if (banner)  banner.style.display = 'none';
-  if (setBtn)  { setBtn.disabled = false; setBtn.innerHTML = '<i class="fa-solid fa-plus"></i> Set Deadline'; }
+  if (banner) banner.style.display = 'none';
+  if (setBtn) { setBtn.disabled = false; setBtn.innerHTML = '<i class="fa-solid fa-plus"></i> Set Deadline'; }
   if (cancelBtn) cancelBtn.style.display = '';
   toast('Countdown cancelled. You can still edit the details.', 'info');
 }
 
 async function submitAddDeadline(syId) {
-  const type      = document.getElementById('dlType').value;
-  const start     = combineDT(document.getElementById('dlStartDate').value, document.getElementById('dlStartTime').value);
-  const end       = combineDT(document.getElementById('dlEndDate').value,   document.getElementById('dlEndTime').value);
+  const type = document.getElementById('dlType').value;
+  const start = combineDT(document.getElementById('dlStartDate').value, document.getElementById('dlStartTime').value);
+  const end = combineDT(document.getElementById('dlEndDate').value, document.getElementById('dlEndTime').value);
   if (!start || !end) return toast('Start and end date-times are required.', 'warn');
   const res = await api('create_deadline', { school_year_id: syId, type, start_datetime: start, end_datetime: end });
   if (res.success) { toast('Deadline set successfully.', 'success'); closeModal(); activateModule('deadlines'); }
@@ -2773,7 +2784,7 @@ function openEditDeadline(id, type, start, end, syStart, syEnd) {
   const typeOpts = DEADLINE_TYPES.map(t => `<option value="${t.value}" ${t.value === type ? 'selected' : ''}>${t.label}</option>`).join('');
 
   const minDT = syStart ? syStart + 'T00:00' : '';
-  const maxDT = syEnd   ? syEnd   + 'T23:59' : '';
+  const maxDT = syEnd ? syEnd + 'T23:59' : '';
 
   const syHint = syEnd
     ? `<div class="dl-sy-hint-bar">
@@ -2805,13 +2816,13 @@ function openEditDeadline(id, type, start, end, syStart, syEnd) {
            <div class="dt-split-field">
              <label class="dt-split-label"><i class="fa-solid fa-calendar-day"></i> Date</label>
              <input type="date" id="dlStartDate" class="dt-input dt-split-input"
-               value="${toDTLocal(start).slice(0,10)}"
-               ${minDT ? `min="${minDT.slice(0,10)}"` : ''} ${maxDT ? `max="${maxDT.slice(0,10)}"` : ''}/>
+               value="${toDTLocal(start).slice(0, 10)}"
+               ${minDT ? `min="${minDT.slice(0, 10)}"` : ''} ${maxDT ? `max="${maxDT.slice(0, 10)}"` : ''}/>
            </div>
            <div class="dt-split-field">
              <label class="dt-split-label"><i class="fa-solid fa-clock"></i> Time</label>
              <input type="time" id="dlStartTime" class="dt-input dt-split-input"
-               value="${toDTLocal(start).slice(11,16)}"/>
+               value="${toDTLocal(start).slice(11, 16)}"/>
            </div>
          </div>
          <div class="dl-date-hint">Registration opens at this date &amp; time</div>
@@ -2826,13 +2837,13 @@ function openEditDeadline(id, type, start, end, syStart, syEnd) {
            <div class="dt-split-field">
              <label class="dt-split-label"><i class="fa-solid fa-calendar-check"></i> Date</label>
              <input type="date" id="dlEndDate" class="dt-input dt-split-input dt-split-input-end"
-               value="${toDTLocal(end).slice(0,10)}"
-               ${minDT ? `min="${minDT.slice(0,10)}"` : ''} ${maxDT ? `max="${maxDT.slice(0,10)}"` : ''}/>
+               value="${toDTLocal(end).slice(0, 10)}"
+               ${minDT ? `min="${minDT.slice(0, 10)}"` : ''} ${maxDT ? `max="${maxDT.slice(0, 10)}"` : ''}/>
            </div>
            <div class="dt-split-field">
              <label class="dt-split-label"><i class="fa-solid fa-clock"></i> Time</label>
              <input type="time" id="dlEndTime" class="dt-input dt-split-input dt-split-input-end"
-               value="${toDTLocal(end).slice(11,16)}"/>
+               value="${toDTLocal(end).slice(11, 16)}"/>
            </div>
          </div>
          <div class="dl-date-hint">Registration closes at this date &amp; time</div>
@@ -2843,9 +2854,9 @@ function openEditDeadline(id, type, start, end, syStart, syEnd) {
 }
 
 async function submitEditDeadline(id, syStart, syEnd) {
-  const type  = document.getElementById('dlType').value;
+  const type = document.getElementById('dlType').value;
   const start = combineDT(document.getElementById('dlStartDate').value, document.getElementById('dlStartTime').value);
-  const end   = combineDT(document.getElementById('dlEndDate').value,   document.getElementById('dlEndTime').value);
+  const end = combineDT(document.getElementById('dlEndDate').value, document.getElementById('dlEndTime').value);
 
   if (!start || !end) return toast('Opening and closing date + time are both required.', 'warn');
   if (new Date(end) <= new Date(start)) return toast('End date-time must be after start date-time.', 'warn');
@@ -2868,20 +2879,20 @@ async function submitEditDeadline(id, syStart, syEnd) {
 ════════════════════════════════════════════════════════════ */
 
 const ROLE_META = {
-  teacher:     { icon: 'fa-chalkboard-teacher', color: 'role-teacher'     },
-  cashier:     { icon: 'fa-cash-register',       color: 'role-cashier'     },
-  registrar:   { icon: 'fa-file-signature',      color: 'role-registrar'   },
-  principal:   { icon: 'fa-user-tie',            color: 'role-principal'   },
-  coordinator: { icon: 'fa-sitemap',             color: 'role-coordinator' },
-  admin:       { icon: 'fa-shield-halved',       color: 'role-admin'       },
+  teacher: { icon: 'fa-chalkboard-teacher', color: 'role-teacher' },
+  cashier: { icon: 'fa-cash-register', color: 'role-cashier' },
+  registrar: { icon: 'fa-file-signature', color: 'role-registrar' },
+  principal: { icon: 'fa-user-tie', color: 'role-principal' },
+  coordinator: { icon: 'fa-sitemap', color: 'role-coordinator' },
+  admin: { icon: 'fa-shield-halved', color: 'role-admin' },
 };
 
 /* ── Pagination + filter state ── */
-let _usersActiveRole   = '';
+let _usersActiveRole = '';
 let _usersShowArchived = false;
 let _usersSubjectFilter = '';   // subject name filter (teachers only)
-let _usersCurrPage     = 1;
-const USERS_PER_PAGE   = 10;
+let _usersCurrPage = 1;
+const USERS_PER_PAGE = 10;
 
 /** Refresh the Faculty Accounts list while keeping the current role/filter/page state. */
 async function refreshUsersPreserved() {
@@ -2891,7 +2902,7 @@ async function refreshUsersPreserved() {
 }
 
 async function renderUsers(ca, preserveFilters = false) {
-  const res  = await api('get_admins');
+  const res = await api('get_admins');
   const rows = res.success ? res.data : [];
 
   // Collect unique BASE subject names from active (non-archived) teacher rows only
@@ -2915,7 +2926,7 @@ async function renderUsers(ca, preserveFilters = false) {
     const meta = ROLE_META[r] || { icon: 'fa-user', color: 'role-teacher' };
     return `<button class="role-chip" data-role="${r}" onclick="setUsersRoleFilter('${r}',this)">
       <i class="fa-solid ${meta.icon}"></i>
-      <span>${r.charAt(0).toUpperCase()+r.slice(1)}</span>
+      <span>${r.charAt(0).toUpperCase() + r.slice(1)}</span>
       <span class="role-chip-count">${roleCounts[r]}</span>
     </button>`;
   }).join('');
@@ -2923,8 +2934,8 @@ async function renderUsers(ca, preserveFilters = false) {
   // Subject filter dropdown (only meaningful for teachers)
   const subjectOpts = allSubjects.map(s => `<option value="${escHTML(s)}">${escHTML(s)}</option>`).join('');
 
-  const activeCount   = rows.filter(r => !r.is_archived).length;
-  const archivedCount = rows.filter(r =>  r.is_archived).length;
+  const activeCount = rows.filter(r => !r.is_archived).length;
+  const archivedCount = rows.filter(r => r.is_archived).length;
 
   // Embed all data as JSON for client-side filtering
   const safeRows = JSON.stringify(rows);
@@ -2972,7 +2983,7 @@ async function renderUsers(ca, preserveFilters = false) {
           <span>Archived Accounts</span>
           ${archivedCount > 0 ? `<span class="archived-toggle-count">${archivedCount}</span>` : ''}
         </button>
-        <span class="users-result-count" id="usersResultCount">${activeCount} account${activeCount!==1?'s':''}</span>
+        <span class="users-result-count" id="usersResultCount">${activeCount} account${activeCount !== 1 ? 's' : ''}</span>
       </div>
     </div>
     <div class="table-wrap">
@@ -2993,10 +3004,10 @@ async function renderUsers(ca, preserveFilters = false) {
   document.getElementById('usersTable').dataset.rows = safeRows;
   // Only reset filters on a fresh load, not after an edit/archive/restore
   if (!preserveFilters) {
-    _usersActiveRole    = '';
-    _usersShowArchived  = false;
+    _usersActiveRole = '';
+    _usersShowArchived = false;
     _usersSubjectFilter = '';
-    _usersCurrPage      = 1;
+    _usersCurrPage = 1;
   }
   // Re-sync the role chip UI to match the current (possibly preserved) active role
   document.querySelectorAll('.role-chip').forEach(c => {
@@ -3019,10 +3030,10 @@ function getFilteredUserRows() {
     const isArchived = !!r.is_archived;
     // Main table always shows active accounts only
     if (isArchived) return false;
-    const roleMatch  = !_usersActiveRole || r.role === _usersActiveRole;
-    const nameMatch  = !q
-      || (r.full_name   || '').toLowerCase().includes(q)
-      || (r.username    || '').toLowerCase().includes(q)
+    const roleMatch = !_usersActiveRole || r.role === _usersActiveRole;
+    const nameMatch = !q
+      || (r.full_name || '').toLowerCase().includes(q)
+      || (r.username || '').toLowerCase().includes(q)
       || (r.employee_id || '').toLowerCase().includes(q);
 
     // Subject filter: only applies when filtering by teacher subject
@@ -3047,17 +3058,17 @@ function applyUsersFilter(resetPage = true) {
 }
 
 function renderUsersPage() {
-  const tbody   = document.getElementById('usersTbody');
+  const tbody = document.getElementById('usersTbody');
   const noMatch = document.getElementById('usersNoMatch');
   const countEl = document.getElementById('usersResultCount');
   if (!tbody) return;
 
   const filtered = getFilteredUserRows();
-  const total    = filtered.length;
-  const pages    = Math.max(1, Math.ceil(total / USERS_PER_PAGE));
+  const total = filtered.length;
+  const pages = Math.max(1, Math.ceil(total / USERS_PER_PAGE));
   if (_usersCurrPage > pages) _usersCurrPage = pages;
 
-  const start   = (_usersCurrPage - 1) * USERS_PER_PAGE;
+  const start = (_usersCurrPage - 1) * USERS_PER_PAGE;
   const pageRows = filtered.slice(start, start + USERS_PER_PAGE);
 
   tbody.innerHTML = pageRows.length
@@ -3111,7 +3122,7 @@ function renderUsersPagination(totalPages) {
 
 function goUsersPage(p) {
   const filtered = getFilteredUserRows();
-  const total    = Math.max(1, Math.ceil(filtered.length / USERS_PER_PAGE));
+  const total = Math.max(1, Math.ceil(filtered.length / USERS_PER_PAGE));
   if (p < 1 || p > total) return;
   _usersCurrPage = p;
   renderUsersPage();
@@ -3139,14 +3150,14 @@ function toggleArchivedUsers(btn) {
 }
 
 /* ── Archived Faculty Modal ──────────────────────────────── */
-let _archFacultyRows  = [];  // all archived rows (master copy)
+let _archFacultyRows = [];  // all archived rows (master copy)
 let _archFacultySearch = ''; // live search state
 
 function openArchivedFacultyModal() {
   // Pull archived rows from the already-fetched dataset
   const tableEl = document.getElementById('usersTable');
   const allRows = tableEl ? JSON.parse(tableEl.dataset.rows || '[]') : [];
-  _archFacultyRows  = allRows.filter(r => !!r.is_archived);
+  _archFacultyRows = allRows.filter(r => !!r.is_archived);
   _archFacultySearch = '';
 
   const count = _archFacultyRows.length;
@@ -3188,9 +3199,9 @@ function renderArchFacultyList() {
   const q = (_archFacultySearch || '').toLowerCase().trim();
   const filtered = _archFacultyRows.filter(r => {
     if (!q) return true;
-    return (r.full_name    || '').toLowerCase().includes(q)
-        || (r.employee_id  || '').toLowerCase().includes(q)
-        || (r.username     || '').toLowerCase().includes(q);
+    return (r.full_name || '').toLowerCase().includes(q)
+      || (r.employee_id || '').toLowerCase().includes(q)
+      || (r.username || '').toLowerCase().includes(q);
   });
 
   if (!filtered.length) {
@@ -3203,7 +3214,7 @@ function renderArchFacultyList() {
   }
 
   container.innerHTML = filtered.map(r => {
-    const meta    = ROLE_META[r.role] || { icon: 'fa-user', color: 'role-teacher' };
+    const meta = ROLE_META[r.role] || { icon: 'fa-user', color: 'role-teacher' };
     const initial = (r.full_name || '?').charAt(0).toUpperCase();
     const subjHtml = (r.role === 'teacher' && r.assigned_subjects)
       ? r.assigned_subjects.split(',').map(s => `<span class="subj-chip arch-subj-chip">${escHTML(s.trim())}</span>`).join('')
@@ -3218,17 +3229,17 @@ function renderArchFacultyList() {
         <div class="arch-card-name">${escHTML(r.full_name || '—')}</div>
         <div class="arch-card-meta">
           <span class="role-badge ${meta.color}" style="font-size:10px;padding:2px 8px">
-            <i class="fa-solid ${meta.icon}"></i> ${r.role.charAt(0).toUpperCase()+r.role.slice(1)}
+            <i class="fa-solid ${meta.icon}"></i> ${r.role.charAt(0).toUpperCase() + r.role.slice(1)}
           </span>
           ${r.employee_id ? `<span class="arch-card-empid"><i class="fa-solid fa-id-badge"></i> ${escHTML(r.employee_id)}</span>` : ''}
-          ${r.username    ? `<span class="arch-card-username"><i class="fa-solid fa-at"></i> ${escHTML(r.username)}</span>`       : ''}
+          ${r.username ? `<span class="arch-card-username"><i class="fa-solid fa-at"></i> ${escHTML(r.username)}</span>` : ''}
         </div>
         ${subjHtml ? `<div class="subj-chips-wrap" style="margin-top:5px">${subjHtml}</div>` : ''}
         <div class="arch-card-date"><i class="fa-solid fa-clock"></i> Archived · joined ${r.created_at}</div>
       </div>
       <div class="arch-card-actions">
         <button class="btn btn-sm btn-success arch-restore-btn"
-          onclick="confirmRestoreAdmin(${r.id},'${escHTML(r.full_name||'')}','${escHTML(r.account_table||'')}')">
+          onclick="confirmRestoreAdmin(${r.id},'${escHTML(r.full_name || '')}','${escHTML(r.account_table || '')}')">
           <i class="fa-solid fa-rotate-left"></i> Unarchive
         </button>
       </div>
@@ -3267,19 +3278,19 @@ function _staleFilterUsersTable_REMOVED() {
 }
 
 function buildUserRow(r) {
-  const meta     = ROLE_META[r.role] || { icon: 'fa-user', color: 'role-teacher' };
+  const meta = ROLE_META[r.role] || { icon: 'fa-user', color: 'role-teacher' };
   const archived = !!r.is_archived;
   const subjHtml = (r.role === 'teacher' && r.assigned_subjects)
     ? r.assigned_subjects.split(',').map(s => `<span class="subj-chip">${escHTML(s.trim())}</span>`).join('')
     : '';
 
-  return `<tr class="users-row ${archived ? 'users-row-archived' : ''}" data-role="${r.role}" data-name="${escHTML((r.full_name||'').toLowerCase())}" data-archived="${archived?'1':'0'}">
+  return `<tr class="users-row ${archived ? 'users-row-archived' : ''}" data-role="${r.role}" data-name="${escHTML((r.full_name || '').toLowerCase())}" data-archived="${archived ? '1' : '0'}">
     <td>
       <div style="display:flex;align-items:center;gap:10px">
-        <div class="user-avatar-chip ${meta.color} ${archived?'archived-avatar':''}">${(r.full_name||'?').charAt(0).toUpperCase()}</div>
+        <div class="user-avatar-chip ${meta.color} ${archived ? 'archived-avatar' : ''}">${(r.full_name || '?').charAt(0).toUpperCase()}</div>
         <div>
           <div style="display:flex;align-items:center;gap:6px">
-            <span class="td-primary ${archived?'archived-name':''}">${escHTML(r.full_name || '')}</span>
+            <span class="td-primary ${archived ? 'archived-name' : ''}">${escHTML(r.full_name || '')}</span>
             ${archived ? '<span class="archived-badge"><i class="fa-solid fa-box-archive"></i> Archived</span>' : ''}
           </div>
           ${subjHtml ? `<div class="subj-chips-wrap">${subjHtml}</div>` : ''}
@@ -3291,22 +3302,22 @@ function buildUserRow(r) {
       ${r.employee_id ? `<div style="font-size:10px;margin-top:3px;color:var(--text-muted);letter-spacing:0.05em"><i class="fa-solid fa-id-badge" style="margin-right:3px;opacity:0.55"></i>${escHTML(r.employee_id)}</div>` : ''}
     </td>
     <td class="td-mono">${escHTML(r.school_email || r.email || '')}</td>
-    <td><span class="role-badge ${meta.color}"><i class="fa-solid ${meta.icon}"></i> ${r.role.charAt(0).toUpperCase()+r.role.slice(1)}</span></td>
+    <td><span class="role-badge ${meta.color}"><i class="fa-solid ${meta.icon}"></i> ${r.role.charAt(0).toUpperCase() + r.role.slice(1)}</span></td>
     <td class="td-mono" style="font-size:11px;color:var(--text-muted)">${escHTML(r.account_table || '')}</td>
     <td class="td-mono">${r.created_at}</td>
     <td>
       <div style="display:flex;gap:6px">
         ${!archived
-          ? `<button class="btn-icon" title="Edit" onclick="openEditAdmin(${r.id},'${escHTML(r.first_name||'')}','${escHTML(r.middle_name||'')}','${escHTML(r.last_name||'')}','${escHTML(r.personal_email||'')}','${r.role}','${escHTML(r.assigned_subjects||'')}','${escHTML(r.account_table||'')}')"><i class="fa-solid fa-pen"></i></button>
-             <button class="btn-icon btn-icon-danger" title="Archive account" onclick="confirmArchiveAdmin(${r.id},'${escHTML(r.full_name||'')}','${escHTML(r.account_table||'')}','${r.role}','${escHTML(r.assigned_subjects||'')}')"><i class="fa-solid fa-box-archive"></i></button>`
-          : `<button class="btn-icon btn-icon-success" title="Restore account" onclick="confirmRestoreAdmin(${r.id},'${escHTML(r.full_name||'')}','${escHTML(r.account_table||'')}')"><i class="fa-solid fa-rotate-left"></i></button>`
-        }
+      ? `<button class="btn-icon" title="Edit" onclick="openEditAdmin(${r.id},'${escHTML(r.first_name || '')}','${escHTML(r.middle_name || '')}','${escHTML(r.last_name || '')}','${escHTML(r.personal_email || '')}','${r.role}','${escHTML(r.assigned_subjects || '')}','${escHTML(r.account_table || '')}')"><i class="fa-solid fa-pen"></i></button>
+             <button class="btn-icon btn-icon-danger" title="Archive account" onclick="confirmArchiveAdmin(${r.id},'${escHTML(r.full_name || '')}','${escHTML(r.account_table || '')}','${r.role}','${escHTML(r.assigned_subjects || '')}')"><i class="fa-solid fa-box-archive"></i></button>`
+      : `<button class="btn-icon btn-icon-success" title="Restore account" onclick="confirmRestoreAdmin(${r.id},'${escHTML(r.full_name || '')}','${escHTML(r.account_table || '')}')"><i class="fa-solid fa-rotate-left"></i></button>`
+    }
       </div>
     </td>
   </tr>`;
 }
 
-const ALL_USER_ROLES = ['teacher','cashier','registrar','principal','coordinator','admin'];
+const ALL_USER_ROLES = ['teacher', 'cashier', 'registrar', 'principal', 'coordinator', 'admin'];
 
 function buildRoleOpts(selected = 'teacher', disabledRoles = []) {
   return ALL_USER_ROLES.map(r => {
@@ -3318,9 +3329,9 @@ function buildRoleOpts(selected = 'teacher', disabledRoles = []) {
 
 /** Auto-generate school email preview: firstname+lastname@sjc{role}.edu.ph */
 function updateEmailPreview() {
-  const fn   = (document.getElementById('aFirstName')?.value || '').trim().toLowerCase().replace(/\s+/g,'');
-  const ln   = (document.getElementById('aLastName')?.value  || '').trim().toLowerCase().replace(/\s+/g,'');
-  const role = (document.getElementById('aRole')?.value      || 'teacher').toLowerCase();
+  const fn = (document.getElementById('aFirstName')?.value || '').trim().toLowerCase().replace(/\s+/g, '');
+  const ln = (document.getElementById('aLastName')?.value || '').trim().toLowerCase().replace(/\s+/g, '');
+  const role = (document.getElementById('aRole')?.value || 'teacher').toLowerCase();
   const preview = document.getElementById('aSchoolEmailPreview');
   if (preview) preview.value = fn && ln ? `${fn}${ln}@sjc${role}.edu.ph` : '';
 }
@@ -3354,8 +3365,8 @@ async function loadSubjectOptions(selectedList = []) {
 
   wrap.innerHTML = unique.map(s => {
     const checked = selectedList.includes(s.baseName);
-    return `<label class="subj-checkbox-item ${checked?'checked':''}">
-      <input type="checkbox" value="${escHTML(s.baseName)}" ${checked?'checked':''} onchange="syncSubjectHidden()"/>
+    return `<label class="subj-checkbox-item ${checked ? 'checked' : ''}">
+      <input type="checkbox" value="${escHTML(s.baseName)}" ${checked ? 'checked' : ''} onchange="syncSubjectHidden()"/>
       <span class="subj-check-icon"><i class="fa-solid fa-check"></i></span>
       <span class="subj-label">${escHTML(s.baseName)}</span>
     </label>`;
@@ -3364,7 +3375,7 @@ async function loadSubjectOptions(selectedList = []) {
 }
 
 function syncSubjectHidden() {
-  const boxes  = document.querySelectorAll('#subjectMultiselect input[type=checkbox]');
+  const boxes = document.querySelectorAll('#subjectMultiselect input[type=checkbox]');
   const hidden = document.getElementById('aAssignedSubjects');
   if (!hidden) return;
   const vals = [...boxes].filter(b => b.checked).map(b => b.value);
@@ -3375,8 +3386,8 @@ function syncSubjectHidden() {
 
 function onRoleChange() {
   updateEmailPreview();
-  const role  = document.getElementById('aRole')?.value;
-  const grp   = document.getElementById('teacherSubjectGroup');
+  const role = document.getElementById('aRole')?.value;
+  const grp = document.getElementById('teacherSubjectGroup');
   if (!grp) return;
   if (role === 'teacher') {
     grp.style.display = '';
@@ -3419,16 +3430,16 @@ function openAddAdmin() {
 
 
 async function submitAddAdmin() {
-  const first_name        = document.getElementById('aFirstName').value.trim();
-  const middle_name       = document.getElementById('aMiddleName').value.trim();
-  const last_name         = document.getElementById('aLastName').value.trim();
-  const username          = document.getElementById('aUser').value.trim();
-  const role              = document.getElementById('aRole').value;
-  const personal_email    = document.getElementById('aPersonalEmail').value.trim();
+  const first_name = document.getElementById('aFirstName').value.trim();
+  const middle_name = document.getElementById('aMiddleName').value.trim();
+  const last_name = document.getElementById('aLastName').value.trim();
+  const username = document.getElementById('aUser').value.trim();
+  const role = document.getElementById('aRole').value;
+  const personal_email = document.getElementById('aPersonalEmail').value.trim();
   const assigned_subjects = role === 'teacher' ? (document.getElementById('aAssignedSubjects')?.value || '') : '';
   if (!first_name || !last_name) return toast('First name and last name are required.', 'warn');
-  if (!username)                 return toast('Username is required.', 'warn');
-  if (!personal_email)           return toast('Work / Personal email is required. Credentials will be sent there.', 'warn');
+  if (!username) return toast('Username is required.', 'warn');
+  if (!personal_email) return toast('Work / Personal email is required. Credentials will be sent there.', 'warn');
   const emailErr = validateAdminEmail(personal_email);
   if (emailErr) return toast(emailErr, 'warn');
   const res = await api('create_admin', { first_name, middle_name, last_name, username, role, personal_email, assigned_subjects });
@@ -3472,15 +3483,15 @@ function openEditAdmin(id, firstName, middleName, lastName, personalEmail, role,
 
 /* ── Step 1: validate fields then open re-auth modal ── */
 function submitEditAdmin(id) {
-  const first_name        = document.getElementById('aFirstName').value.trim();
-  const middle_name       = document.getElementById('aMiddleName').value.trim();
-  const last_name         = document.getElementById('aLastName').value.trim();
-  const role              = document.getElementById('aRole').value;
-  const personal_email    = document.getElementById('aPersonalEmail').value.trim();
+  const first_name = document.getElementById('aFirstName').value.trim();
+  const middle_name = document.getElementById('aMiddleName').value.trim();
+  const last_name = document.getElementById('aLastName').value.trim();
+  const role = document.getElementById('aRole').value;
+  const personal_email = document.getElementById('aPersonalEmail').value.trim();
   const assigned_subjects = role === 'teacher' ? (document.getElementById('aAssignedSubjects')?.value || '') : '';
-  const account_table     = document.getElementById('aAccountTable')?.value || '';
+  const account_table = document.getElementById('aAccountTable')?.value || '';
   if (!first_name) return toast('First name is required.', 'warn');
-  if (!last_name)  return toast('Last name is required.', 'warn');
+  if (!last_name) return toast('Last name is required.', 'warn');
   if (!personal_email) return toast('Work / Personal email is required.', 'warn');
   const emailErr = validateAdminEmail(personal_email);
   if (emailErr) return toast(emailErr, 'warn');
@@ -3552,15 +3563,15 @@ function openAdminReauthModal(fullName) {
     document.getElementById('faAdminPassword')?.focus();
 
     // Show/hide toggle
-    const toggleBtn  = document.getElementById('faPasswordToggle');
+    const toggleBtn = document.getElementById('faPasswordToggle');
     const toggleIcon = document.getElementById('faPasswordToggleIcon');
-    const pwInput    = document.getElementById('faAdminPassword');
+    const pwInput = document.getElementById('faAdminPassword');
     if (toggleBtn && pwInput) {
       toggleBtn.addEventListener('click', () => {
         const isHidden = pwInput.type === 'password';
         pwInput.type = isHidden ? 'text' : 'password';
-        toggleIcon.classList.toggle('fa-eye',       !isHidden);
-        toggleIcon.classList.toggle('fa-eye-slash',  isHidden);
+        toggleIcon.classList.toggle('fa-eye', !isHidden);
+        toggleIcon.classList.toggle('fa-eye-slash', isHidden);
         toggleBtn.style.color = isHidden ? 'var(--primary)' : 'var(--text-muted)';
         pwInput.focus();
       });
@@ -3572,7 +3583,7 @@ function openAdminReauthModal(fullName) {
       backBtn.addEventListener('click', () => {
         const p = window._adminEditPending;
         if (p) openEditAdmin(p.id, p.first_name, p.middle_name, p.last_name, p.personal_email, p.role, p.assigned_subjects, p.account_table);
-        else   closeModal();
+        else closeModal();
       });
     }
   }, 80);
@@ -3581,9 +3592,9 @@ function openAdminReauthModal(fullName) {
 /* ── Step 3: verify password then save ── */
 async function confirmAdminEditWithPassword() {
   const password = document.getElementById('faAdminPassword')?.value;
-  const errEl    = document.getElementById('faReauthError');
-  const errMsg   = document.getElementById('faReauthErrMsg');
-  const btn      = document.getElementById('faConfirmSaveBtn');
+  const errEl = document.getElementById('faReauthError');
+  const errMsg = document.getElementById('faReauthErrMsg');
+  const btn = document.getElementById('faConfirmSaveBtn');
 
   if (!password) {
     if (errEl) { errEl.style.display = 'flex'; }
@@ -3664,31 +3675,31 @@ async function doArchiveAdmin(id, table, archive) {
    STUDENT ACCOUNTS MODULE
 ════════════════════════════════════════════════════════════ */
 
-let _saGradeFilter  = 0;   // 0 = All grades
-let _saPage         = 1;
-let _saSearch       = '';
-const SA_PER_PAGE   = 10;
-let _saAllRows      = [];  // master copy (active only — archived stored separately)
+let _saGradeFilter = 0;   // 0 = All grades
+let _saPage = 1;
+let _saSearch = '';
+const SA_PER_PAGE = 10;
+let _saAllRows = [];  // master copy (active only — archived stored separately)
 
 const GRADE_FILTER_LABELS = {
-  0:  { label: 'All Grades', icon: 'fa-users' },
-  7:  { label: 'Grade 7',    icon: 'fa-7' },
-  8:  { label: 'Grade 8',    icon: 'fa-8' },
-  9:  { label: 'Grade 9',    icon: 'fa-9' },
-  10: { label: 'Grade 10',   icon: 'fa-1' },
+  0: { label: 'All Grades', icon: 'fa-users' },
+  7: { label: 'Grade 7', icon: 'fa-7' },
+  8: { label: 'Grade 8', icon: 'fa-8' },
+  9: { label: 'Grade 9', icon: 'fa-9' },
+  10: { label: 'Grade 10', icon: 'fa-1' },
 };
 
 const STATUS_META = {
-  enrolled:       { cls: 'badge-active badge-dot', label: 'Enrolled' },
-  verified:       { cls: 'badge-open',             label: 'Verified' },
-  docs_submitted: { cls: 'badge-closed',           label: 'Docs Submitted' },
-  pending:        { cls: 'badge-inactive',         label: 'Pending' },
-  registered:     { cls: 'badge-inactive',         label: 'Registered' },
+  enrolled: { cls: 'badge-active badge-dot', label: 'Enrolled' },
+  verified: { cls: 'badge-open', label: 'Verified' },
+  docs_submitted: { cls: 'badge-closed', label: 'Docs Submitted' },
+  pending: { cls: 'badge-inactive', label: 'Pending' },
+  registered: { cls: 'badge-inactive', label: 'Registered' },
 };
 
 async function renderStudentAccounts(ca) {
   // Fetch active only for main table
-  const res  = await api('get_student_accounts', { include_archived: '0' });
+  const res = await api('get_student_accounts', { include_archived: '0' });
   _saAllRows = res.success ? res.data : [];
 
   // Count per grade (active only)
@@ -3699,7 +3710,7 @@ async function renderStudentAccounts(ca) {
   });
 
   const gradeChips = [0, 7, 8, 9, 10].map(g => {
-    const meta  = GRADE_FILTER_LABELS[g];
+    const meta = GRADE_FILTER_LABELS[g];
     const isAll = g === 0;
     return `<button class="role-chip ${isAll ? 'role-chip-all active' : ''}" data-grade="${g}" onclick="setSAGradeFilter(${g},this)">
       <i class="fa-solid ${meta.icon}"></i>
@@ -3759,8 +3770,8 @@ async function renderStudentAccounts(ca) {
   </div>`;
 
   _saGradeFilter = 0;
-  _saSearch      = '';
-  _saPage        = 1;
+  _saSearch = '';
+  _saPage = 1;
   renderSAPage();
 }
 
@@ -3770,21 +3781,21 @@ function _getSAFiltered() {
   return _saAllRows.filter(r => {
     const gradeMatch = !_saGradeFilter || parseInt(r.grade_level) === _saGradeFilter;
     const queryMatch = !q
-      || ((r.last_name  || '') + ' ' + (r.first_name || '')).toLowerCase().includes(q)
+      || ((r.last_name || '') + ' ' + (r.first_name || '')).toLowerCase().includes(q)
       || (r.lrn || '').includes(q);
     return gradeMatch && queryMatch;
   });
 }
 
 function renderSAPage() {
-  const tbody   = document.getElementById('saTbody');
+  const tbody = document.getElementById('saTbody');
   const noMatch = document.getElementById('saNoMatch');
   const countEl = document.getElementById('saResultCount');
-  const pagEl   = document.getElementById('saPagination');
+  const pagEl = document.getElementById('saPagination');
   if (!tbody) return;
 
-  const filtered   = _getSAFiltered();
-  const total      = filtered.length;
+  const filtered = _getSAFiltered();
+  const total = filtered.length;
   const totalPages = Math.max(1, Math.ceil(total / SA_PER_PAGE));
   if (_saPage > totalPages) _saPage = totalPages;
 
@@ -3797,7 +3808,7 @@ function renderSAPage() {
 
   if (countEl) countEl.textContent = `${total} student${total !== 1 ? 's' : ''}`;
   if (noMatch) noMatch.style.display = total === 0 ? 'flex' : 'none';
-  if (pagEl)   renderSAPagination(totalPages, total);
+  if (pagEl) renderSAPagination(totalPages, total);
 }
 
 function renderSAPagination(totalPages, total) {
@@ -3824,7 +3835,7 @@ function renderSAPagination(totalPages, total) {
       : `<button class="${btnClass(p)}" onclick="goSAPage(${p})">${p}</button>`
   ).join('');
 
-  const from    = (_saPage - 1) * SA_PER_PAGE + 1;
+  const from = (_saPage - 1) * SA_PER_PAGE + 1;
   const showing = Math.min(total, _saPage * SA_PER_PAGE);
 
   container.innerHTML = `
@@ -3849,7 +3860,7 @@ function goSAPage(p) {
 
 function setSAGradeFilter(grade, chipEl) {
   _saGradeFilter = grade;
-  _saPage        = 1;
+  _saPage = 1;
   document.querySelectorAll('.role-chip').forEach(c => c.classList.remove('active'));
   chipEl.classList.add('active');
   renderSAPage();
@@ -3857,15 +3868,15 @@ function setSAGradeFilter(grade, chipEl) {
 
 function buildSARow(r) {
   const statusMeta = STATUS_META[r.registration_status] || { cls: 'badge-inactive', label: r.registration_status || 'Registered' };
-  const initials   = ((r.first_name || '?').charAt(0) + (r.last_name || '').charAt(0)).toUpperCase();
-  const fullName   = escHTML(((r.last_name || '') + ', ' + (r.first_name || '') + (r.middle_name ? ' ' + r.middle_name.charAt(0) + '.' : '')).trim());
-  const lrn        = escHTML(r.lrn || '—');
-  const grade      = escHTML(r.grade_display || '—');
-  const email      = escHTML(r.personal_email || '—');
+  const initials = ((r.first_name || '?').charAt(0) + (r.last_name || '').charAt(0)).toUpperCase();
+  const fullName = escHTML(((r.last_name || '') + ', ' + (r.first_name || '') + (r.middle_name ? ' ' + r.middle_name.charAt(0) + '.' : '')).trim());
+  const lrn = escHTML(r.lrn || '—');
+  const grade = escHTML(r.grade_display || '—');
+  const email = escHTML(r.personal_email || '—');
 
   return `<tr class="users-row"
               data-grade="${r.grade_level || 0}"
-              data-name="${escHTML(((r.last_name||'') + ' ' + (r.first_name||'')).toLowerCase())}"
+              data-name="${escHTML(((r.last_name || '') + ' ' + (r.first_name || '')).toLowerCase())}"
               data-lrn="${(r.lrn || '').toLowerCase()}">
     <td>
       <div style="display:flex;align-items:center;gap:10px">
@@ -3880,11 +3891,11 @@ function buildSARow(r) {
     <td>
       <div style="display:flex;gap:6px">
         <button class="btn-icon" title="Edit student account"
-          onclick="openEditStudent(${r.id},'${escHTML(r.personal_email||'')}','${escHTML(r.lrn||'')}','${escHTML((r.first_name||'')+' '+(r.last_name||''))}')">
+          onclick="openEditStudent(${r.id},'${escHTML(r.personal_email || '')}','${escHTML(r.lrn || '')}','${escHTML((r.first_name || '') + ' ' + (r.last_name || ''))}')">
           <i class="fa-solid fa-pen"></i>
         </button>
         <button class="btn-icon btn-icon-danger" title="Archive account"
-          onclick="confirmArchiveStudent(${r.id},'${escHTML((r.first_name||'')+' '+(r.last_name||''))}')">
+          onclick="confirmArchiveStudent(${r.id},'${escHTML((r.first_name || '') + ' ' + (r.last_name || ''))}')">
           <i class="fa-solid fa-box-archive"></i>
         </button>
       </div>
@@ -3924,7 +3935,7 @@ function openEditStudent(id, currentEmail, currentLrn, fullName) {
        </div>
      </div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-     <button class="btn btn-primary" id="saReviewBtn" onclick="openStudentReauthModal(${id},'${escHTML(fullName).replace(/'/g,"\\'")}')">
+     <button class="btn btn-primary" id="saReviewBtn" onclick="openStudentReauthModal(${id},'${escHTML(fullName).replace(/'/g, "\\'")}')">
        <i class="fa-solid fa-shield-halved"></i> Review &amp; Save
      </button>`
   );
@@ -3938,7 +3949,7 @@ function openEditStudent(id, currentEmail, currentLrn, fullName) {
 function openStudentReauthModal(id, fullName) {
   // Validate before opening re-auth
   const email = document.getElementById('saEmailInput')?.value.trim();
-  const lrn   = document.getElementById('saLrnInput')?.value.trim();
+  const lrn = document.getElementById('saLrnInput')?.value.trim();
 
   if (!email) return toast('Email is required.', 'warn');
   const emailErr = validateAdminEmail(email);
@@ -4008,15 +4019,15 @@ function openStudentReauthModal(id, fullName) {
     document.getElementById('saAdminPassword')?.focus();
 
     // Wire password show/hide toggle with icon swap
-    const toggleBtn  = document.getElementById('saPasswordToggle');
+    const toggleBtn = document.getElementById('saPasswordToggle');
     const toggleIcon = document.getElementById('saPasswordToggleIcon');
-    const pwInput    = document.getElementById('saAdminPassword');
+    const pwInput = document.getElementById('saAdminPassword');
     if (toggleBtn && pwInput) {
       toggleBtn.addEventListener('click', () => {
         const isHidden = pwInput.type === 'password';
         pwInput.type = isHidden ? 'text' : 'password';
-        toggleIcon.classList.toggle('fa-eye',       !isHidden);
-        toggleIcon.classList.toggle('fa-eye-slash',  isHidden);
+        toggleIcon.classList.toggle('fa-eye', !isHidden);
+        toggleIcon.classList.toggle('fa-eye-slash', isHidden);
         toggleBtn.style.color = isHidden ? 'var(--primary)' : 'var(--text-muted)';
         pwInput.focus();
       });
@@ -4028,7 +4039,7 @@ function openStudentReauthModal(id, fullName) {
       backBtn.addEventListener('click', () => {
         const p = window._saEditPending;
         if (p) openEditStudent(p.id, p.email, p.lrn, p.fullName);
-        else    closeModal();
+        else closeModal();
       });
     }
   }, 80);
@@ -4037,9 +4048,9 @@ function openStudentReauthModal(id, fullName) {
 /* ── Step 3: verify password server-side, then save ── */
 async function confirmStudentEditWithPassword() {
   const password = document.getElementById('saAdminPassword')?.value;
-  const errEl    = document.getElementById('saReauthError');
-  const errMsg   = document.getElementById('saReauthErrMsg');
-  const btn      = document.getElementById('saConfirmSaveBtn');
+  const errEl = document.getElementById('saReauthError');
+  const errMsg = document.getElementById('saReauthErrMsg');
+  const btn = document.getElementById('saConfirmSaveBtn');
 
   if (!password) {
     if (errEl) { errEl.style.display = 'flex'; }
@@ -4072,9 +4083,9 @@ function validateLrnInput(input) {
   if (!input) return;
   // Strip non-digits
   input.value = input.value.replace(/\D/g, '').slice(0, 12);
-  const len     = input.value.length;
+  const len = input.value.length;
   const counter = document.getElementById('saLrnCounter');
-  const errEl   = document.getElementById('saLrnError');
+  const errEl = document.getElementById('saLrnError');
   if (counter) {
     counter.textContent = `${len}/12`;
     counter.style.color = len === 12 ? 'var(--success,#22c55e)' : len > 0 ? 'var(--warn,#f59e0b)' : 'var(--text-muted)';
@@ -4115,8 +4126,8 @@ async function openArchivedStudentsModal() {
     true
   );
 
-  const res      = await api('get_student_accounts', { include_archived: '1' });
-  const allRows  = res.success ? res.data : [];
+  const res = await api('get_student_accounts', { include_archived: '1' });
+  const allRows = res.success ? res.data : [];
   const archived = allRows.filter(r => parseInt(r.is_archived) === 1);
 
   // Build the modal body with search + grade filter controls
@@ -4157,8 +4168,8 @@ async function openArchivedStudentsModal() {
     const q = (query || '').toLowerCase().trim();
 
     const filtered = archived.filter(r => {
-      const fullName = ((r.last_name||'') + ' ' + (r.first_name||'') + ' ' + (r.middle_name||'')).toLowerCase();
-      const lrn      = (r.lrn || '').toLowerCase();
+      const fullName = ((r.last_name || '') + ' ' + (r.first_name || '') + ' ' + (r.middle_name || '')).toLowerCase();
+      const lrn = (r.lrn || '').toLowerCase();
       const matchSearch = !q || fullName.includes(q) || lrn.includes(q);
 
       // grade_display is like "Grade 7" — extract the number for comparison
@@ -4181,9 +4192,9 @@ async function openArchivedStudentsModal() {
     }
 
     tbody.innerHTML = filtered.map(r => {
-      const fullName   = escHTML(((r.last_name||'') + ', ' + (r.first_name||'') + (r.middle_name ? ' ' + r.middle_name.charAt(0) + '.' : '')).trim());
-      const grade      = escHTML(r.grade_display || '—');
-      const lrn        = escHTML(r.lrn || '—');
+      const fullName = escHTML(((r.last_name || '') + ', ' + (r.first_name || '') + (r.middle_name ? ' ' + r.middle_name.charAt(0) + '.' : '')).trim());
+      const grade = escHTML(r.grade_display || '—');
+      const lrn = escHTML(r.lrn || '—');
       const statusMeta = STATUS_META[r.registration_status] || { cls: 'badge-inactive', label: r.registration_status || 'Registered' };
       return `<tr>
         <td class="td-primary">${fullName}</td>
@@ -4192,7 +4203,7 @@ async function openArchivedStudentsModal() {
         <td><span class="badge ${statusMeta.cls}">${statusMeta.label}</span></td>
         <td>
           <button class="btn-icon btn-icon-success" title="Restore account"
-            onclick="doRestoreStudentFromModal(${r.id},'${escHTML((r.first_name||'')+' '+(r.last_name||''))}')">
+            onclick="doRestoreStudentFromModal(${r.id},'${escHTML((r.first_name || '') + ' ' + (r.last_name || ''))}')">
             <i class="fa-solid fa-rotate-left"></i> Restore
           </button>
         </td>
@@ -4233,7 +4244,7 @@ async function doRestoreStudentFromModal(id, name) {
     // Refresh the modal content
     openArchivedStudentsModal();
     // Also refresh background list
-    const listRes  = await api('get_student_accounts', { include_archived: '0' });
+    const listRes = await api('get_student_accounts', { include_archived: '0' });
     _saAllRows = listRes.success ? listRes.data : _saAllRows;
     renderSAPage();
   } else toast(res.message, 'error');
@@ -4267,19 +4278,19 @@ async function doArchiveStudent(id, archive) {
 ════════════════════════════════════════════════════════════ */
 
 /* Module-level pagination + filter state for Audit Logs */
-let _auditAllRows   = [];
-let _auditPage      = 1;
-let _auditSearch    = '';
-let _auditAction    = '';
+let _auditAllRows = [];
+let _auditPage = 1;
+let _auditSearch = '';
+let _auditAction = '';
 const AUDIT_PER_PAGE = 20;
 
 async function renderAudit(ca) {
   // Fetch a generous cap from server; client-side pagination handles display
-  const res  = await api('get_audit_logs', { limit: 2000 });
+  const res = await api('get_audit_logs', { limit: 2000 });
   _auditAllRows = res.success ? res.data : [];
-  _auditPage    = 1;
-  _auditSearch  = '';
-  _auditAction  = '';
+  _auditPage = 1;
+  _auditSearch = '';
+  _auditAction = '';
 
   ca.innerHTML = `
   <div class="page-header">
@@ -4308,6 +4319,8 @@ async function renderAudit(ca) {
           <option value="activate">Activate</option>
           <option value="deactivate">Deactivate</option>
           <option value="finalize">Finalize</option>
+          <option value="added">Add Funds (Wallet)</option>
+          <option value="deducted">Deduction (Wallet)</option>
         </select>
         <span class="users-result-count" id="auditResultCount">—</span>
         <button class="audit-export-btn" id="auditExportBtn" onclick="exportAuditXLSX()" title="Export filtered results as .xlsx">
@@ -4342,13 +4355,13 @@ function _getAuditFiltered() {
 }
 
 function renderAuditPage() {
-  const tbody   = document.getElementById('auditTbody');
+  const tbody = document.getElementById('auditTbody');
   const countEl = document.getElementById('auditResultCount');
-  const pagEl   = document.getElementById('auditPagination');
+  const pagEl = document.getElementById('auditPagination');
   if (!tbody) return;
 
-  const filtered   = _getAuditFiltered();
-  const total      = filtered.length;
+  const filtered = _getAuditFiltered();
+  const total = filtered.length;
   const totalPages = Math.max(1, Math.ceil(total / AUDIT_PER_PAGE));
   if (_auditPage > totalPages) _auditPage = totalPages;
 
@@ -4360,7 +4373,7 @@ function renderAuditPage() {
       <tr class="audit-row-clickable" data-idx="${start + i}" onclick="openAuditDetail(${start + i})" title="Click to view full details">
         <td class="td-mono" style="white-space:nowrap">${r.created_at}</td>
         <td class="td-primary">${escHTML(r.admin_name || 'System')}</td>
-        <td><span class="audit-action-badge audit-${r.action}">${r.action}</span></td>
+        <td><span class="audit-action-badge audit-${r.action}">${auditActionLabel(r.action)}</span></td>
         <td class="td-mono">${r.table_name}</td>
         <td class="td-mono">#${r.record_id}</td>
         <td class="td-mono">${formatIPDisplay(r.ip_address)}</td>
@@ -4369,7 +4382,7 @@ function renderAuditPage() {
     : `<tr><td colspan="7"><div class="empty-state"><i class="fa-solid fa-scroll"></i><p>No audit logs match your search.</p></div></td></tr>`;
 
   if (countEl) countEl.textContent = `${total} log${total !== 1 ? 's' : ''}`;
-  if (pagEl)   renderAuditPagination(totalPages, total);
+  if (pagEl) renderAuditPagination(totalPages, total);
 }
 
 /* ── Audit Detail Modal ─────────────────────────────────────── */
@@ -4384,14 +4397,14 @@ function openAuditDetail(idx) {
 
   /* ── Extract student identity (only for student edits) ── */
   let studentName = '';
-  let studentLrn  = '';
+  let studentLrn = '';
   const isStudentEdit = (r.table_name === 'students');
 
   /* ── Format old/new values ── */
   let oldHTML = '';
   let newHTML = '';
-  let oldObj  = null;
-  let newObj  = null;
+  let oldObj = null;
+  let newObj = null;
 
   try {
     oldObj = r.old_values ? (typeof r.old_values === 'string' ? JSON.parse(r.old_values) : r.old_values) : null;
@@ -4400,7 +4413,7 @@ function openAuditDetail(idx) {
     // Pull student identity meta fields before building diff tables
     if (isStudentEdit && oldObj) {
       studentName = oldObj['_student_name'] || '';
-      studentLrn  = oldObj['_student_lrn']  || '';
+      studentLrn = oldObj['_student_lrn'] || '';
     }
 
     // Strip _-prefixed meta keys so they don't appear in the diff table
@@ -4433,7 +4446,7 @@ function openAuditDetail(idx) {
 
     <!-- Identity strip -->
     <div class="ald-strip">
-      <span class="ald-action-tag ald-tag-${r.action}">${r.action.toUpperCase()}</span>
+      <span class="ald-action-tag ald-tag-${r.action}">${auditActionLabel(r.action).toUpperCase()}</span>
       <span class="ald-table-name">${escHTML(r.table_name)}</span>
       <span class="ald-record-id">#${r.record_id}</span>
       ${studentChip}
@@ -4465,10 +4478,10 @@ function openAuditDetail(idx) {
     <div class="ald-action-row">
       <div>
         <div class="ald-meta-label">Action Performed</div>
-        <div class="ald-meta-value">${escHTML(r.action.charAt(0).toUpperCase() + r.action.slice(1))} on <strong>${escHTML(r.table_name)}</strong></div>
+        <div class="ald-meta-value">${escHTML(auditActionLabel(r.action))} on <strong>${escHTML(r.table_name)}</strong></div>
         <div class="ald-meta-sub">Record ID #${r.record_id}</div>
       </div>
-      <span class="ald-action-tag ald-tag-${r.action}">${r.action.toUpperCase()}</span>
+      <span class="ald-action-tag ald-tag-${r.action}">${auditActionLabel(r.action).toUpperCase()}</span>
     </div>
 
     <!-- Before / After diff -->
@@ -4513,8 +4526,8 @@ function buildJsonDiffTable(obj, otherObj, side) {
   if (!obj || typeof obj !== 'object') return `<code class="ald-raw-json">${escHTML(String(obj))}</code>`;
   const rows = Object.entries(obj).map(([k, v]) => {
     const otherVal = otherObj ? otherObj[k] : undefined;
-    const changed  = otherObj !== null && otherObj !== undefined && JSON.stringify(v) !== JSON.stringify(otherVal);
-    const valStr   = v === null ? '<em style="color:var(--text-muted)">null</em>' : escHTML(String(v));
+    const changed = otherObj !== null && otherObj !== undefined && JSON.stringify(v) !== JSON.stringify(otherVal);
+    const valStr = v === null ? '<em style="color:var(--text-muted)">null</em>' : escHTML(String(v));
     return `<tr class="${changed ? 'ald-diff-row-changed' : ''}">
       <td class="ald-diff-key">${escHTML(k)}</td>
       <td class="ald-diff-val">${valStr}</td>
@@ -4574,11 +4587,11 @@ function parseUserAgent(ua) {
     deviceType = 'Tablet';
     deviceModel = 'iPad';
   } else if (/Android/.test(ua)) {
-    const andM  = ua.match(/Android ([0-9.]+)/);
+    const andM = ua.match(/Android ([0-9.]+)/);
     const andVer = andM ? andM[1] : '';
     // Try to extract device model from end of UA (e.g. "Pixel 6", "SM-G991B")
     const modelM = ua.match(/;\s*([^;)]+)\s*Build\//);
-    const model  = modelM ? modelM[1].trim() : '';
+    const model = modelM ? modelM[1].trim() : '';
     os = 'Android' + (andVer ? ' ' + andVer : '');
     if (model) os += ' — ' + model;
     if (/Mobile/.test(ua)) {
@@ -4688,7 +4701,7 @@ function renderAuditPagination(totalPages, total) {
       : `<button class="${btnClass(p)}" onclick="goAuditPage(${p})">${p}</button>`
   ).join('');
 
-  const from    = (_auditPage - 1) * AUDIT_PER_PAGE + 1;
+  const from = (_auditPage - 1) * AUDIT_PER_PAGE + 1;
   const showing = Math.min(total, _auditPage * AUDIT_PER_PAGE);
 
   container.innerHTML = `
@@ -4714,15 +4727,15 @@ function goAuditPage(p) {
 /* Legacy DOM-filter (no longer used but kept for safety) */
 function filterAuditTable(q) {
   _auditSearch = q;
-  _auditPage   = 1;
+  _auditPage = 1;
   renderAuditPage();
 }
 
 /* ─── UTILS ──────────────────────────────────────────────── */
 function escHTML(str) {
   return String(str)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -4763,47 +4776,47 @@ function sanitizeEmailText(input) {
 
 /** Blocked temporary / disposable email domains. */
 const TEMP_MAIL_DOMAINS = [
-  'mailinator.com','guerrillamail.com','guerrillamailblock.com','guerrillamail.info',
-  'guerrillamail.biz','guerrillamail.de','guerrillamail.net','guerrillamail.org',
-  'tempmail.com','temp-mail.org','throwam.com','throwam.net','dispostable.com',
-  'yopmail.com','yopmail.fr','cool.fr.nf','jetable.fr.nf','nospam.ze.tc',
-  'nomail.xl.cx','mega.zik.dj','speed.1s.fr','courriel.fr.nf','moncourrier.fr.nf',
-  'monemail.fr.nf','monmail.fr.nf','trashmail.at','trashmail.com','trashmail.io',
-  'trashmail.me','trashmail.net','trashmail.org','trashmail.xyz','sharklasers.com',
-  'guerrillamail.info','grr.la','guerrillamailblock.com','spam4.me','spamgourmet.com',
-  'spamgourmet.net','spamgourmet.org','spamgourmet.com','spamgourmet.net','mailnull.com',
-  'maildrop.cc','inboxkitten.com','fakeinbox.com','mailnesia.com','mailnull.com',
-  '10minutemail.com','10minutemail.net','10minutemail.org','10minutemail.co.uk',
-  '20minutemail.com','minutemailbox.com','getairmail.com','filzmail.com',
-  'owlpic.com','spamhereplease.com','kasmail.com','spamspot.com',
-  'discard.email','discardmail.com','discardmail.de','throwam.com',
-  'crap.handcrafted.jp','imgof.com','spamevader.net','sharklasers.com',
-  'tempinbox.com','tempr.email','tempsky.com','tempomail.fr','temporarily.de',
-  'throam.com','throwam.com','throwam.net','jnxjn.com','trbvm.com',
-  'spamgourmet.com','spam.la','bccto.me','chacuo.net','discard.email',
-  'fakemailgenerator.com','maildrop.cc','mailnull.com','spamgourmet.com',
-  'mt2014.com','mt2015.com','qq.com.ru','sharklasers.com','sogetthis.com',
-  'spamgourmet.com','spamhereplease.com','spamspot.com','trashtom.com',
-  'wegwerfemail.de','wegwerfmail.de','wegwerfmail.net','wegwerfmail.org',
-  'wegwerfadresse.de','yahoo.com.ph.com','zetmail.com','zoemail.org',
-  'dispostable.com','tempm.com','tmails.net','trashdevil.com','trashdevil.de',
-  'trashmail.at','trashmail.com','trashmail.io','trashmail.me','trashmail.net',
-  'trashmail.org','trashmail.xyz','mailtemp.net','mohmal.com','tempail.com',
-  'spamfree24.org','spamfree24.de','spamfree24.info','spamfree24.biz',
-  'spamfree24.net','spamfree24.com','spamfree.eu','spamfree24.eu',
-  'mailexpire.com','mail.mezimages.net','meltmail.com','ero-tube.org',
-  'hot-mail.ru','hot-mail.tk','ieatspam.eu','ieatspam.info','instant-mail.de',
-  'jetable.com','jetable.fr.nf','jetable.net','jetable.org','courriel.fr.nf',
-  'jetable.pp.ua','kasmail.com','klassmaster.com','klzlk.com','kurzepost.de',
-  'lol.ovpn.to','lookugly.com','lopl.co.cc','lortemail.dk','lr78.com',
-  'lukop.dk','meinspamschutz.de','mailscrap.com','mailslite.com',
-  'mailtemporaire.com','mailtemporaire.fr','mega.zik.dj','mfsa.ru',
-  'mhzayt.online','mintemail.com','misterpinball.de','moncourrier.fr.nf',
-  'monemail.fr.nf','monmail.fr.nf','mozcom.com','muelmail.com',
-  'mymail-in.net','mymailoasis.com','mynetstore.de','mytempmail.com',
-  'nwldx.com','nobulk.com','noclickemail.com','nus.edu.sg.9q.ro',
-  'nwldx.com','oneoffmail.com','onewaymail.com','online.ms',
-  'ooemail.com','ordinaryamerican.net','owlpic.com',
+  'mailinator.com', 'guerrillamail.com', 'guerrillamailblock.com', 'guerrillamail.info',
+  'guerrillamail.biz', 'guerrillamail.de', 'guerrillamail.net', 'guerrillamail.org',
+  'tempmail.com', 'temp-mail.org', 'throwam.com', 'throwam.net', 'dispostable.com',
+  'yopmail.com', 'yopmail.fr', 'cool.fr.nf', 'jetable.fr.nf', 'nospam.ze.tc',
+  'nomail.xl.cx', 'mega.zik.dj', 'speed.1s.fr', 'courriel.fr.nf', 'moncourrier.fr.nf',
+  'monemail.fr.nf', 'monmail.fr.nf', 'trashmail.at', 'trashmail.com', 'trashmail.io',
+  'trashmail.me', 'trashmail.net', 'trashmail.org', 'trashmail.xyz', 'sharklasers.com',
+  'guerrillamail.info', 'grr.la', 'guerrillamailblock.com', 'spam4.me', 'spamgourmet.com',
+  'spamgourmet.net', 'spamgourmet.org', 'spamgourmet.com', 'spamgourmet.net', 'mailnull.com',
+  'maildrop.cc', 'inboxkitten.com', 'fakeinbox.com', 'mailnesia.com', 'mailnull.com',
+  '10minutemail.com', '10minutemail.net', '10minutemail.org', '10minutemail.co.uk',
+  '20minutemail.com', 'minutemailbox.com', 'getairmail.com', 'filzmail.com',
+  'owlpic.com', 'spamhereplease.com', 'kasmail.com', 'spamspot.com',
+  'discard.email', 'discardmail.com', 'discardmail.de', 'throwam.com',
+  'crap.handcrafted.jp', 'imgof.com', 'spamevader.net', 'sharklasers.com',
+  'tempinbox.com', 'tempr.email', 'tempsky.com', 'tempomail.fr', 'temporarily.de',
+  'throam.com', 'throwam.com', 'throwam.net', 'jnxjn.com', 'trbvm.com',
+  'spamgourmet.com', 'spam.la', 'bccto.me', 'chacuo.net', 'discard.email',
+  'fakemailgenerator.com', 'maildrop.cc', 'mailnull.com', 'spamgourmet.com',
+  'mt2014.com', 'mt2015.com', 'qq.com.ru', 'sharklasers.com', 'sogetthis.com',
+  'spamgourmet.com', 'spamhereplease.com', 'spamspot.com', 'trashtom.com',
+  'wegwerfemail.de', 'wegwerfmail.de', 'wegwerfmail.net', 'wegwerfmail.org',
+  'wegwerfadresse.de', 'yahoo.com.ph.com', 'zetmail.com', 'zoemail.org',
+  'dispostable.com', 'tempm.com', 'tmails.net', 'trashdevil.com', 'trashdevil.de',
+  'trashmail.at', 'trashmail.com', 'trashmail.io', 'trashmail.me', 'trashmail.net',
+  'trashmail.org', 'trashmail.xyz', 'mailtemp.net', 'mohmal.com', 'tempail.com',
+  'spamfree24.org', 'spamfree24.de', 'spamfree24.info', 'spamfree24.biz',
+  'spamfree24.net', 'spamfree24.com', 'spamfree.eu', 'spamfree24.eu',
+  'mailexpire.com', 'mail.mezimages.net', 'meltmail.com', 'ero-tube.org',
+  'hot-mail.ru', 'hot-mail.tk', 'ieatspam.eu', 'ieatspam.info', 'instant-mail.de',
+  'jetable.com', 'jetable.fr.nf', 'jetable.net', 'jetable.org', 'courriel.fr.nf',
+  'jetable.pp.ua', 'kasmail.com', 'klassmaster.com', 'klzlk.com', 'kurzepost.de',
+  'lol.ovpn.to', 'lookugly.com', 'lopl.co.cc', 'lortemail.dk', 'lr78.com',
+  'lukop.dk', 'meinspamschutz.de', 'mailscrap.com', 'mailslite.com',
+  'mailtemporaire.com', 'mailtemporaire.fr', 'mega.zik.dj', 'mfsa.ru',
+  'mhzayt.online', 'mintemail.com', 'misterpinball.de', 'moncourrier.fr.nf',
+  'monemail.fr.nf', 'monmail.fr.nf', 'mozcom.com', 'muelmail.com',
+  'mymail-in.net', 'mymailoasis.com', 'mynetstore.de', 'mytempmail.com',
+  'nwldx.com', 'nobulk.com', 'noclickemail.com', 'nus.edu.sg.9q.ro',
+  'nwldx.com', 'oneoffmail.com', 'onewaymail.com', 'online.ms',
+  'ooemail.com', 'ordinaryamerican.net', 'owlpic.com',
 ];
 
 /**
@@ -4854,7 +4867,7 @@ async function _updateRoomBadge() {
       const active = (res.data || []).filter(r => r.status !== 'archived').length;
       badge.textContent = active || '0';
     }
-  } catch (_) {}
+  } catch (_) { }
 }
 
 /* ═══ MAIN RENDER ════════════════════════════════════════════ */
@@ -4888,11 +4901,11 @@ async function renderRooms(ca) {
         const roomNum = (s.room || '').trim();
         if (roomNum) {
           sectionMap[roomNum] = {
-            sectionId:     s.id,
-            sectionName:   s.name,
-            gradeName:     g.display_name,
+            sectionId: s.id,
+            sectionName: s.name,
+            gradeName: g.display_name,
             enrolledCount: parseInt(s.enrolled_count) || 0,
-            capacity:      parseInt(s.capacity)       || 0,
+            capacity: parseInt(s.capacity) || 0,
           };
         }
       });
@@ -4906,7 +4919,7 @@ async function renderRooms(ca) {
     badge.textContent = active || '0';
   }
 
-  const activeRooms   = allRooms.filter(r => r.status !== 'archived');
+  const activeRooms = allRooms.filter(r => r.status !== 'archived');
   const archivedRooms = allRooms.filter(r => r.status === 'archived');
 
   // Match by room number string (sections.room stores the number as text)
@@ -4953,7 +4966,7 @@ async function renderRooms(ca) {
   // Wire cabinet toggles (archived rooms panel)
   document.querySelectorAll('.cabinet-header').forEach(h => {
     h.addEventListener('click', () => {
-      const body    = h.nextElementSibling;
+      const body = h.nextElementSibling;
       const chevron = h.querySelector('.cabinet-chevron');
       if (!body) return;
       const open = body.style.display !== 'none';
@@ -4988,7 +5001,7 @@ function buildRoomCard(room, assignment) {
         <span class="room-assign-grade">${escHTML(assignment.gradeName)}</span>
       </div>
       <div class="room-capacity-bar" style="margin-top:8px">
-        <div class="room-cap-fill ${barCls}" style="width:${Math.min(pct,100)}%"></div>
+        <div class="room-cap-fill ${barCls}" style="width:${Math.min(pct, 100)}%"></div>
       </div>
       <div class="room-cap-legend">
         <span>${assignment.enrolledCount} enrolled</span>
@@ -5029,7 +5042,7 @@ function buildRoomCard(room, assignment) {
 
     <!-- Room fill progress (against section capacity) -->
     <div class="room-fill-track" title="${pct}% of section capacity used">
-      <div class="room-fill-bar ${roomBarCls}" style="width:${Math.min(pct,100)}%"></div>
+      <div class="room-fill-bar ${roomBarCls}" style="width:${Math.min(pct, 100)}%"></div>
     </div>
     <div class="room-fill-legend">
       <span>${isOccupied ? assignment.enrolledCount + ' students' : '0 students'}</span>
@@ -5142,7 +5155,7 @@ function openAddRoom() {
 }
 
 function updateRoomCapPreview() {
-  const num  = (document.getElementById('roomNumber')?.value || '').trim();
+  const num = (document.getElementById('roomNumber')?.value || '').trim();
   const card = document.getElementById('roomPreviewCard');
   const numEl = document.getElementById('previewRoomNum');
   if (!card) return;
@@ -5297,7 +5310,7 @@ function exportAuditXLSX() {
         r.id,
         r.created_at,
         r.admin_name || 'System',
-        r.action,
+        auditActionLabel(r.action),
         r.table_name,
         r.record_id,
         formatIPDisplay(r.ip_address),
@@ -5312,9 +5325,9 @@ function exportAuditXLSX() {
     ws['!cols'] = [6, 20, 20, 10, 16, 10, 16, 16, 20, 18].map(w => ({ wch: w }));
     window.XLSX.utils.book_append_sheet(wb, ws, 'Audit Logs');
 
-    const search = _auditSearch ? `_q=${_auditSearch.replace(/\s+/g,'_')}` : '';
+    const search = _auditSearch ? `_q=${_auditSearch.replace(/\s+/g, '_')}` : '';
     const action = _auditAction ? `_${_auditAction}` : '';
-    const ts     = new Date().toISOString().slice(0,10);
+    const ts = new Date().toISOString().slice(0, 10);
     window.XLSX.writeFile(wb, `audit_logs${action}${search}_${ts}.xlsx`);
     toast(`Exported ${rows.length} log${rows.length !== 1 ? 's' : ''} to .xlsx`, 'success');
   });
@@ -5333,17 +5346,17 @@ function exportSingleAuditXLSX(logId) {
     const ws1 = window.XLSX.utils.aoa_to_sheet([
       ['Audit Log Detail'],
       [],
-      ['Log ID',        `#${r.id}`],
-      ['Date & Time',   r.created_at],
+      ['Log ID', `#${r.id}`],
+      ['Date & Time', r.created_at],
       ['Administrator', r.admin_name || 'System'],
-      ['Action',        r.action],
-      ['Table',         r.table_name],
-      ['Record ID',     `#${r.record_id}`],
-      ['IP Address',    formatIPDisplay(r.ip_address)],
-      ['IP Note',       getIPNote(r.ip_address)],
-      ['Device',        dev.deviceModel || dev.deviceType || 'Desktop'],
-      ['OS',            dev.os || '—'],
-      ['Browser',       dev.browser || '—'],
+      ['Action', auditActionLabel(r.action)],
+      ['Table', r.table_name],
+      ['Record ID', `#${r.record_id}`],
+      ['IP Address', formatIPDisplay(r.ip_address)],
+      ['IP Note', getIPNote(r.ip_address)],
+      ['Device', dev.deviceModel || dev.deviceType || 'Desktop'],
+      ['OS', dev.os || '—'],
+      ['Browser', dev.browser || '—'],
     ]);
     ws1['!cols'] = [{ wch: 18 }, { wch: 44 }];
     window.XLSX.utils.book_append_sheet(wb, ws1, 'Summary');
@@ -5354,12 +5367,12 @@ function exportSingleAuditXLSX(logId) {
       const newObj = r.new_values ? (typeof r.new_values === 'string' ? JSON.parse(r.new_values) : r.new_values) : null;
       if (oldObj || newObj) {
         const allKeys = [...new Set([...Object.keys(oldObj || {}), ...Object.keys(newObj || {})])];
-        const rows2   = [['Field', 'Before', 'After'], ...allKeys.map(k => [k, oldObj?.[k] ?? '', newObj?.[k] ?? ''])];
-        const ws2     = window.XLSX.utils.aoa_to_sheet(rows2);
-        ws2['!cols']  = [{ wch: 22 }, { wch: 36 }, { wch: 36 }];
+        const rows2 = [['Field', 'Before', 'After'], ...allKeys.map(k => [k, oldObj?.[k] ?? '', newObj?.[k] ?? ''])];
+        const ws2 = window.XLSX.utils.aoa_to_sheet(rows2);
+        ws2['!cols'] = [{ wch: 22 }, { wch: 36 }, { wch: 36 }];
         window.XLSX.utils.book_append_sheet(wb, ws2, 'Changes');
       }
-    } catch (_) {}
+    } catch (_) { }
 
     window.XLSX.writeFile(wb, `audit_log_${r.id}.xlsx`);
     toast(`Exported audit_log_${r.id}.xlsx`, 'success');
@@ -5369,12 +5382,15 @@ function exportSingleAuditXLSX(logId) {
 /* ════════════════════════════════════════════════════════════
    CAFETERIA · STUDENT WALLET
 ════════════════════════════════════════════════════════════ */
-let _cwSearch        = '';
-let _cwGradeFilter    = 0;   // 0 = All Grades
-let _cwSectionFilter  = 0;   // 0 = All Sections
-let _cwRows           = [];
-let _cwSectionsData   = null; // cached result of get_sections_by_grade
-let _cwMaxTopup       = 0;    // cached max top-up per transaction (0 = no limit)
+let _cwSearch = '';
+let _cwGradeFilter = 0;   // 0 = All Grades
+let _cwSectionFilter = 0;   // 0 = All Sections
+let _cwRows = [];
+let _cwSectionsData = null; // cached result of get_sections_by_grade
+let _cwMaxTopup = 0;    // cached max top-up per transaction (0 = no limit)
+let _cwSelected = new Set(); // selected student_ids for bulk "Add Funds"
+let _cwPage = 1;
+const CW_PER_PAGE = 10;
 
 async function renderCafeteriaWallet(ca) {
   ca.innerHTML = `<div class="flex-center" style="height:200px"><div class="spinner"></div></div>`;
@@ -5394,6 +5410,11 @@ async function renderCafeteriaWallet(ca) {
 
   const totalBalance = _cwRows.reduce((sum, r) => sum + parseFloat(r.balance || 0), 0);
   const activeFilterCount = (_cwGradeFilter ? 1 : 0) + (_cwSectionFilter ? 1 : 0);
+
+  const totalPages = Math.max(1, Math.ceil(_cwRows.length / CW_PER_PAGE));
+  if (_cwPage > totalPages) _cwPage = totalPages;
+  if (_cwPage < 1) _cwPage = 1;
+  const pageRows = _cwRows.slice((_cwPage - 1) * CW_PER_PAGE, _cwPage * CW_PER_PAGE);
 
   ca.innerHTML = `
   <div class="page-header">
@@ -5424,7 +5445,7 @@ async function renderCafeteriaWallet(ca) {
         <div class="search-wrap">
           <i class="fa-solid fa-search"></i>
           <input type="text" id="cwSearch" placeholder="Search by student name…" value="${escHTML(_cwSearch)}"
-            oninput="_cwSearch=this.value" onkeydown="if(event.key==='Enter')renderCafeteriaWallet(document.getElementById('contentArea'))"/>
+            oninput="_cwSearch=this.value" onkeydown="if(event.key==='Enter'){_cwPage=1;renderCafeteriaWallet(document.getElementById('contentArea'))}"/>
         </div>
         <button class="btn btn-ghost btn-xs" onclick="openWalletFilters()" title="Advanced filters">
           <i class="fa-solid fa-sliders"></i> Filters ${activeFilterCount ? `<span class="nav-badge">${activeFilterCount}</span>` : ''}
@@ -5432,10 +5453,19 @@ async function renderCafeteriaWallet(ca) {
       </div>
     </div>
 
+    <div class="sm-bulk-bar" id="cwBulkBar" style="display:${_cwSelected.size ? 'flex' : 'none'};align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--surface-alt)">
+      <span class="sm-selected-count" id="cwSelectedCount">${_cwSelected.size} selected</span>
+      <button class="btn btn-success btn-xs" onclick="openBulkWalletCredit()">
+        <i class="fa-solid fa-plus"></i> Add Funds to Selected
+      </button>
+      <button class="btn btn-ghost btn-xs" onclick="clearWalletSelection()">Clear</button>
+    </div>
+
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
+            <th style="width:36px"><input type="checkbox" id="cwSelectAll" onchange="toggleAllWalletSelection(this.checked)"/></th>
             <th>Student</th>
             <th>Section</th>
             <th>Grade Level</th>
@@ -5444,10 +5474,11 @@ async function renderCafeteriaWallet(ca) {
           </tr>
         </thead>
         <tbody>
-          ${_cwRows.length === 0
-            ? `<tr><td colspan="5"><div class="empty-state"><i class="fa-solid fa-wallet"></i><p>No students found</p></div></td></tr>`
-            : _cwRows.map(r => `
+          ${pageRows.length === 0
+      ? `<tr><td colspan="6"><div class="empty-state"><i class="fa-solid fa-wallet"></i><p>No students found</p></div></td></tr>`
+      : pageRows.map(r => `
             <tr>
+              <td><input type="checkbox" class="cw-row-check" value="${r.student_id}" ${_cwSelected.has(r.student_id) ? 'checked' : ''} onchange="toggleWalletSelection(${r.student_id},this.checked)"/></td>
               <td class="td-primary">${escHTML(r.full_name)}</td>
               <td>${r.section_name ? escHTML(r.section_name) : '<span class="text-muted">Unassigned</span>'}</td>
               <td>${escHTML(r.grade_display || '—')}</td>
@@ -5469,7 +5500,88 @@ async function renderCafeteriaWallet(ca) {
         </tbody>
       </table>
     </div>
+    <div id="cwPagination"></div>
   </div>`;
+
+  const selectAllEl = document.getElementById('cwSelectAll');
+  if (selectAllEl) selectAllEl.checked = pageRows.length > 0 && pageRows.every(r => _cwSelected.has(r.student_id));
+
+  renderWalletPagination(totalPages, _cwRows.length);
+}
+
+function renderWalletPagination(totalPages, total) {
+  const container = document.getElementById('cwPagination');
+  if (!container) return;
+  if (totalPages <= 1) { container.innerHTML = ''; return; }
+
+  const curr = _cwPage;
+  let pages = [];
+  if (totalPages <= 7) {
+    for (let i = 1; i <= totalPages; i++) pages.push(i);
+  } else {
+    pages = [1];
+    if (curr > 3) pages.push('…');
+    for (let i = Math.max(2, curr - 1); i <= Math.min(totalPages - 1, curr + 1); i++) pages.push(i);
+    if (curr < totalPages - 2) pages.push('…');
+    pages.push(totalPages);
+  }
+
+  const btnClass = p => p === curr ? 'page-btn page-btn-active' : 'page-btn';
+  const btns = pages.map(p =>
+    p === '…'
+      ? `<span class="page-ellipsis">…</span>`
+      : `<button class="${btnClass(p)}" onclick="goWalletPage(${p})">${p}</button>`
+  ).join('');
+
+  const from = (_cwPage - 1) * CW_PER_PAGE + 1;
+  const showing = Math.min(total, _cwPage * CW_PER_PAGE);
+
+  container.innerHTML = `
+    <div class="pagination-wrap">
+      <button class="page-btn page-btn-nav" onclick="goWalletPage(${curr - 1})" ${curr === 1 ? 'disabled' : ''}>
+        <i class="fa-solid fa-chevron-left"></i>
+      </button>
+      ${btns}
+      <button class="page-btn page-btn-nav" onclick="goWalletPage(${curr + 1})" ${curr === totalPages ? 'disabled' : ''}>
+        <i class="fa-solid fa-chevron-right"></i>
+      </button>
+      <span class="page-info">${from}–${showing} of ${total} · Page ${curr} of ${totalPages}</span>
+    </div>`;
+}
+
+function goWalletPage(p) {
+  _cwPage = p;
+  renderCafeteriaWallet(document.getElementById('contentArea'));
+}
+
+/* ─── Bulk selection helpers (checkbox column) ─── */
+function toggleWalletSelection(studentId, checked) {
+  if (checked) _cwSelected.add(studentId);
+  else _cwSelected.delete(studentId);
+  _refreshWalletBulkBar();
+}
+
+function toggleAllWalletSelection(checked) {
+  _cwRows.forEach(r => { if (checked) _cwSelected.add(r.student_id); else _cwSelected.delete(r.student_id); });
+  document.querySelectorAll('.cw-row-check').forEach(cb => { cb.checked = checked; });
+  _refreshWalletBulkBar();
+}
+
+function clearWalletSelection() {
+  _cwSelected.clear();
+  document.querySelectorAll('.cw-row-check').forEach(cb => { cb.checked = false; });
+  const selectAllEl = document.getElementById('cwSelectAll');
+  if (selectAllEl) selectAllEl.checked = false;
+  _refreshWalletBulkBar();
+}
+
+function _refreshWalletBulkBar() {
+  const bar = document.getElementById('cwBulkBar');
+  const countEl = document.getElementById('cwSelectedCount');
+  if (bar) bar.style.display = _cwSelected.size ? 'flex' : 'none';
+  if (countEl) countEl.textContent = `${_cwSelected.size} selected`;
+  const selectAllEl = document.getElementById('cwSelectAll');
+  if (selectAllEl) selectAllEl.checked = _cwRows.length > 0 && _cwRows.every(r => _cwSelected.has(r.student_id));
 }
 
 /* ─── Advanced Filters: radio buttons for Grade + Section ─── */
@@ -5539,10 +5651,11 @@ function _onWalletFilterGradeChange() {
 }
 
 function applyWalletFilters() {
-  const gradeEl   = document.querySelector('input[name="cwFilterGrade"]:checked');
+  const gradeEl = document.querySelector('input[name="cwFilterGrade"]:checked');
   const sectionEl = document.querySelector('input[name="cwFilterSection"]:checked');
-  _cwGradeFilter   = gradeEl ? parseInt(gradeEl.value) : 0;
+  _cwGradeFilter = gradeEl ? parseInt(gradeEl.value) : 0;
   _cwSectionFilter = sectionEl ? parseInt(sectionEl.value) : 0;
+  _cwPage = 1;
   closeModal();
   renderCafeteriaWallet(document.getElementById('contentArea'));
 }
@@ -5550,6 +5663,7 @@ function applyWalletFilters() {
 function clearWalletFilters() {
   _cwGradeFilter = 0;
   _cwSectionFilter = 0;
+  _cwPage = 1;
   closeModal();
   renderCafeteriaWallet(document.getElementById('contentArea'));
 }
@@ -5594,10 +5708,33 @@ function openWalletAdjust(studentId, name, type) {
   const limitHint = isCredit && _cwMaxTopup > 0
     ? `<p class="confirm-sub" style="margin-top:-6px">Maximum ₱${_cwMaxTopup.toFixed(2)} per transaction.</p>` : '';
 
+  const row = _cwRows.find(r => r.student_id === studentId) || {};
+  const lrnDisplay = row.lrn ? escHTML(row.lrn) : '—';
+  const balanceDisplay = `₱${parseFloat(row.balance || 0).toFixed(2)}`;
+  const lastUpdateDisplay = row.wallet_updated_at
+    ? new Date(row.wallet_updated_at.replace(' ', 'T')).toLocaleString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : 'No transactions yet';
+
   openModal(isCredit ? 'Add Funds' : 'Deduct Funds',
     `<div class="form-group">
        <label>Student</label>
-       <input type="text" value="${escHTML(name)}" disabled/>
+       <div class="cw-student-card">
+         <div class="cw-student-card-name">${escHTML(name)}</div>
+         <div class="cw-student-card-grid">
+           <div class="cw-student-card-item">
+             <span class="cw-student-card-label">LRN</span>
+             <span class="cw-student-card-value">${lrnDisplay}</span>
+           </div>
+           <div class="cw-student-card-item">
+             <span class="cw-student-card-label">Current Balance</span>
+             <span class="cw-student-card-value">${balanceDisplay}</span>
+           </div>
+           <div class="cw-student-card-item cw-student-card-item-wide">
+             <span class="cw-student-card-label">Last Balance Update</span>
+             <span class="cw-student-card-value">${lastUpdateDisplay}</span>
+           </div>
+         </div>
+       </div>
      </div>
      <div class="form-group">
        <label>Amount (₱) <span style="color:var(--danger)">*</span></label>
@@ -5609,39 +5746,257 @@ function openWalletAdjust(studentId, name, type) {
        <input type="text" id="cwNote" placeholder="e.g. Weekly allowance top-up" maxlength="255" autocomplete="off"/>
      </div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-     <button class="btn ${isCredit ? 'btn-success' : 'btn-danger'}" id="cwSubmitBtn" onclick="submitWalletAdjust(${studentId},'${type}')">
-       <i class="fa-solid ${isCredit ? 'fa-plus' : 'fa-minus'}"></i> ${isCredit ? 'Add Funds' : 'Deduct Funds'}
+     <button class="btn ${isCredit ? 'btn-success' : 'btn-danger'}" id="cwSubmitBtn" onclick="reviewWalletAdjust(${studentId},'${type}','${escHTML(name).replace(/'/g, "\\'")}')">
+       <i class="fa-solid fa-shield-halved"></i> Review &amp; ${isCredit ? 'Add Funds' : 'Deduct Funds'}
      </button>`
   );
 }
 
-async function submitWalletAdjust(studentId, type) {
+/* ── Step 1: validate the form, then open the re-auth confirmation ── */
+function reviewWalletAdjust(studentId, type, name) {
   const amount = parseFloat(document.getElementById('cwAmount')?.value || '0');
-  const note   = document.getElementById('cwNote')?.value || '';
+  const note = document.getElementById('cwNote')?.value || '';
 
   if (!amount || amount <= 0) return toast('Enter a valid amount.', 'warn');
   if (type === 'credit' && _cwMaxTopup > 0 && amount > _cwMaxTopup) {
     return toast(`Amount exceeds the ₱${_cwMaxTopup.toFixed(2)} top-up limit.`, 'warn');
   }
 
-  const btn = document.getElementById('cwSubmitBtn');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving…'; }
+  window._cwAdjustPending = { studentId, type, name, amount, note };
+  openWalletReauthModal({
+    title: 'Confirm Your Identity',
+    subject: name,
+    isBulk: false,
+    isCredit: type === 'credit',
+    onBack: () => openWalletAdjust(studentId, name, type),
+    onConfirm: confirmWalletAdjustWithPassword,
+  });
+}
 
+/* ── Step 2: verify password server-side, then save ── */
+async function confirmWalletAdjustWithPassword() {
+  const password = document.getElementById('cwAdminPassword')?.value;
+  const errEl = document.getElementById('cwReauthError');
+  const errMsg = document.getElementById('cwReauthErrMsg');
+  const btn = document.getElementById('cwConfirmBtn');
+
+  if (!password) {
+    if (errEl) errEl.style.display = 'flex';
+    if (errMsg) errMsg.textContent = 'Password is required.';
+    return;
+  }
+
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Verifying…'; }
+  if (errEl) errEl.style.display = 'none';
+
+  const verifyRes = await api('verify_admin_password', { password });
+  if (!verifyRes.success) {
+    if (errEl) { errEl.style.display = 'flex'; errEl.style.alignItems = 'center'; errEl.style.gap = '6px'; }
+    if (errMsg) errMsg.textContent = verifyRes.message || 'Incorrect password.';
+    const isCredit = window._cwAdjustPending?.type === 'credit';
+    if (btn) { btn.disabled = false; btn.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> Confirm ${isCredit ? 'Add Funds' : 'Deduct Funds'}`; }
+    document.getElementById('cwAdminPassword').value = '';
+    document.getElementById('cwAdminPassword').focus();
+    return;
+  }
+
+  if (btn) btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving…';
+
+  const { studentId, type, amount, note } = window._cwAdjustPending;
   const res = await api('adjust_student_wallet', { student_id: studentId, type, amount, note });
 
   if (!res.success) {
-    if (btn) { btn.disabled = false; btn.innerHTML = type === 'credit' ? '<i class="fa-solid fa-plus"></i> Add Funds' : '<i class="fa-solid fa-minus"></i> Deduct Funds'; }
+    const isCredit = type === 'credit';
+    if (btn) { btn.disabled = false; btn.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> Confirm ${isCredit ? 'Add Funds' : 'Deduct Funds'}`; }
     return toast(res.message || 'Failed to update wallet.', 'error');
   }
 
   toast(res.message || 'Wallet updated.', 'success');
+  window._cwAdjustPending = null;
+  closeModal();
+  renderCafeteriaWallet(document.getElementById('contentArea'));
+}
+
+/* ── Shared re-auth modal used by both single and bulk wallet actions ── */
+function openWalletReauthModal({ subject, isBulk, isCredit, onBack, onConfirm }) {
+  window._cwReauthBack = onBack;
+  window._cwReauthConfirm = onConfirm;
+
+  openModal('Confirm Your Identity',
+    `<div style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:8px 0 16px">
+       <div style="width:54px;height:54px;border-radius:50%;background:var(--surface-alt);border:2px solid var(--primary);
+                   display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--primary)">
+         <i class="fa-solid fa-lock"></i>
+       </div>
+       <p style="margin:0;font-size:14px;font-weight:600;color:var(--text-primary);text-align:center">
+         Re-authentication Required
+       </p>
+       <p style="margin:0;font-size:12px;color:var(--text-secondary);text-align:center;max-width:320px;line-height:1.6">
+         Please confirm your password before ${isCredit ? 'adding funds to' : 'deducting funds from'}
+         ${isBulk ? `<strong style="color:var(--text-primary)">${escHTML(subject)}</strong>` : `<strong style="color:var(--text-primary)">${escHTML(subject)}</strong>'s wallet`}.
+       </p>
+     </div>
+
+     <div class="form-group">
+       <label style="display:flex;align-items:center;gap:6px">
+         <i class="fa-solid fa-key" style="color:var(--primary);font-size:12px"></i>
+         Your Admin Password
+       </label>
+       <div style="position:relative">
+         <input type="password" id="cwAdminPassword" placeholder="Enter your password"
+           autocomplete="current-password"
+           style="padding-right:44px;box-sizing:border-box;width:100%"
+           onkeydown="if(event.key==='Enter')window._cwReauthConfirm()"/>
+         <button type="button" id="cwPasswordToggle"
+           title="Show / hide password"
+           style="position:absolute;right:0;top:0;bottom:0;width:40px;
+                  display:flex;align-items:center;justify-content:center;
+                  background:none;border:none;cursor:pointer;
+                  color:var(--text-muted);font-size:13px;padding:0;
+                  border-radius:0 var(--radius) var(--radius) 0;
+                  transition:color 0.15s">
+           <i class="fa-solid fa-eye" id="cwPasswordToggleIcon"></i>
+         </button>
+       </div>
+       <div id="cwReauthError" style="display:none;align-items:center;gap:6px;
+                font-size:11px;color:var(--danger);margin-top:6px">
+         <i class="fa-solid fa-circle-xmark"></i>
+         <span id="cwReauthErrMsg">Incorrect password.</span>
+       </div>
+     </div>
+
+     <div style="background:var(--surface-alt);border:1px solid var(--border);border-radius:8px;
+                 padding:10px 14px;font-size:11px;color:var(--text-muted);line-height:1.6;margin-top:4px">
+       <i class="fa-solid fa-circle-info" style="color:var(--primary);margin-right:4px"></i>
+       Any actions done to the student's credit will be stored in the audit logs for transparency.
+     </div>`,
+    `<button class="btn btn-ghost" id="cwReauthBackBtn">Back</button>
+     <button class="btn ${isCredit ? 'btn-success' : 'btn-danger'}" id="cwConfirmBtn" onclick="window._cwReauthConfirm()">
+       <i class="fa-solid fa-floppy-disk"></i> Confirm ${isCredit ? 'Add Funds' : 'Deduct Funds'}
+     </button>`
+  );
+
+  setTimeout(() => {
+    document.getElementById('cwAdminPassword')?.focus();
+
+    const toggleBtn = document.getElementById('cwPasswordToggle');
+    const toggleIcon = document.getElementById('cwPasswordToggleIcon');
+    const pwInput = document.getElementById('cwAdminPassword');
+    if (toggleBtn && pwInput) {
+      toggleBtn.addEventListener('click', () => {
+        const isHidden = pwInput.type === 'password';
+        pwInput.type = isHidden ? 'text' : 'password';
+        toggleIcon.classList.toggle('fa-eye', !isHidden);
+        toggleIcon.classList.toggle('fa-eye-slash', isHidden);
+        toggleBtn.style.color = isHidden ? 'var(--primary)' : 'var(--text-muted)';
+        pwInput.focus();
+      });
+    }
+
+    const backBtn = document.getElementById('cwReauthBackBtn');
+    if (backBtn) {
+      backBtn.addEventListener('click', () => {
+        closeModal();
+        if (typeof window._cwReauthBack === 'function') window._cwReauthBack();
+      });
+    }
+  }, 80);
+}
+
+/* ── Bulk "Add Funds to Selected" flow ── */
+function openBulkWalletCredit() {
+  if (_cwSelected.size === 0) return toast('Select at least one student.', 'warn');
+  const limitHint = _cwMaxTopup > 0
+    ? `<p class="confirm-sub" style="margin-top:-6px">Maximum ₱${_cwMaxTopup.toFixed(2)} per transaction.</p>` : '';
+
+  openModal('Add Funds to Selected Students',
+    `<div class="form-group">
+       <label>Students</label>
+       <input type="text" value="${_cwSelected.size} student${_cwSelected.size !== 1 ? 's' : ''} selected" disabled/>
+     </div>
+     <div class="form-group">
+       <label>Amount per student (₱) <span style="color:var(--danger)">*</span></label>
+       <input type="number" id="cwBulkAmount" min="0.01" ${_cwMaxTopup > 0 ? `max="${_cwMaxTopup}"` : ''} step="0.01" placeholder="0.00" autocomplete="off"/>
+       ${limitHint}
+     </div>
+     <div class="form-group">
+       <label>Note (optional)</label>
+       <input type="text" id="cwBulkNote" placeholder="e.g. Weekly allowance top-up" maxlength="255" autocomplete="off"/>
+     </div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+     <button class="btn btn-success" id="cwBulkSubmitBtn" onclick="reviewBulkWalletCredit()">
+       <i class="fa-solid fa-shield-halved"></i> Review &amp; Add Funds
+     </button>`
+  );
+}
+
+function reviewBulkWalletCredit() {
+  const amount = parseFloat(document.getElementById('cwBulkAmount')?.value || '0');
+  const note = document.getElementById('cwBulkNote')?.value || '';
+
+  if (!amount || amount <= 0) return toast('Enter a valid amount.', 'warn');
+  if (_cwMaxTopup > 0 && amount > _cwMaxTopup) {
+    return toast(`Amount exceeds the ₱${_cwMaxTopup.toFixed(2)} top-up limit.`, 'warn');
+  }
+
+  window._cwBulkPending = { amount, note };
+  openWalletReauthModal({
+    subject: `${_cwSelected.size} selected student${_cwSelected.size !== 1 ? 's' : ''}`,
+    isBulk: true,
+    isCredit: true,
+    onBack: openBulkWalletCredit,
+    onConfirm: confirmBulkWalletCreditWithPassword,
+  });
+}
+
+async function confirmBulkWalletCreditWithPassword() {
+  const password = document.getElementById('cwAdminPassword')?.value;
+  const errEl = document.getElementById('cwReauthError');
+  const errMsg = document.getElementById('cwReauthErrMsg');
+  const btn = document.getElementById('cwConfirmBtn');
+
+  if (!password) {
+    if (errEl) errEl.style.display = 'flex';
+    if (errMsg) errMsg.textContent = 'Password is required.';
+    return;
+  }
+
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Verifying…'; }
+  if (errEl) errEl.style.display = 'none';
+
+  const verifyRes = await api('verify_admin_password', { password });
+  if (!verifyRes.success) {
+    if (errEl) { errEl.style.display = 'flex'; errEl.style.alignItems = 'center'; errEl.style.gap = '6px'; }
+    if (errMsg) errMsg.textContent = verifyRes.message || 'Incorrect password.';
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Confirm Add Funds'; }
+    document.getElementById('cwAdminPassword').value = '';
+    document.getElementById('cwAdminPassword').focus();
+    return;
+  }
+
+  if (btn) btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving…';
+
+  const { amount, note } = window._cwBulkPending;
+  const res = await api('bulk_credit_student_wallets', {
+    student_ids: Array.from(_cwSelected).join(','),
+    amount, note
+  });
+
+  if (!res.success) {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Confirm Add Funds'; }
+    return toast(res.message || 'Failed to update wallets.', 'error');
+  }
+
+  toast(res.message || 'Wallets updated.', 'success');
+  window._cwBulkPending = null;
+  _cwSelected.clear();
   closeModal();
   renderCafeteriaWallet(document.getElementById('contentArea'));
 }
 
 async function openWalletHistory(studentId, name) {
   openModal(`Transaction History — ${name}`,
-    `<div class="flex-center" style="height:120px"><div class="spinner"></div></div>`, '', true);
+    `<div class="flex-center" style="height:120px"><div class="spinner"></div></div>`, '', true, 'modal-wallet-history');
 
   const res = await api('get_wallet_transactions', { student_id: studentId });
   const rows = res.success ? res.data : [];
@@ -5649,19 +6004,23 @@ async function openWalletHistory(studentId, name) {
   const body = rows.length === 0
     ? `<div class="empty-state"><i class="fa-solid fa-clock-rotate-left"></i><p>No transactions yet</p></div>`
     : `<div class="table-wrap" style="margin:0">
-         <table>
+         <table class="wallet-history-table">
+           <colgroup>
+             <col class="col-date"><col class="col-type"><col class="col-amount">
+             <col class="col-balance"><col class="col-note"><col class="col-by">
+           </colgroup>
            <thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Balance After</th><th>Note</th><th>By</th></tr></thead>
            <tbody>
              ${rows.map(t => `
              <tr>
-               <td class="td-mono" style="white-space:nowrap">${escHTML(t.created_at)}</td>
+               <td class="wh-date">${escHTML(t.created_at)}</td>
                <td>${t.type === 'credit'
-                    ? '<span class="badge badge-active badge-dot">Credit</span>'
-                    : '<span class="badge badge-inactive">Debit</span>'}</td>
-               <td class="wallet-balance">${t.type === 'credit' ? '+' : '-'}₱${parseFloat(t.amount).toFixed(2)}</td>
-               <td class="td-mono">₱${parseFloat(t.balance_after).toFixed(2)}</td>
-               <td>${escHTML(t.note || '—')}</td>
-               <td>${escHTML(t.admin_name || 'System')}</td>
+        ? '<span class="badge badge-active badge-dot">Credit</span>'
+        : '<span class="badge badge-inactive">Debit</span>'}</td>
+               <td class="wh-amount ${t.type === 'credit' ? 'is-credit' : 'is-debit'}">${t.type === 'credit' ? '+' : '-'}₱${parseFloat(t.amount).toFixed(2)}</td>
+               <td class="wh-balance">₱${parseFloat(t.balance_after).toFixed(2)}</td>
+               <td class="wh-note ${t.note ? '' : 'is-empty'}">${escHTML(t.note || '—')}</td>
+               <td class="wh-by">${escHTML(t.admin_name || 'System')}</td>
              </tr>`).join('')}
            </tbody>
          </table>
@@ -5686,7 +6045,7 @@ async function renderCafeteriaMenu(ca, filterMode = null) {
   const res = await api('get_cafeteria_products', { include_archived: includeArchived });
   let rows = res.success ? res.data : [];
 
-  if (_cmFilterMode === 'active')   rows = rows.filter(r => r.status === 'active');
+  if (_cmFilterMode === 'active') rows = rows.filter(r => r.status === 'active');
   if (_cmFilterMode === 'archived') rows = rows.filter(r => r.status === 'archived');
   _cmRows = rows;
 
@@ -5706,61 +6065,104 @@ async function renderCafeteriaMenu(ca, filterMode = null) {
       <span class="panel-title"><i class="fa-solid fa-bowl-food"></i> Menu Items</span>
       <div class="filter-bar">
         <select id="cmFilter" onchange="renderCafeteriaMenu(document.getElementById('contentArea'), this.value)">
-          <option value="active"   ${_cmFilterMode==='active'  ?'selected':''}>Active</option>
-          <option value="archived" ${_cmFilterMode==='archived'?'selected':''}>Archived</option>
-          <option value="all"      ${_cmFilterMode==='all'     ?'selected':''}>All</option>
+          <option value="active"   ${_cmFilterMode === 'active' ? 'selected' : ''}>Active</option>
+          <option value="archived" ${_cmFilterMode === 'archived' ? 'selected' : ''}>Archived</option>
+          <option value="all"      ${_cmFilterMode === 'all' ? 'selected' : ''}>All</option>
         </select>
       </div>
     </div>
 
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Product</th>
-            <th>Category</th>
-            <th>Price</th>
-            <th>Status</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows.length === 0
-            ? `<tr><td colspan="5"><div class="empty-state"><i class="fa-solid fa-bowl-food"></i><p>No menu items found</p></div></td></tr>`
-            : rows.map(r => `
-            <tr>
-              <td class="td-primary">${escHTML(r.name)}</td>
-              <td><span class="cat-tag cat-tag-${escHTML(r.category)}">${escHTML(r.category)}</span></td>
-              <td class="td-mono">₱${parseFloat(r.price).toFixed(2)}</td>
-              <td>${r.status === 'archived'
-                    ? '<span class="badge badge-archived">Archived</span>'
-                    : '<span class="badge badge-active badge-dot">Active</span>'}</td>
-              <td>
-                <div style="display:flex;gap:6px;align-items:center">
-                  ${r.status === 'active' ? `
-                    <button class="btn-icon" title="Edit" onclick='openEditFoodItem(${r.id},${JSON.stringify(r.name)},${JSON.stringify(r.category)},${r.price})'>
-                      <i class="fa-solid fa-pen"></i>
-                    </button>
-                    <button class="btn-icon btn-icon-danger" title="Archive" onclick="confirmArchiveFoodItem(${r.id},'${escHTML(r.name)}')">
-                      <i class="fa-solid fa-box-archive"></i>
-                    </button>` : `
-                    <button class="btn-icon btn-icon-success" title="Restore" onclick="restoreFoodItem(${r.id})">
-                      <i class="fa-solid fa-rotate-left"></i>
-                    </button>
-                    <button class="btn-icon btn-icon-danger" title="Delete permanently" onclick="confirmDeleteFoodItem(${r.id},'${escHTML(r.name)}')">
-                      <i class="fa-solid fa-trash"></i>
-                    </button>`}
+    <div class="menu-card-grid">
+      ${rows.length === 0
+      ? `<div class="empty-state"><i class="fa-solid fa-bowl-food"></i><p>No menu items found</p></div>`
+      : rows.map(r => {
+        const isVisible = String(r.is_visible) === '1';
+        const imgSrc = r.image_path ? escHTML(r.image_path) : '';
+        return `
+          <div class="menu-card">
+            <div class="menu-card-img-wrap">
+              ${imgSrc
+            ? `<img src="${imgSrc}" alt="${escHTML(r.name)}" class="menu-card-img"/>`
+            : `<div class="menu-card-img-fallback"><i class="fa-solid fa-bowl-food"></i></div>`}
+              ${r.status === 'archived' ? '<span class="menu-card-archived-tag">Archived</span>' : ''}
+            </div>
+            <div class="menu-card-body">
+              <div class="menu-card-top">
+                <div class="menu-card-name">${escHTML(r.name)}</div>
+                <div class="menu-card-kebab-wrap">
+                  <button class="btn-icon" title="More options" onclick="toggleMenuCardMenu(event, ${r.id})">
+                    <i class="fa-solid fa-ellipsis-vertical"></i>
+                  </button>
+                  <div class="menu-card-dropdown" id="menuCardDropdown-${r.id}" style="display:none">
+                    ${r.status === 'active' ? `
+                      <a href="#" onclick="event.preventDefault();closeAllMenuCardMenus();openEditFoodItem(${r.id})"><i class="fa-solid fa-pen"></i> Edit Details</a>
+                      <a href="#" onclick="event.preventDefault();closeAllMenuCardMenus();activateModule('cafeteria-inventory')"><i class="fa-solid fa-boxes-stacked"></i> Manage Inventory</a>
+                      <div class="menu-card-dropdown-divider"></div>
+                      <a href="#" class="menu-card-dropdown-danger" onclick="event.preventDefault();closeAllMenuCardMenus();confirmArchiveFoodItem(${r.id},'${escHTML(r.name)}')"><i class="fa-solid fa-box-archive"></i> Archive</a>
+                    ` : `
+                      <a href="#" onclick="event.preventDefault();closeAllMenuCardMenus();restoreFoodItem(${r.id})"><i class="fa-solid fa-rotate-left"></i> Restore</a>
+                      <div class="menu-card-dropdown-divider"></div>
+                      <a href="#" class="menu-card-dropdown-danger" onclick="event.preventDefault();closeAllMenuCardMenus();confirmDeleteFoodItem(${r.id},'${escHTML(r.name)}')"><i class="fa-solid fa-trash"></i> Delete Permanently</a>
+                    `}
+                  </div>
                 </div>
-              </td>
-            </tr>`).join('')}
-        </tbody>
-      </table>
+              </div>
+              <div class="menu-card-meta">
+                <span class="cat-tag cat-tag-${escHTML(r.category)}">${escHTML(r.category)}</span>
+                <span class="menu-card-price">₱${parseFloat(r.price).toFixed(2)}</span>
+              </div>
+              ${r.status === 'active' ? `
+              <div class="menu-card-visibility">
+                <button class="menu-vis-pill ${isVisible ? 'menu-vis-pill-active' : ''}" ${isVisible ? 'disabled' : `onclick="setMenuVisibility(${r.id},1,'${escHTML(r.name)}')"`}>
+                  <i class="fa-solid fa-circle-check"></i> Available in Menu
+                </button>
+                <button class="menu-vis-pill menu-vis-pill-hide ${!isVisible ? 'menu-vis-pill-active' : ''}" ${!isVisible ? 'disabled' : `onclick="setMenuVisibility(${r.id},0,'${escHTML(r.name)}')"`}>
+                  <i class="fa-solid fa-eye-slash"></i> Hide in Menu
+                </button>
+              </div>` : ''}
+            </div>
+          </div>`;
+      }).join('')}
     </div>
   </div>`;
 }
 
-function _foodFormHTML(name = '', category = 'meal', price = '') {
+/* ── Kebab dropdown handling ── */
+function closeAllMenuCardMenus() {
+  document.querySelectorAll('.menu-card-dropdown').forEach(el => el.style.display = 'none');
+}
+function toggleMenuCardMenu(evt, id) {
+  evt.stopPropagation();
+  const el = document.getElementById(`menuCardDropdown-${id}`);
+  const wasOpen = el && el.style.display === 'block';
+  closeAllMenuCardMenus();
+  if (el) el.style.display = wasOpen ? 'none' : 'block';
+}
+document.addEventListener('click', closeAllMenuCardMenus);
+
+/* ── Availability toggle ── */
+async function setMenuVisibility(id, isVisible, name) {
+  const res = await api('toggle_cafeteria_product_visibility', { id, is_visible: isVisible ? '1' : '0' });
+  if (!res.success) return toast(res.message || 'Failed to update visibility.', 'error');
+  toast(res.message || `${name} updated.`, 'success');
+  renderCafeteriaMenu(document.getElementById('contentArea'));
+}
+
+function _foodFormHTML(name = '', category = 'meal', price = '', imagePath = '', nutrition = '') {
+  const previewSrc = imagePath ? escHTML(imagePath) : '';
   return `
+    <div class="form-group">
+      <label>Product Photo</label>
+      <div class="menu-image-upload" onclick="document.getElementById('cmImageInput').click()">
+        <div class="menu-image-preview" id="cmImagePreviewWrap">
+          ${previewSrc
+      ? `<img src="${previewSrc}" id="cmImagePreview" alt="Preview"/>`
+      : `<div class="menu-image-preview-empty" id="cmImagePreview"><i class="fa-solid fa-camera"></i><span>Add photo</span></div>`}
+        </div>
+        <div class="menu-image-upload-hint">Click to upload · JPG, PNG, WEBP, or GIF · Max 5MB</div>
+      </div>
+      <input type="file" id="cmImageInput" accept="image/jpeg,image/png,image/webp,image/gif" style="display:none" onchange="previewFoodImage(this)"/>
+    </div>
     <div class="form-group">
       <label>Product Name <span style="color:var(--danger)">*</span></label>
       <input type="text" id="cmName" value="${escHTML(name)}" placeholder="e.g. Chicken Adobo Rice Meal" maxlength="150" autocomplete="off"/>
@@ -5768,16 +6170,29 @@ function _foodFormHTML(name = '', category = 'meal', price = '') {
     <div class="form-group">
       <label>Category</label>
       <select id="cmCategory">
-        <option value="meal"  ${category==='meal' ?'selected':''}>Meal</option>
-        <option value="snack" ${category==='snack'?'selected':''}>Snack</option>
-        <option value="drink" ${category==='drink'?'selected':''}>Drink</option>
-        <option value="other" ${category==='other'?'selected':''}>Other</option>
+        <option value="meal"  ${category === 'meal' ? 'selected' : ''}>Meal</option>
+        <option value="snack" ${category === 'snack' ? 'selected' : ''}>Snack</option>
+        <option value="drink" ${category === 'drink' ? 'selected' : ''}>Drink</option>
+        <option value="other" ${category === 'other' ? 'selected' : ''}>Other</option>
       </select>
     </div>
     <div class="form-group">
       <label>Price (₱) <span style="color:var(--danger)">*</span></label>
       <input type="number" id="cmPrice" min="0" step="0.01" value="${price}" placeholder="0.00" autocomplete="off"/>
+    </div>
+    <div class="form-group">
+      <label>Nutritional Information <span class="text-muted" style="font-weight:400">(optional)</span></label>
+      <textarea id="cmNutrition" rows="3" placeholder="e.g. 450 kcal · 20g protein · 15g fat · Contains: soy, egg" maxlength="1000">${escHTML(nutrition)}</textarea>
     </div>`;
+}
+
+function previewFoodImage(input) {
+  const file = input.files && input.files[0];
+  const wrap = document.getElementById('cmImagePreviewWrap');
+  if (!file || !wrap) return;
+  if (file.size > 5 * 1024 * 1024) { toast('Image must be 5MB or smaller.', 'warn'); input.value = ''; return; }
+  const url = URL.createObjectURL(file);
+  wrap.innerHTML = `<img src="${url}" id="cmImagePreview" alt="Preview"/>`;
 }
 
 function openAddFoodItem() {
@@ -5790,9 +6205,11 @@ function openAddFoodItem() {
 }
 
 async function submitAddFoodItem() {
-  const name     = document.getElementById('cmName')?.value.trim() || '';
+  const name = document.getElementById('cmName')?.value.trim() || '';
   const category = document.getElementById('cmCategory')?.value || 'other';
-  const price    = document.getElementById('cmPrice')?.value || '0';
+  const price = document.getElementById('cmPrice')?.value || '0';
+  const nutritional_info = document.getElementById('cmNutrition')?.value.trim() || '';
+  const imageFile = document.getElementById('cmImageInput')?.files?.[0] || null;
 
   if (!name) return toast('Product name is required.', 'warn');
   if (parseFloat(price) < 0) return toast('Price cannot be negative.', 'warn');
@@ -5800,7 +6217,9 @@ async function submitAddFoodItem() {
   const btn = document.getElementById('cmSubmitBtn');
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving…'; }
 
-  const res = await api('add_cafeteria_product', { name, category, price });
+  const payload = { name, category, price, nutritional_info };
+  if (imageFile) payload.image = imageFile;
+  const res = await api('add_cafeteria_product', payload);
 
   if (!res.success) {
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-plus"></i> Add Product'; }
@@ -5812,8 +6231,9 @@ async function submitAddFoodItem() {
   renderCafeteriaMenu(document.getElementById('contentArea'));
 }
 
-function openEditFoodItem(id, name, category, price) {
-  openModal('Edit Menu Product', _foodFormHTML(name, category, price),
+function openEditFoodItem(id) {
+  const row = _cmRows.find(r => String(r.id) === String(id)) || {};
+  openModal('Edit Menu Product', _foodFormHTML(row.name || '', row.category || 'meal', row.price || '', row.image_path || '', row.nutritional_info || ''),
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
      <button class="btn btn-primary" id="cmSubmitBtn" onclick="submitEditFoodItem(${id})">
        <i class="fa-solid fa-check"></i> Save Changes
@@ -5822,9 +6242,11 @@ function openEditFoodItem(id, name, category, price) {
 }
 
 async function submitEditFoodItem(id) {
-  const name     = document.getElementById('cmName')?.value.trim() || '';
+  const name = document.getElementById('cmName')?.value.trim() || '';
   const category = document.getElementById('cmCategory')?.value || 'other';
-  const price    = document.getElementById('cmPrice')?.value || '0';
+  const price = document.getElementById('cmPrice')?.value || '0';
+  const nutritional_info = document.getElementById('cmNutrition')?.value.trim() || '';
+  const imageFile = document.getElementById('cmImageInput')?.files?.[0] || null;
 
   if (!name) return toast('Product name is required.', 'warn');
   if (parseFloat(price) < 0) return toast('Price cannot be negative.', 'warn');
@@ -5832,7 +6254,9 @@ async function submitEditFoodItem(id) {
   const btn = document.getElementById('cmSubmitBtn');
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving…'; }
 
-  const res = await api('update_cafeteria_product', { id, name, category, price });
+  const payload = { id, name, category, price, nutritional_info };
+  if (imageFile) payload.image = imageFile;
+  const res = await api('update_cafeteria_product', payload);
 
   if (!res.success) {
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-check"></i> Save Changes'; }
@@ -5898,18 +6322,38 @@ async function doDeleteFoodItem(id) {
 /* ════════════════════════════════════════════════════════════
    CAFETERIA · INVENTORY
 ════════════════════════════════════════════════════════════ */
+let _invRows = [];
+
+/** "YYYY-MM-DD" → "Mon D, YYYY", or a muted em-dash when empty */
+function invDate(dateStr) {
+  return dateStr ? formatDateOnly(dateStr) : '<span style="color:var(--text-muted)">—</span>';
+}
+
+function invStatusBadge(r) {
+  const qty = parseInt(r.quantity), threshold = parseInt(r.low_stock_threshold);
+  if (r.expiry_state === 'expired') return '<span class="low-stock-tag"><i class="fa-solid fa-ban"></i> Expired</span>';
+  if (qty <= 0) return '<span class="low-stock-tag"><i class="fa-solid fa-triangle-exclamation"></i> Out of Stock</span>';
+  if (qty <= threshold) return '<span class="low-stock-tag"><i class="fa-solid fa-triangle-exclamation"></i> Low Stock</span>';
+  if (r.expiry_state === 'expiring_soon') return '<span class="expiring-tag"><i class="fa-solid fa-hourglass-half"></i> Expiring Soon</span>';
+  return '<span class="badge badge-active badge-dot">In Stock</span>';
+}
+
 async function renderCafeteriaInventory(ca) {
   ca.innerHTML = `<div class="flex-center" style="height:200px"><div class="spinner"></div></div>`;
 
   const res = await api('get_cafeteria_inventory');
   const rows = res.success ? res.data : [];
-  const lowStockCount = rows.filter(r => parseInt(r.quantity) <= parseInt(r.low_stock_threshold)).length;
+  _invRows = rows;
+
+  const lowStockCount = rows.filter(r => r.stock_state === 'low' || r.stock_state === 'out').length;
+  const expiringCount = rows.filter(r => r.expiry_state === 'expiring_soon').length;
+  const expiredCount = rows.filter(r => r.expiry_state === 'expired').length;
 
   ca.innerHTML = `
   <div class="page-header">
     <div class="page-title-wrap">
       <h1>Cafeteria · Inventory</h1>
-      <p>Set stock quantities for menu products (not raw ingredients)</p>
+      <p>Track stock, restock cycles, expiration, and sales for menu products</p>
     </div>
   </div>
 
@@ -5920,7 +6364,15 @@ async function renderCafeteriaInventory(ca) {
     </div>
     <div class="room-stat-pill room-stat-vacant">
       <i class="fa-solid fa-triangle-exclamation"></i>
-      <span><strong>${lowStockCount}</strong> Low Stock</span>
+      <span><strong>${lowStockCount}</strong> Low / Out of Stock</span>
+    </div>
+    <div class="room-stat-pill room-stat-vacant">
+      <i class="fa-solid fa-hourglass-half"></i>
+      <span><strong>${expiringCount}</strong> Expiring Soon</span>
+    </div>
+    <div class="room-stat-pill room-stat-vacant">
+      <i class="fa-solid fa-ban"></i>
+      <span><strong>${expiredCount}</strong> Expired</span>
     </div>
   </div>
 
@@ -5935,28 +6387,37 @@ async function renderCafeteriaInventory(ca) {
           <tr>
             <th>Product</th>
             <th>Category</th>
-            <th>Quantity</th>
-            <th>Low Stock Alert At</th>
+            <th>Current Stock</th>
+            <th>Last Restock</th>
+            <th>Qty Received</th>
+            <th>Expiration</th>
+            <th>Next Restock</th>
             <th>Status</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           ${rows.length === 0
-            ? `<tr><td colspan="6"><div class="empty-state"><i class="fa-solid fa-boxes-stacked"></i><p>No products in the menu yet</p></div></td></tr>`
-            : rows.map(r => `
+      ? `<tr><td colspan="9"><div class="empty-state"><i class="fa-solid fa-boxes-stacked"></i><p>No products in the menu yet</p></div></td></tr>`
+      : rows.map(r => `
             <tr data-product="${r.product_id}">
               <td class="td-primary">${escHTML(r.name)}</td>
               <td><span class="cat-tag cat-tag-${escHTML(r.category)}">${escHTML(r.category)}</span></td>
-              <td><input type="number" min="0" class="stock-input" id="invQty-${r.product_id}" value="${r.quantity}"/></td>
-              <td><input type="number" min="0" class="stock-input" id="invThresh-${r.product_id}" value="${r.low_stock_threshold}"/></td>
-              <td>${parseInt(r.quantity) <= parseInt(r.low_stock_threshold)
-                    ? '<span class="low-stock-tag"><i class="fa-solid fa-triangle-exclamation"></i> Low Stock</span>'
-                    : '<span class="badge badge-active badge-dot">In Stock</span>'}</td>
+              <td class="td-mono">${r.quantity} <span style="color:var(--text-muted);font-size:11px">/ ${r.low_stock_threshold} min</span></td>
+              <td>${invDate(r.last_restock_date)}</td>
+              <td class="td-mono">${r.last_restock_qty != null ? '+' + r.last_restock_qty : '<span style="color:var(--text-muted)">—</span>'}</td>
+              <td>${invDate(r.expiration_date)}</td>
+              <td>${invDate(r.next_restock_date)}</td>
+              <td>${invStatusBadge(r)}</td>
               <td>
-                <button class="btn btn-xs btn-primary" onclick="saveInventoryRow(${r.product_id},'${escHTML(r.name)}')">
-                  <i class="fa-solid fa-check"></i> Save
-                </button>
+                <div style="display:flex;gap:6px;align-items:center">
+                  <button class="btn btn-xs btn-primary" title="Log a restock" onclick="openRestockModal(${r.product_id})">
+                    <i class="fa-solid fa-truck-ramp-box"></i> Restock
+                  </button>
+                  <button class="btn-icon" title="More options" onclick="toggleInvKebab(event, ${r.product_id})">
+                    <i class="fa-solid fa-ellipsis-vertical"></i>
+                  </button>
+                </div>
               </td>
             </tr>`).join('')}
         </tbody>
@@ -5965,19 +6426,422 @@ async function renderCafeteriaInventory(ca) {
   </div>`;
 }
 
-async function saveInventoryRow(productId, name) {
-  const qtyEl    = document.getElementById(`invQty-${productId}`);
-  const threshEl = document.getElementById(`invThresh-${productId}`);
-  const quantity  = parseInt(qtyEl?.value ?? '0');
-  const threshold = parseInt(threshEl?.value ?? '10');
+function _invFindRow(productId) {
+  return _invRows.find(r => String(r.product_id) === String(productId));
+}
 
-  if (isNaN(quantity) || quantity < 0) return toast('Enter a valid quantity.', 'warn');
+/* ── Floating kebab menu (appended to <body> so table/panel
+      overflow can't clip it — unlike the in-flow menu-card-dropdown) ── */
+function _ensureInvKebabEl() {
+  let el = document.getElementById('invKebabMenu');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'invKebabMenu';
+    el.className = 'menu-card-dropdown inv-kebab-floating';
+    el.style.display = 'none';
+    document.body.appendChild(el);
+  }
+  return el;
+}
 
-  const res = await api('update_cafeteria_inventory', { product_id: productId, quantity, low_stock_threshold: isNaN(threshold) ? 10 : threshold });
-  if (!res.success) return toast(res.message || 'Failed to update stock.', 'error');
+function toggleInvKebab(evt, productId) {
+  evt.stopPropagation();
+  const el = _ensureInvKebabEl();
+  const btn = evt.currentTarget;
+  const alreadyOpenForThis = el.style.display === 'block' && el.dataset.productId === String(productId);
 
-  toast(res.message || `${name} stock updated.`, 'success');
+  closeInvKebab();
+  if (alreadyOpenForThis) return;
+
+  el.innerHTML = `
+    <a href="#" onclick="event.preventDefault();closeInvKebab();openInventoryDetail(${productId})"><i class="fa-solid fa-chart-line"></i> View Details</a>
+    <a href="#" onclick="event.preventDefault();closeInvKebab();openRecordSale(${productId})"><i class="fa-solid fa-cash-register"></i> Record Sale</a>
+    <a href="#" onclick="event.preventDefault();closeInvKebab();openStockAdjustment(${productId})"><i class="fa-solid fa-triangle-exclamation"></i> Report Spoilage / Damage / Correction</a>
+    <div class="menu-card-dropdown-divider"></div>
+    <a href="#" onclick="event.preventDefault();closeInvKebab();openEditInventorySettings(${productId})"><i class="fa-solid fa-gear"></i> Edit Product Settings</a>`;
+  el.dataset.productId = productId;
+  el.style.display = 'block';
+
+  const rect = btn.getBoundingClientRect();
+  const menuWidth = el.offsetWidth || 200;
+  const menuHeight = el.offsetHeight || 140;
+
+  let left = rect.right - menuWidth;
+  if (left < 8) left = 8;
+  if (left + menuWidth > window.innerWidth - 8) left = window.innerWidth - menuWidth - 8;
+
+  let top = rect.bottom + 4;
+  if (top + menuHeight > window.innerHeight - 8) top = rect.top - menuHeight - 4;
+
+  el.style.top = `${top}px`;
+  el.style.left = `${left}px`;
+}
+
+function closeInvKebab() {
+  const el = document.getElementById('invKebabMenu');
+  if (el) el.style.display = 'none';
+}
+document.addEventListener('click', closeInvKebab);
+document.addEventListener('scroll', closeInvKebab, true);
+window.addEventListener('resize', closeInvKebab);
+
+/* ── Edit product settings (admin-editable fields only — NOT current stock) ── */
+function openEditInventorySettings(productId) {
+  const r = _invFindRow(productId);
+  if (!r) return;
+  openModal(`Product Settings — ${r.name}`,
+    `<div class="form-group">
+       <label>Low Stock Alert At</label>
+       <input type="number" min="0" class="form-input" id="invSetThresh" value="${r.low_stock_threshold}"/>
+       <p class="field-hint">The system flags this product as "Low Stock" once quantity drops to or below this number.</p>
+     </div>
+     <div class="form-group">
+       <label>Expected Next Restock Date (optional override)</label>
+       <input type="date" class="form-input" id="invSetNextRestock" value="${escHTML(r.next_restock_date || '')}"/>
+       <p class="field-hint">Normally calculated automatically from the last restock + restock cycle. Set this only if you need to override it manually.</p>
+     </div>
+     <p class="field-hint" style="margin-top:4px"><i class="fa-solid fa-circle-info"></i> Current stock isn't edited here — use <strong>Restock</strong>, <strong>Record Sale</strong>, or <strong>Report Spoilage / Damage / Correction</strong> so activity stays in the history log. To change the product name, category, or selling price, edit it from Food Menu.</p>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+     <button class="btn btn-primary" onclick="saveInventorySettings(${productId},'${escHTML(r.name)}')"><i class="fa-solid fa-check"></i> Save</button>`
+  );
+}
+
+async function saveInventorySettings(productId, name) {
+  const threshold = parseInt(document.getElementById('invSetThresh')?.value ?? '10');
+  const nextRestockDate = document.getElementById('invSetNextRestock')?.value || '';
+
+  const res = await api('update_cafeteria_inventory', {
+    product_id: productId,
+    low_stock_threshold: isNaN(threshold) ? 10 : threshold,
+    next_restock_date: nextRestockDate
+  });
+  if (!res.success) return toast(res.message || 'Failed to update settings.', 'error');
+
+  toast(res.message || `${name} settings updated.`, 'success');
+  closeModal();
   renderCafeteriaInventory(document.getElementById('contentArea'));
+}
+
+/* ── Stock Adjustment: spoilage / damage / expiry / miscount correction ──
+      This is NOT a sale — it records a deduction with a reason instead of
+      silently changing the quantity field. ─────────────────────────── */
+function openStockAdjustment(productId) {
+  const r = _invFindRow(productId);
+  if (!r) return;
+
+  openModal(`Report Spoilage / Damage / Correction — ${r.name}`,
+    `<div class="form-grid">
+       <div class="form-group">
+         <label>Quantity to Remove</label>
+         <input type="number" min="1" max="${r.quantity}" class="form-input" id="adjQty" placeholder="e.g. 3"/>
+         <p class="field-hint">${r.quantity} unit(s) currently in stock.</p>
+       </div>
+       <div class="form-group">
+         <label>Reason</label>
+         <select class="form-input" id="adjReason">
+           <option value="spoilage">Spoiled Food</option>
+           <option value="damage">Damaged</option>
+           <option value="expired">Expired</option>
+           <option value="correction">Miscount Correction</option>
+           <option value="other">Other</option>
+         </select>
+       </div>
+     </div>
+     <div class="form-group">
+       <label>Notes (optional)</label>
+       <input type="text" class="form-input" id="adjNotes" placeholder="Optional note"/>
+     </div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+     <button class="btn btn-primary" onclick="submitStockAdjustment(${productId})"><i class="fa-solid fa-triangle-exclamation"></i> Save</button>`
+  );
+}
+
+async function submitStockAdjustment(productId) {
+  const quantity_removed = parseInt(document.getElementById('adjQty')?.value ?? '0');
+  const reason = document.getElementById('adjReason')?.value || 'other';
+  const notes = document.getElementById('adjNotes')?.value || '';
+
+  if (isNaN(quantity_removed) || quantity_removed <= 0) return toast('Enter a valid quantity.', 'warn');
+
+  const res = await api('record_cafeteria_adjustment', { product_id: productId, quantity_removed, reason, notes });
+  if (!res.success) return toast(res.message || 'Failed to record adjustment.', 'error');
+
+  toast(res.message || 'Adjustment recorded.', 'success');
+  closeModal();
+  renderCafeteriaInventory(document.getElementById('contentArea'));
+}
+
+/* ── Restock (receive new stock) ───────────────────────────── */
+function openRestockModal(productId) {
+  const r = _invFindRow(productId);
+  if (!r) return;
+  const today = new Date().toISOString().slice(0, 10);
+
+  openModal(`Restock — ${r.name}`,
+    `<div class="form-group">
+       <label>Quantity Received</label>
+       <input type="number" min="1" class="form-input" id="rsQty" placeholder="e.g. 50"/>
+     </div>
+     <div class="form-grid">
+       <div class="form-group">
+         <label>Date Received</label>
+         <input type="date" class="form-input" id="rsReceived" value="${today}" max="${today}"/>
+       </div>
+       <div class="form-group">
+         <label>Expiration Date</label>
+         <input type="date" class="form-input" id="rsExpiry" value="${escHTML(r.expiration_date || '')}"/>
+       </div>
+     </div>
+     <div class="form-grid">
+       <div class="form-group">
+         <label>Restock Cycle (days)</label>
+         <input type="number" min="1" class="form-input" id="rsInterval" value="${r.restock_interval_days || 7}"/>
+         <p class="field-hint">Used to auto-suggest the next restock date.</p>
+       </div>
+       <div class="form-group">
+         <label>Cost per Unit (optional)</label>
+         <input type="number" min="0" step="0.01" class="form-input" id="rsCost" placeholder="₱0.00"/>
+       </div>
+     </div>
+     <div class="form-group">
+       <label>Notes (optional)</label>
+       <input type="text" class="form-input" id="rsNotes" placeholder="Supplier, batch #, etc."/>
+     </div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+     <button class="btn btn-primary" onclick="submitRestock(${productId})"><i class="fa-solid fa-truck-ramp-box"></i> Save Restock</button>`
+  );
+}
+
+async function submitRestock(productId) {
+  const quantity_added = parseInt(document.getElementById('rsQty')?.value ?? '0');
+  const received_date = document.getElementById('rsReceived')?.value;
+  const expiration_date = document.getElementById('rsExpiry')?.value || '';
+  const restock_interval_days = parseInt(document.getElementById('rsInterval')?.value ?? '7');
+  const cost_per_unit = document.getElementById('rsCost')?.value || '';
+  const notes = document.getElementById('rsNotes')?.value || '';
+
+  if (isNaN(quantity_added) || quantity_added <= 0) return toast('Enter a valid quantity received.', 'warn');
+  if (!received_date) return toast('Select the date received.', 'warn');
+
+  const res = await api('record_cafeteria_restock', {
+    product_id: productId, quantity_added, received_date, expiration_date,
+    restock_interval_days: isNaN(restock_interval_days) ? 7 : restock_interval_days, cost_per_unit, notes
+  });
+  if (!res.success) return toast(res.message || 'Failed to record restock.', 'error');
+
+  toast(res.message || 'Restock recorded.', 'success');
+  closeModal();
+  renderCafeteriaInventory(document.getElementById('contentArea'));
+}
+
+/* ── Record Sale / Deduction ───────────────────────────────── */
+function openRecordSale(productId) {
+  const r = _invFindRow(productId);
+  if (!r) return;
+
+  openModal(`Record Sale — ${r.name}`,
+    `<div class="form-grid">
+       <div class="form-group">
+         <label>Quantity Sold / Deducted</label>
+         <input type="number" min="1" max="${r.quantity}" class="form-input" id="saleQty" placeholder="e.g. 5"/>
+         <p class="field-hint">${r.quantity} unit(s) currently in stock.</p>
+       </div>
+       <div class="form-group">
+         <label>Unit Price</label>
+         <input type="number" min="0" step="0.01" class="form-input" id="salePrice" value="${parseFloat(r.price).toFixed(2)}"/>
+       </div>
+     </div>
+     <div class="form-group">
+       <label>Reason</label>
+       <select class="form-input" id="saleReason">
+         <option value="sale">Sold to student</option>
+         <option value="spoilage">Spoilage</option>
+         <option value="waste">Waste / Damaged</option>
+         <option value="correction">Correction</option>
+       </select>
+     </div>
+     <div class="form-group">
+       <label>Notes (optional)</label>
+       <input type="text" class="form-input" id="saleNotes" placeholder="Optional note"/>
+     </div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+     <button class="btn btn-primary" onclick="submitRecordSale(${productId})"><i class="fa-solid fa-cash-register"></i> Save</button>`
+  );
+}
+
+async function submitRecordSale(productId) {
+  const quantity_sold = parseInt(document.getElementById('saleQty')?.value ?? '0');
+  const unit_price = document.getElementById('salePrice')?.value || '';
+  const reason = document.getElementById('saleReason')?.value || 'sale';
+  const notes = document.getElementById('saleNotes')?.value || '';
+
+  if (isNaN(quantity_sold) || quantity_sold <= 0) return toast('Enter a valid quantity.', 'warn');
+
+  const res = await api('record_cafeteria_sale', { product_id: productId, quantity_sold, unit_price, reason, notes });
+  if (!res.success) return toast(res.message || 'Failed to record sale.', 'error');
+
+  toast(res.message || 'Sale recorded.', 'success');
+  closeModal();
+  renderCafeteriaInventory(document.getElementById('contentArea'));
+}
+
+/* ── Detailed view: history + stats ────────────────────────── */
+async function openInventoryDetail(productId) {
+  const rowRef = _invFindRow(productId);
+  openModal(`Inventory Details — ${rowRef ? rowRef.name : ''}`,
+    `<div class="flex-center" style="height:160px"><div class="spinner"></div></div>`, '', true);
+
+  const res = await api('get_cafeteria_inventory_detail', { product_id: productId });
+  if (!res.success) {
+    document.getElementById('modalBody').innerHTML = `<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i><p>${escHTML(res.message || 'Failed to load details.')}</p></div>`;
+    document.getElementById('modalFooter').innerHTML = `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`;
+    return;
+  }
+
+  const { product, restock_history, sales_history, adjustment_history, stats } = res.data;
+  document.getElementById('modalTitle').textContent = `Inventory Details — ${product.name}`;
+
+  const body = `
+    <div class="inv-detail-stats">
+      <div class="stat-card-mini">
+        <span class="stat-card-mini-label">Selling Price</span>
+        <span class="stat-card-mini-value">₱${parseFloat(product.price).toFixed(2)}</span>
+      </div>
+      <div class="stat-card-mini">
+        <span class="stat-card-mini-label">Current Stock</span>
+        <span class="stat-card-mini-value">${product.quantity}</span>
+      </div>
+      <div class="stat-card-mini">
+        <span class="stat-card-mini-label">Total Received</span>
+        <span class="stat-card-mini-value">${stats.total_units_received}</span>
+      </div>
+      <div class="stat-card-mini">
+        <span class="stat-card-mini-label">Total Sold</span>
+        <span class="stat-card-mini-value">${stats.total_units_sold}</span>
+      </div>
+      <div class="stat-card-mini">
+        <span class="stat-card-mini-label">Total Sales Revenue</span>
+        <span class="stat-card-mini-value">₱${parseFloat(stats.total_revenue).toFixed(2)}</span>
+      </div>
+      <div class="stat-card-mini">
+        <span class="stat-card-mini-label">Lost to Spoilage / Damage</span>
+        <span class="stat-card-mini-value">${stats.total_units_removed}</span>
+      </div>
+      <div class="stat-card-mini">
+        <span class="stat-card-mini-label">Avg. Sold / Day</span>
+        <span class="stat-card-mini-value">${stats.avg_daily_deduction}</span>
+      </div>
+      <div class="stat-card-mini">
+        <span class="stat-card-mini-label">Est. Days of Stock Left</span>
+        <span class="stat-card-mini-value">${stats.days_of_stock_left === null ? '—' : stats.days_of_stock_left}</span>
+      </div>
+    </div>
+
+    <div class="inv-detail-meta">
+      <span><i class="fa-solid fa-truck-ramp-box"></i> Last Restock: <strong>${invDate(product.last_restock_date)}</strong></span>
+      <span><i class="fa-solid fa-calendar-xmark"></i> Expiration: <strong>${invDate(product.expiration_date)}</strong></span>
+      <span><i class="fa-solid fa-calendar-check"></i> Next Restock (est.): <strong>${invDate(product.next_restock_date)}</strong></span>
+    </div>
+
+    <div class="inv-accordion">
+      <div class="inv-accordion-item open" id="invAccItem-restock">
+        <button type="button" class="inv-accordion-header" onclick="toggleInvAccordion('restock')">
+          <span><i class="fa-solid fa-truck-ramp-box"></i> Restock History <span class="inv-accordion-count">${restock_history.length}</span></span>
+          <i class="fa-solid fa-chevron-down inv-accordion-chevron"></i>
+        </button>
+        <div class="inv-accordion-body">
+         <div class="inv-accordion-body-inner">
+          <div class="table-wrap" style="margin:0">
+            <table>
+              <thead><tr><th>Received</th><th>Qty Added</th><th>Expiration</th><th>Next Restock</th><th>Cost/Unit</th><th>By</th></tr></thead>
+              <tbody>
+                ${restock_history.length === 0
+      ? `<tr><td colspan="6"><div class="empty-state" style="padding:24px"><p>No restocks logged yet</p></div></td></tr>`
+      : restock_history.map(h => `
+                <tr>
+                  <td>${invDate(h.received_date)}</td>
+                  <td class="td-mono">+${h.quantity_added}</td>
+                  <td>${invDate(h.expiration_date)}</td>
+                  <td>${invDate(h.next_restock_date)}</td>
+                  <td class="td-mono">${h.cost_per_unit ? '₱' + parseFloat(h.cost_per_unit).toFixed(2) : '—'}</td>
+                  <td>${escHTML(h.restocked_by_name || h.restocked_by || 'System')}</td>
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+         </div>
+        </div>
+      </div>
+
+      <div class="inv-accordion-item" id="invAccItem-sales">
+        <button type="button" class="inv-accordion-header" onclick="toggleInvAccordion('sales')">
+          <span><i class="fa-solid fa-cash-register"></i> Sales History <span class="inv-accordion-count">${sales_history.length}</span></span>
+          <i class="fa-solid fa-chevron-down inv-accordion-chevron"></i>
+        </button>
+        <div class="inv-accordion-body">
+         <div class="inv-accordion-body-inner">
+          <div class="table-wrap" style="margin:0">
+            <table>
+              <thead><tr><th>Date</th><th>Qty</th><th>Unit Price</th><th>Total</th><th>Reason</th><th>By</th></tr></thead>
+              <tbody>
+                ${sales_history.length === 0
+      ? `<tr><td colspan="6"><div class="empty-state" style="padding:24px"><p>No sales recorded yet</p></div></td></tr>`
+      : sales_history.map(s => `
+                <tr>
+                  <td class="td-mono" style="white-space:nowrap">${escHTML(s.sold_at)}</td>
+                  <td class="td-mono">-${s.quantity_sold}</td>
+                  <td class="td-mono">₱${parseFloat(s.unit_price).toFixed(2)}</td>
+                  <td class="td-mono">₱${parseFloat(s.total_amount).toFixed(2)}</td>
+                  <td><span class="cat-tag cat-tag-${escHTML(s.reason)}">${escHTML(s.reason)}</span></td>
+                  <td>${escHTML(s.recorded_by_name || s.recorded_by || 'System')}</td>
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+         </div>
+        </div>
+      </div>
+
+      <div class="inv-accordion-item" id="invAccItem-adjustments">
+        <button type="button" class="inv-accordion-header" onclick="toggleInvAccordion('adjustments')">
+          <span><i class="fa-solid fa-triangle-exclamation"></i> Stock Adjustments <span class="inv-accordion-count">${(adjustment_history || []).length}</span></span>
+          <i class="fa-solid fa-chevron-down inv-accordion-chevron"></i>
+        </button>
+        <div class="inv-accordion-body">
+         <div class="inv-accordion-body-inner">
+          <div class="table-wrap" style="margin:0">
+            <table>
+              <thead><tr><th>Date</th><th>Change</th><th>Reason</th><th>Notes</th><th>By</th></tr></thead>
+              <tbody>
+                ${!adjustment_history || adjustment_history.length === 0
+      ? `<tr><td colspan="5"><div class="empty-state" style="padding:24px"><p>No stock adjustments logged yet</p></div></td></tr>`
+      : adjustment_history.map(j => `
+                <tr>
+                  <td class="td-mono" style="white-space:nowrap">${escHTML(j.adjusted_at)}</td>
+                  <td class="td-mono">${j.quantity_delta > 0 ? '+' : ''}${j.quantity_delta}</td>
+                  <td><span class="cat-tag cat-tag-${escHTML(j.reason)}">${escHTML(j.reason)}</span></td>
+                  <td>${j.notes ? escHTML(j.notes) : '<span style="color:var(--text-muted)">—</span>'}</td>
+                  <td>${escHTML(j.adjusted_by_name || j.adjusted_by || 'System')}</td>
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+         </div>
+        </div>
+      </div>
+    </div>`;
+
+  document.getElementById('modalBody').innerHTML = body;
+  document.getElementById('modalFooter').innerHTML = `<button class="btn btn-ghost" onclick="closeModal()">Close</button>`;
+}
+
+/* ── Accordion: only one of Restock / Sales / Adjustments history open at a time ── */
+function toggleInvAccordion(key) {
+  const target = document.getElementById(`invAccItem-${key}`);
+  if (!target) return;
+  const wasOpen = target.classList.contains('open');
+  document.querySelectorAll('.inv-accordion-item.open').forEach(el => el.classList.remove('open'));
+  if (!wasOpen) target.classList.add('open');
 }
 
 /* ════════════════════════════════════════════════════════════

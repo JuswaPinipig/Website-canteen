@@ -148,6 +148,39 @@ function requireAdmin(): int {
     return $sessionId;
 }
 
+// ─── CAFETERIA MENU IMAGE UPLOAD HELPER ─────────────────────
+/**
+ * Handles an optional $_FILES['image'] upload for a menu product.
+ * Returns the relative path to store in DB, or null if no file was sent.
+ * Throws a RuntimeException (caught by caller) on validation failure.
+ */
+function handleMenuImageUpload(): ?string {
+    if (empty($_FILES['image']) || $_FILES['image']['error'] === UPLOAD_ERR_NO_FILE) {
+        return null;
+    }
+    $file = $_FILES['image'];
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        throw new RuntimeException('Image upload failed. Please try again.');
+    }
+    if ($file['size'] > 5 * 1024 * 1024) {
+        throw new RuntimeException('Image must be 5MB or smaller.');
+    }
+    $allowed = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif'];
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $mime  = finfo_file($finfo, $file['tmp_name']);
+    finfo_close($finfo);
+    if (!isset($allowed[$mime])) {
+        throw new RuntimeException('Only JPG, PNG, WEBP, or GIF images are allowed.');
+    }
+    $dir = __DIR__ . '/uploads/menu';
+    if (!is_dir($dir)) mkdir($dir, 0755, true);
+    $filename = 'menu_' . bin2hex(random_bytes(8)) . '.' . $allowed[$mime];
+    if (!move_uploaded_file($file['tmp_name'], $dir . '/' . $filename)) {
+        throw new RuntimeException('Failed to save uploaded image.');
+    }
+    return 'uploads/menu/' . $filename;
+}
+
 function logAudit(int $adminId, string $action, string $table, int $recordId,
                   ?array $old = null, ?array $new = null): void {
     $ip        = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['HTTP_X_REAL_IP'] ?? $_SERVER['REMOTE_ADDR'] ?? null;
@@ -188,6 +221,78 @@ function logAudit(int $adminId, string $action, string $table, int $recordId,
             $ip
         ]);
     }
+}
+
+// ─── CAFETERIA INVENTORY — EXTENDED SCHEMA (self-healing) ───
+/**
+ * Adds restock/expiry tracking columns to cafeteria_inventory and creates
+ * the restock/sales log tables the first time they're needed. Safe to call
+ * on every request — each statement is wrapped so an "already exists"
+ * error is silently ignored.
+ */
+function ensureCafeteriaInventoryExtras(): void {
+    $alters = [
+        "ALTER TABLE cafeteria_inventory ADD COLUMN last_restock_date DATE DEFAULT NULL",
+        "ALTER TABLE cafeteria_inventory ADD COLUMN expiration_date DATE DEFAULT NULL",
+        "ALTER TABLE cafeteria_inventory ADD COLUMN next_restock_date DATE DEFAULT NULL",
+        "ALTER TABLE cafeteria_inventory ADD COLUMN restock_interval_days INT DEFAULT 7",
+    ];
+    foreach ($alters as $sql) {
+        try { db()->exec($sql); } catch (\Exception $e) { /* column already exists */ }
+    }
+
+    try {
+        db()->exec(
+            "CREATE TABLE IF NOT EXISTS cafeteria_restock_log (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                product_id INT NOT NULL,
+                quantity_added INT NOT NULL,
+                received_date DATE NOT NULL,
+                expiration_date DATE DEFAULT NULL,
+                next_restock_date DATE DEFAULT NULL,
+                cost_per_unit DECIMAL(10,2) DEFAULT NULL,
+                notes VARCHAR(255) DEFAULT NULL,
+                restocked_by INT DEFAULT NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                INDEX (product_id)
+            )"
+        );
+    } catch (\Exception $e) { /* already exists */ }
+
+    try {
+        db()->exec(
+            "CREATE TABLE IF NOT EXISTS cafeteria_sales_log (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                product_id INT NOT NULL,
+                quantity_sold INT NOT NULL,
+                unit_price DECIMAL(10,2) NOT NULL,
+                total_amount DECIMAL(10,2) NOT NULL,
+                reason VARCHAR(30) NOT NULL DEFAULT 'sale',
+                notes VARCHAR(255) DEFAULT NULL,
+                recorded_by INT DEFAULT NULL,
+                sold_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                INDEX (product_id)
+            )"
+        );
+    } catch (\Exception $e) { /* already exists */ }
+
+    // Non-sale stock removals (spoilage, damage, expiry, miscount correction).
+    // Kept separate from cafeteria_sales_log so "Sales History" only ever
+    // reflects real revenue, while "Stock Adjustments" explains shrinkage.
+    try {
+        db()->exec(
+            "CREATE TABLE IF NOT EXISTS cafeteria_stock_adjustments (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                product_id INT NOT NULL,
+                quantity_delta INT NOT NULL COMMENT 'negative = removed, positive = corrected upward',
+                reason VARCHAR(30) NOT NULL DEFAULT 'other',
+                notes VARCHAR(255) DEFAULT NULL,
+                adjusted_by INT DEFAULT NULL,
+                adjusted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                INDEX (product_id)
+            )"
+        );
+    } catch (\Exception $e) { /* already exists */ }
 }
 
 // ─── SCHOOL YEAR STRICT VALIDATION (Fix #1) ─────────────────
@@ -3033,7 +3138,7 @@ switch ($action) {
         $includeArchived = post('include_archived', '0') === '1';
         $where = $includeArchived ? '' : "WHERE status = 'active'";
         $rows = db()->query(
-            "SELECT id, name, category, price, status, created_at, updated_at
+            "SELECT id, name, image_path, category, price, nutritional_info, status, is_visible, created_at, updated_at
              FROM cafeteria_products
              {$where}
              ORDER BY category, name"
@@ -3047,6 +3152,7 @@ switch ($action) {
         $name     = post('name');
         $category = post('category', 'other');
         $price    = (float) post('price', '0');
+        $nutrition = post('nutritional_info', '');
 
         requireField($name, 'Product name');
         if (!in_array($category, ['meal', 'snack', 'drink', 'other'], true)) $category = 'other';
@@ -3056,10 +3162,17 @@ switch ($action) {
         $dup->execute([$name]);
         if ($dup->fetch()) { out(false, "\"{$name}\" already exists in the menu."); break; }
 
+        try {
+            $imagePath = handleMenuImageUpload();
+        } catch (RuntimeException $e) {
+            out(false, $e->getMessage()); break;
+        }
+
         $stmt = db()->prepare(
-            "INSERT INTO cafeteria_products (name, category, price, status, created_by) VALUES (?, ?, ?, 'active', ?)"
+            "INSERT INTO cafeteria_products (name, image_path, category, price, nutritional_info, status, is_visible, created_by)
+             VALUES (?, ?, ?, ?, ?, 'active', 1, ?)"
         );
-        $stmt->execute([$name, $category, $price, $_SESSION['admin_id'] ?? null]);
+        $stmt->execute([$name, $imagePath, $category, $price, $nutrition !== '' ? $nutrition : null, $_SESSION['admin_id'] ?? null]);
         $newId = (int) db()->lastInsertId();
 
         // Auto-create an inventory row at 0 stock so it immediately shows in Inventory
@@ -3072,7 +3185,7 @@ switch ($action) {
             null, ['name' => $name, 'category' => $category, 'price' => $price]
         );
 
-        $row = db()->prepare('SELECT id, name, category, price, status, created_at FROM cafeteria_products WHERE id = ?');
+        $row = db()->prepare('SELECT id, name, image_path, category, price, nutritional_info, status, is_visible, created_at FROM cafeteria_products WHERE id = ?');
         $row->execute([$newId]);
         out(true, "{$name} added to the food menu.", $row->fetch());
         break;
@@ -3084,6 +3197,7 @@ switch ($action) {
         $name     = post('name');
         $category = post('category', 'other');
         $price    = (float) post('price', '0');
+        $nutrition = post('nutritional_info', '');
 
         if (!$id) { out(false, 'Product ID is required.'); break; }
         requireField($name, 'Product name');
@@ -3095,8 +3209,23 @@ switch ($action) {
         $old = $row->fetch();
         if (!$old) { out(false, 'Product not found.'); break; }
 
-        db()->prepare('UPDATE cafeteria_products SET name = ?, category = ?, price = ? WHERE id = ?')
-            ->execute([$name, $category, $price, $id]);
+        try {
+            $imagePath = handleMenuImageUpload();
+        } catch (RuntimeException $e) {
+            out(false, $e->getMessage()); break;
+        }
+
+        if ($imagePath !== null) {
+            db()->prepare('UPDATE cafeteria_products SET name = ?, image_path = ?, category = ?, price = ?, nutritional_info = ? WHERE id = ?')
+                ->execute([$name, $imagePath, $category, $price, $nutrition !== '' ? $nutrition : null, $id]);
+            // Clean up the old image file if it's being replaced
+            if (!empty($old['image_path']) && file_exists(__DIR__ . '/' . $old['image_path'])) {
+                @unlink(__DIR__ . '/' . $old['image_path']);
+            }
+        } else {
+            db()->prepare('UPDATE cafeteria_products SET name = ?, category = ?, price = ?, nutritional_info = ? WHERE id = ?')
+                ->execute([$name, $category, $price, $nutrition !== '' ? $nutrition : null, $id]);
+        }
 
         logAudit(
             $_SESSION['admin_id'] ?? 0, 'update', 'cafeteria_products', $id,
@@ -3104,6 +3233,28 @@ switch ($action) {
         );
 
         out(true, "{$name} updated.");
+        break;
+    }
+
+    case 'toggle_cafeteria_product_visibility': {
+        requireAdmin();
+        $id = (int) post('id');
+        $isVisible = post('is_visible', '1') === '1' ? 1 : 0;
+        if (!$id) { out(false, 'Product ID is required.'); break; }
+
+        $row = db()->prepare('SELECT * FROM cafeteria_products WHERE id = ? LIMIT 1');
+        $row->execute([$id]);
+        $product = $row->fetch();
+        if (!$product) { out(false, 'Product not found.'); break; }
+
+        db()->prepare('UPDATE cafeteria_products SET is_visible = ? WHERE id = ?')->execute([$isVisible, $id]);
+
+        logAudit(
+            $_SESSION['admin_id'] ?? 0, 'update', 'cafeteria_products', $id,
+            ['is_visible' => (int) $product['is_visible']], ['is_visible' => $isVisible]
+        );
+
+        out(true, $isVisible ? "{$product['name']} is now available in the menu." : "{$product['name']} is now hidden from the menu.");
         break;
     }
 
@@ -3159,6 +3310,9 @@ switch ($action) {
             db()->beginTransaction();
             db()->prepare('DELETE FROM cafeteria_products WHERE id = ?')->execute([$id]); // cascades to inventory
             db()->commit();
+            if (!empty($product['image_path']) && file_exists(__DIR__ . '/' . $product['image_path'])) {
+                @unlink(__DIR__ . '/' . $product['image_path']);
+            }
             logAudit($_SESSION['admin_id'] ?? 0, 'delete', 'cafeteria_products', $id, $product, null);
             out(true, "{$product['name']} permanently deleted.");
         } catch (PDOException $e) {
@@ -3173,28 +3327,64 @@ switch ($action) {
     ═══════════════════════════════════════════════════════ */
     case 'get_cafeteria_inventory': {
         requireAdmin();
+        ensureCafeteriaInventoryExtras();
         $rows = db()->query(
             "SELECT p.id AS product_id, p.name, p.category, p.price, p.status,
                     COALESCE(i.quantity, 0)             AS quantity,
                     COALESCE(i.low_stock_threshold, 10)  AS low_stock_threshold,
-                    i.updated_at
+                    i.last_restock_date, i.expiration_date, i.next_restock_date,
+                    COALESCE(i.restock_interval_days, 7) AS restock_interval_days,
+                    i.updated_at,
+                    (SELECT r.quantity_added FROM cafeteria_restock_log r
+                       WHERE r.product_id = p.id
+                       ORDER BY r.created_at DESC, r.id DESC LIMIT 1) AS last_restock_qty
              FROM cafeteria_products p
              LEFT JOIN cafeteria_inventory i ON i.product_id = p.id
              WHERE p.status = 'active'
              ORDER BY p.category, p.name"
         )->fetchAll();
+
+        $today = date('Y-m-d');
+        foreach ($rows as &$r) {
+            $qty       = (int) $r['quantity'];
+            $threshold = (int) $r['low_stock_threshold'];
+            $exp       = $r['expiration_date'];
+
+            if ($qty <= 0) {
+                $r['stock_state'] = 'out';
+            } elseif ($qty <= $threshold) {
+                $r['stock_state'] = 'low';
+            } else {
+                $r['stock_state'] = 'ok';
+            }
+
+            if ($exp && $exp < $today) {
+                $r['expiry_state'] = 'expired';
+            } elseif ($exp && $exp <= date('Y-m-d', strtotime('+3 days'))) {
+                $r['expiry_state'] = 'expiring_soon';
+            } else {
+                $r['expiry_state'] = 'ok';
+            }
+        }
+        unset($r);
+
         out(true, '', $rows);
         break;
     }
 
     case 'update_cafeteria_inventory': {
+        // NOTE: Current stock is intentionally NOT editable here. It is only ever
+        // changed by record_cafeteria_restock (+), record_cafeteria_sale (-), or
+        // record_cafeteria_adjustment (+/- with a reason). This endpoint only
+        // touches admin-configurable settings: the low-stock alert threshold and,
+        // optionally, a manual override of the next-restock date.
         requireAdmin();
-        $productId = (int) post('product_id');
-        $quantity  = (int) post('quantity', '0');
-        $threshold = (int) post('low_stock_threshold', '10');
+        ensureCafeteriaInventoryExtras();
+        $productId          = (int) post('product_id');
+        $threshold          = (int) post('low_stock_threshold', '10');
+        $nextRestockOverride = post('next_restock_date', '');
 
         if (!$productId) { out(false, 'Product ID is required.'); break; }
-        if ($quantity < 0)  { out(false, 'Quantity cannot be negative.'); break; }
         if ($threshold < 0) $threshold = 0;
 
         $prod = db()->prepare('SELECT name FROM cafeteria_products WHERE id = ? LIMIT 1');
@@ -3205,21 +3395,299 @@ switch ($action) {
         $existing = db()->prepare('SELECT * FROM cafeteria_inventory WHERE product_id = ? LIMIT 1');
         $existing->execute([$productId]);
         $old = $existing->fetch();
+        $nextRestock = $nextRestockOverride !== '' ? $nextRestockOverride : ($old['next_restock_date'] ?? null);
 
         if ($old) {
-            db()->prepare('UPDATE cafeteria_inventory SET quantity = ?, low_stock_threshold = ?, updated_by = ? WHERE product_id = ?')
-                ->execute([$quantity, $threshold, $_SESSION['admin_id'] ?? null, $productId]);
+            db()->prepare('UPDATE cafeteria_inventory SET low_stock_threshold = ?, next_restock_date = ?, updated_by = ? WHERE product_id = ?')
+                ->execute([$threshold, $nextRestock, $_SESSION['admin_id'] ?? null, $productId]);
         } else {
-            db()->prepare('INSERT INTO cafeteria_inventory (product_id, quantity, low_stock_threshold, updated_by) VALUES (?, ?, ?, ?)')
-                ->execute([$productId, $quantity, $threshold, $_SESSION['admin_id'] ?? null]);
+            db()->prepare('INSERT INTO cafeteria_inventory (product_id, quantity, low_stock_threshold, next_restock_date, updated_by) VALUES (?, 0, ?, ?, ?)')
+                ->execute([$productId, $threshold, $nextRestock, $_SESSION['admin_id'] ?? null]);
         }
 
         logAudit(
             $_SESSION['admin_id'] ?? 0, 'update', 'cafeteria_inventory', $productId,
-            $old ?: null, ['quantity' => $quantity, 'low_stock_threshold' => $threshold]
+            $old ?: null, ['low_stock_threshold' => $threshold, 'next_restock_date' => $nextRestock]
         );
 
-        out(true, "Stock for {$p['name']} updated.");
+        out(true, "Settings for {$p['name']} updated.");
+        break;
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       CAFETERIA · INVENTORY — STOCK ADJUSTMENT (spoilage,
+       damage, expiry, miscount correction — NOT a sale)
+    ═══════════════════════════════════════════════════════ */
+    case 'record_cafeteria_adjustment': {
+        requireAdmin();
+        ensureCafeteriaInventoryExtras();
+
+        $productId    = (int) post('product_id');
+        $qtyRemoved   = (int) post('quantity_removed', '0');
+        $reason       = post('reason', 'other');
+        $notes        = post('notes', '');
+        $validReasons = ['spoilage', 'damage', 'expired', 'correction', 'other'];
+
+        if (!$productId) { out(false, 'Product ID is required.'); break; }
+        if ($qtyRemoved <= 0) { out(false, 'Enter a valid quantity to remove.'); break; }
+        if (!in_array($reason, $validReasons, true)) $reason = 'other';
+
+        $prod = db()->prepare('SELECT name FROM cafeteria_products WHERE id = ? LIMIT 1');
+        $prod->execute([$productId]);
+        $p = $prod->fetch();
+        if (!$p) { out(false, 'Product not found.'); break; }
+
+        $existing = db()->prepare('SELECT * FROM cafeteria_inventory WHERE product_id = ? LIMIT 1');
+        $existing->execute([$productId]);
+        $old = $existing->fetch();
+        $currentQty = $old ? (int) $old['quantity'] : 0;
+
+        if ($qtyRemoved > $currentQty) { out(false, "Only {$currentQty} unit(s) of {$p['name']} in stock."); break; }
+
+        $newQty = $currentQty - $qtyRemoved;
+
+        if ($old) {
+            db()->prepare('UPDATE cafeteria_inventory SET quantity = ?, updated_by = ? WHERE product_id = ?')
+                ->execute([$newQty, $_SESSION['admin_id'] ?? null, $productId]);
+        } else {
+            db()->prepare('INSERT INTO cafeteria_inventory (product_id, quantity, low_stock_threshold, updated_by) VALUES (?, ?, 10, ?)')
+                ->execute([$productId, $newQty, $_SESSION['admin_id'] ?? null]);
+        }
+
+        db()->prepare(
+            'INSERT INTO cafeteria_stock_adjustments (product_id, quantity_delta, reason, notes, adjusted_by)
+             VALUES (?, ?, ?, ?, ?)'
+        )->execute([$productId, -$qtyRemoved, $reason, $notes !== '' ? $notes : null, $_SESSION['admin_id'] ?? null]);
+
+        logAudit(
+            $_SESSION['admin_id'] ?? 0, 'adjust', 'cafeteria_inventory', $productId,
+            $old ?: null, ['quantity_removed' => $qtyRemoved, 'reason' => $reason, 'new_quantity' => $newQty]
+        );
+
+        out(true, "Removed {$qtyRemoved} unit(s) of {$p['name']} ({$reason}). Now {$newQty} in stock.");
+        break;
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       CAFETERIA · INVENTORY — RESTOCK (receive new stock)
+    ═══════════════════════════════════════════════════════ */
+    case 'record_cafeteria_restock': {
+        requireAdmin();
+        ensureCafeteriaInventoryExtras();
+
+        $productId    = (int) post('product_id');
+        $qtyAdded     = (int) post('quantity_added', '0');
+        $receivedDate = post('received_date', date('Y-m-d'));
+        $expDate      = post('expiration_date', '');
+        $interval     = (int) post('restock_interval_days', '7');
+        $costPerUnit  = post('cost_per_unit', '');
+        $notes        = post('notes', '');
+
+        if (!$productId) { out(false, 'Product ID is required.'); break; }
+        if ($qtyAdded <= 0) { out(false, 'Quantity received must be greater than zero.'); break; }
+        if ($interval <= 0) $interval = 7;
+        if ($receivedDate > date('Y-m-d')) { out(false, 'Date received cannot be in the future.'); break; }
+
+        $prod = db()->prepare('SELECT name FROM cafeteria_products WHERE id = ? LIMIT 1');
+        $prod->execute([$productId]);
+        $p = $prod->fetch();
+        if (!$p) { out(false, 'Product not found.'); break; }
+
+        $nextRestock = date('Y-m-d', strtotime($receivedDate . " +{$interval} days"));
+
+        $existing = db()->prepare('SELECT * FROM cafeteria_inventory WHERE product_id = ? LIMIT 1');
+        $existing->execute([$productId]);
+        $old = $existing->fetch();
+        $newQty = ($old ? (int) $old['quantity'] : 0) + $qtyAdded;
+
+        if ($old) {
+            db()->prepare(
+                'UPDATE cafeteria_inventory
+                 SET quantity = ?, last_restock_date = ?, expiration_date = ?, next_restock_date = ?,
+                     restock_interval_days = ?, updated_by = ?
+                 WHERE product_id = ?'
+            )->execute([$newQty, $receivedDate, $expDate !== '' ? $expDate : null, $nextRestock, $interval, $_SESSION['admin_id'] ?? null, $productId]);
+        } else {
+            db()->prepare(
+                'INSERT INTO cafeteria_inventory
+                    (product_id, quantity, low_stock_threshold, last_restock_date, expiration_date, next_restock_date, restock_interval_days, updated_by)
+                 VALUES (?, ?, 10, ?, ?, ?, ?, ?)'
+            )->execute([$productId, $newQty, $receivedDate, $expDate !== '' ? $expDate : null, $nextRestock, $interval, $_SESSION['admin_id'] ?? null]);
+        }
+
+        db()->prepare(
+            'INSERT INTO cafeteria_restock_log
+                (product_id, quantity_added, received_date, expiration_date, next_restock_date, cost_per_unit, notes, restocked_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        )->execute([
+            $productId, $qtyAdded, $receivedDate, $expDate !== '' ? $expDate : null, $nextRestock,
+            $costPerUnit !== '' ? (float) $costPerUnit : null, $notes !== '' ? $notes : null, $_SESSION['admin_id'] ?? null
+        ]);
+
+        logAudit(
+            $_SESSION['admin_id'] ?? 0, 'restock', 'cafeteria_inventory', $productId,
+            $old ?: null, ['quantity_added' => $qtyAdded, 'new_quantity' => $newQty, 'received_date' => $receivedDate, 'expiration_date' => $expDate]
+        );
+
+        out(true, "Restocked {$p['name']}: +{$qtyAdded} units (now {$newQty}).");
+        break;
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       CAFETERIA · INVENTORY — RECORD SALE / DEDUCTION
+    ═══════════════════════════════════════════════════════ */
+    case 'record_cafeteria_sale': {
+        requireAdmin();
+        ensureCafeteriaInventoryExtras();
+
+        $productId = (int) post('product_id');
+        $qtySold   = (int) post('quantity_sold', '0');
+        $unitPrice = post('unit_price', '');
+        $reason    = post('reason', 'sale');
+        $notes     = post('notes', '');
+
+        if (!$productId) { out(false, 'Product ID is required.'); break; }
+        if ($qtySold <= 0) { out(false, 'Quantity must be greater than zero.'); break; }
+        if (!in_array($reason, ['sale', 'spoilage', 'waste', 'correction'], true)) $reason = 'sale';
+
+        $prod = db()->prepare('SELECT name, price FROM cafeteria_products WHERE id = ? LIMIT 1');
+        $prod->execute([$productId]);
+        $p = $prod->fetch();
+        if (!$p) { out(false, 'Product not found.'); break; }
+
+        $price = $unitPrice !== '' ? (float) $unitPrice : (float) $p['price'];
+        if ($price < 0) { out(false, 'Unit price cannot be negative.'); break; }
+
+        $existing = db()->prepare('SELECT * FROM cafeteria_inventory WHERE product_id = ? LIMIT 1');
+        $existing->execute([$productId]);
+        $old = $existing->fetch();
+        $currentQty = $old ? (int) $old['quantity'] : 0;
+
+        if ($qtySold > $currentQty) { out(false, "Only {$currentQty} unit(s) of {$p['name']} left in stock."); break; }
+
+        $newQty = $currentQty - $qtySold;
+        $total  = round($price * $qtySold, 2);
+
+        if ($old) {
+            db()->prepare('UPDATE cafeteria_inventory SET quantity = ?, updated_by = ? WHERE product_id = ?')
+                ->execute([$newQty, $_SESSION['admin_id'] ?? null, $productId]);
+        } else {
+            db()->prepare('INSERT INTO cafeteria_inventory (product_id, quantity, low_stock_threshold, updated_by) VALUES (?, ?, 10, ?)')
+                ->execute([$productId, $newQty, $_SESSION['admin_id'] ?? null]);
+        }
+
+        db()->prepare(
+            'INSERT INTO cafeteria_sales_log (product_id, quantity_sold, unit_price, total_amount, reason, notes, recorded_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?)'
+        )->execute([$productId, $qtySold, $price, $total, $reason, $notes !== '' ? $notes : null, $_SESSION['admin_id'] ?? null]);
+
+        logAudit(
+            $_SESSION['admin_id'] ?? 0, 'deduct', 'cafeteria_inventory', $productId,
+            $old ?: null, ['quantity_sold' => $qtySold, 'reason' => $reason, 'new_quantity' => $newQty]
+        );
+
+        out(true, "Recorded {$qtySold} unit(s) of {$p['name']} (₱" . number_format($total, 2) . ").");
+        break;
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       CAFETERIA · INVENTORY — DETAILED VIEW (history + stats)
+    ═══════════════════════════════════════════════════════ */
+    case 'get_cafeteria_inventory_detail': {
+        requireAdmin();
+        ensureCafeteriaInventoryExtras();
+
+        $productId = (int) post('product_id');
+        if (!$productId) { out(false, 'Product ID is required.'); break; }
+
+        $prod = db()->prepare(
+            "SELECT p.id AS product_id, p.name, p.category, p.price,
+                    COALESCE(i.quantity, 0) AS quantity,
+                    COALESCE(i.low_stock_threshold, 10) AS low_stock_threshold,
+                    i.last_restock_date, i.expiration_date, i.next_restock_date,
+                    COALESCE(i.restock_interval_days, 7) AS restock_interval_days
+             FROM cafeteria_products p
+             LEFT JOIN cafeteria_inventory i ON i.product_id = p.id
+             WHERE p.id = ? LIMIT 1"
+        );
+        $prod->execute([$productId]);
+        $product = $prod->fetch();
+        if (!$product) { out(false, 'Product not found.'); break; }
+
+        $restockStmt = db()->prepare(
+            'SELECT r.*, a.full_name AS restocked_by_name
+             FROM cafeteria_restock_log r
+             LEFT JOIN admins a ON a.id = r.restocked_by
+             WHERE r.product_id = ? ORDER BY r.created_at DESC LIMIT 25'
+        );
+        $restockStmt->execute([$productId]);
+        $restockRows = $restockStmt->fetchAll();
+
+        $salesStmt = db()->prepare(
+            'SELECT s.*, a.full_name AS recorded_by_name
+             FROM cafeteria_sales_log s
+             LEFT JOIN admins a ON a.id = s.recorded_by
+             WHERE s.product_id = ? AND s.reason = \'sale\' ORDER BY s.sold_at DESC LIMIT 25'
+        );
+        $salesStmt->execute([$productId]);
+        $salesRows = $salesStmt->fetchAll();
+
+        $adjStmt = db()->prepare(
+            'SELECT j.*, a.full_name AS adjusted_by_name
+             FROM cafeteria_stock_adjustments j
+             LEFT JOIN admins a ON a.id = j.adjusted_by
+             WHERE j.product_id = ? ORDER BY j.adjusted_at DESC LIMIT 25'
+        );
+        $adjStmt->execute([$productId]);
+        $adjRows = $adjStmt->fetchAll();
+
+        // Aggregate stats — real sales only (reason = 'sale')
+        $statsStmt = db()->prepare(
+            "SELECT COUNT(*) AS sale_count, COALESCE(SUM(quantity_sold),0) AS total_units,
+                    COALESCE(SUM(total_amount),0) AS total_revenue,
+                    MIN(sold_at) AS first_sale, MAX(sold_at) AS last_sale
+             FROM cafeteria_sales_log WHERE product_id = ? AND reason = 'sale'"
+        );
+        $statsStmt->execute([$productId]);
+        $stats = $statsStmt->fetch() ?: ['sale_count' => 0, 'total_units' => 0, 'total_revenue' => 0, 'first_sale' => null, 'last_sale' => null];
+
+        $restockAggStmt = db()->prepare('SELECT COUNT(*) AS c, COALESCE(SUM(quantity_added),0) AS total_received FROM cafeteria_restock_log WHERE product_id = ?');
+        $restockAggStmt->execute([$productId]);
+        $restockAgg = $restockAggStmt->fetch() ?: ['c' => 0, 'total_received' => 0];
+
+        $adjAggStmt = db()->prepare(
+            "SELECT COALESCE(SUM(CASE WHEN quantity_delta < 0 THEN -quantity_delta ELSE 0 END),0) AS total_removed
+             FROM cafeteria_stock_adjustments WHERE product_id = ?"
+        );
+        $adjAggStmt->execute([$productId]);
+        $adjAgg = $adjAggStmt->fetch() ?: ['total_removed' => 0];
+
+        // Average units sold per day since the first recorded sale
+        $avgDaily = 0.0;
+        if (!empty($stats['first_sale']) && (int) $stats['total_units'] > 0) {
+            $days = max(1, (int) ((strtotime('now') - strtotime($stats['first_sale'])) / 86400));
+            $avgDaily = round((int) $stats['total_units'] / $days, 2);
+        }
+
+        $daysOfStockLeft = $avgDaily > 0 ? floor(((int) $product['quantity']) / $avgDaily) : null;
+
+        out(true, '', [
+            'product'            => $product,
+            'restock_history'    => $restockRows,
+            'sales_history'      => $salesRows,
+            'adjustment_history' => $adjRows,
+            'stats' => [
+                'sale_count'           => (int) $stats['sale_count'],
+                'total_units_sold'     => (int) $stats['total_units'],
+                'total_revenue'        => (float) $stats['total_revenue'],
+                'restock_count'        => (int) $restockAgg['c'],
+                'total_units_received' => (int) $restockAgg['total_received'],
+                'total_units_removed'  => (int) $adjAgg['total_removed'],
+                'avg_daily_deduction'  => $avgDaily,
+                'days_of_stock_left'   => $daysOfStockLeft,
+                'last_sale_at'         => $stats['last_sale'],
+            ],
+        ]);
         break;
     }
 
@@ -3245,11 +3713,12 @@ switch ($action) {
 
         // Section comes from the student's profile assignment for the ACTIVE school year:
         // student_profiles.section_sy_id -> section_school_years.section_id -> sections
-        $sql = "SELECT s.id AS student_id,
+        $sql = "SELECT s.id AS student_id, s.lrn AS lrn,
                        TRIM(CONCAT(s.first_name,' ',COALESCE(s.middle_name,''),' ',s.last_name)) AS full_name,
                        gl.display_name AS grade_display, gl.level AS grade_level,
                        sec.id AS section_id, sec.name AS section_name,
-                       COALESCE(w.balance, 0.00) AS balance
+                       COALESCE(w.balance, 0.00) AS balance,
+                       w.updated_at AS wallet_updated_at
                 FROM students s
                 LEFT JOIN grade_levels gl ON gl.id = s.grade_level_id
                 LEFT JOIN student_profiles sp ON sp.student_id = s.id
@@ -3357,8 +3826,9 @@ switch ($action) {
             db()->commit();
 
             logAudit(
-                $adminId, $type === 'credit' ? 'wallet_credit' : 'wallet_debit', 'student_wallets', $studentId,
-                ['balance' => $currentBalance], ['balance' => $newBalance, 'note' => $note]
+                $adminId, $type === 'credit' ? 'added' : 'deducted', 'student_wallets', $studentId,
+                ['balance' => $currentBalance, '_student_name' => trim($student['first_name'] . ' ' . $student['last_name'])],
+                ['balance' => $newBalance, 'note' => $note]
             );
 
             $fullName = trim($student['first_name'] . ' ' . $student['last_name']);
@@ -3367,6 +3837,74 @@ switch ($action) {
         } catch (PDOException $e) {
             db()->rollBack();
             out(false, 'Failed to update wallet: ' . $e->getMessage());
+        }
+        break;
+    }
+
+    case 'bulk_credit_student_wallets': {
+        $adminId    = requireAdmin();
+        $studentIds = post('student_ids', '');
+        $amount     = (float) post('amount', '0');
+        $note       = post('note', '');
+
+        $ids = array_values(array_unique(array_filter(array_map('intval', explode(',', (string) $studentIds)))));
+
+        if (empty($ids)) { out(false, 'Select at least one student.'); break; }
+        if ($amount <= 0) { out(false, 'Amount must be greater than zero.'); break; }
+
+        $limitRow = db()->query('SELECT max_topup_amount FROM cafeteria_settings WHERE id = 1 LIMIT 1')->fetch();
+        $maxTopup = $limitRow ? (float) $limitRow['max_topup_amount'] : 0.00;
+        if ($maxTopup > 0 && $amount > $maxTopup) {
+            out(false, 'Amount exceeds the maximum top-up limit of ₱' . number_format($maxTopup, 2) . ' per transaction.');
+            break;
+        }
+
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $stu = db()->prepare("SELECT id, first_name, last_name FROM students WHERE id IN ($placeholders) AND is_archived = 0");
+        $stu->execute($ids);
+        $students = $stu->fetchAll();
+        if (empty($students)) { out(false, 'No valid students found.'); break; }
+
+        $successCount = 0;
+
+        try {
+            foreach ($students as $student) {
+                $studentId = (int) $student['id'];
+
+                db()->beginTransaction();
+
+                $w = db()->prepare('SELECT * FROM student_wallets WHERE student_id = ? LIMIT 1 FOR UPDATE');
+                $w->execute([$studentId]);
+                $wallet = $w->fetch();
+
+                $currentBalance = $wallet ? (float) $wallet['balance'] : 0.00;
+                $newBalance     = $currentBalance + $amount;
+
+                if ($wallet) {
+                    db()->prepare('UPDATE student_wallets SET balance = ? WHERE student_id = ?')->execute([$newBalance, $studentId]);
+                } else {
+                    db()->prepare('INSERT INTO student_wallets (student_id, balance) VALUES (?, ?)')->execute([$studentId, $newBalance]);
+                }
+
+                db()->prepare(
+                    'INSERT INTO wallet_transactions (student_id, admin_id, type, amount, balance_after, note) VALUES (?, ?, "credit", ?, ?, ?)'
+                )->execute([$studentId, $adminId, $amount, $newBalance, $note !== '' ? $note : null]);
+
+                db()->commit();
+
+                logAudit(
+                    $adminId, 'added', 'student_wallets', $studentId,
+                    ['balance' => $currentBalance, '_student_name' => trim($student['first_name'] . ' ' . $student['last_name'])],
+                    ['balance' => $newBalance, 'note' => $note]
+                );
+
+                $successCount++;
+            }
+
+            out(true, '₱' . number_format($amount, 2) . " added to {$successCount} student wallet" . ($successCount === 1 ? '' : 's') . '.', ['count' => $successCount]);
+        } catch (PDOException $e) {
+            if (db()->inTransaction()) db()->rollBack();
+            out(false, 'Failed to update wallets: ' . $e->getMessage());
         }
         break;
     }

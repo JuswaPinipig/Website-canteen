@@ -51,19 +51,21 @@ $requestMethod = $_SERVER['REQUEST_METHOD'];
 // Accept ?action=approve style URLs (Fix 1) or fall back to URL path routing
 $action = trim($_GET['action'] ?? '') ?: basename($requestUri);
 
-if (isAjax() || in_array($action, ['approve', 'decline', 'onsite', 'payment-due', 'lookup', 'suggest', 'logout', 'mark-viewed'])) {
+if (isAjax() || in_array($action, ['approve', 'decline', 'onsite', 'payment-due', 'lookup', 'suggest', 'logout', 'mark-viewed', 'topup', 'wallet-lookup'])) {
     header('Content-Type: application/json');
 
     switch ($action) {
-        case 'approve':      handleApprove($pdo, $cashierId);   break;
-        case 'decline':      handleDecline($pdo, $cashierId);   break;
-        case 'onsite':       handleOnsite($pdo, $cashierId);    break;
-        case 'payment-due':  handlePaymentDue($pdo, $cashierId); break;
-        case 'lookup':       handleLookup($pdo);                break;
-        case 'suggest':      handleSuggest($pdo);               break;
-        case 'mark-viewed':  handleMarkViewed($pdo, $cashierId); break;
-        case 'logout':       handleLogout();                    break;
-        default:             jsonError('Unknown endpoint.', 404);
+        case 'approve':       handleApprove($pdo, $cashierId);      break;
+        case 'decline':       handleDecline($pdo, $cashierId);      break;
+        case 'onsite':        handleOnsite($pdo, $cashierId);       break;
+        case 'payment-due':   handlePaymentDue($pdo, $cashierId);   break;
+        case 'lookup':        handleLookup($pdo);                  break;
+        case 'suggest':       handleSuggest($pdo);                 break;
+        case 'mark-viewed':   handleMarkViewed($pdo, $cashierId);   break;
+        case 'wallet-lookup': handleWalletLookup($pdo);             break;
+        case 'topup':         handleTopup($pdo, $cashierId);        break;
+        case 'logout':        handleLogout();                      break;
+        default:              jsonError('Unknown endpoint.', 404);
     }
     exit;
 }
@@ -75,6 +77,7 @@ $cashierInfo  = getCashierInfo($pdo, $cashierId);
 $submissions  = getPendingSubmissions($pdo);
 $history      = getTransactionHistory($pdo);
 $stats        = computeStats($submissions);
+$topupHistory = getTopupHistory($pdo);
 
 /* ============================================================
    HTML PAGE
@@ -120,6 +123,13 @@ $stats        = computeStats($submissions);
                     <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
                 Transaction History
+            </a>
+            <a href="#" class="nav-link" data-view="topup">
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="9"/>
+                    <path d="M12 7v10M9 9.5c0-1.1 1.3-2 3-2s3 .9 3 2-1.3 1.5-3 2-3 .9-3 2 1.3 2 3 2 3-.9 3-2"/>
+                </svg>
+                Student Top-Up
             </a>
         </div>
 
@@ -513,6 +523,97 @@ $stats        = computeStats($submissions);
             </div>
         </div><!-- /view-history -->
 
+        <!-- ============================
+             STUDENT TOP-UP HISTORY VIEW
+        ============================ -->
+        <div id="view-topup" class="view-panel">
+            <div class="table-panel">
+                <div class="table-panel-header">
+                    <h2>Student Top-Up History</h2>
+                    <span class="history-count-label" id="topup-count-label"></span>
+                    <div class="topup-header-actions">
+                        <div class="search-wrap topup-search-wrap">
+                            <span class="search-icon">
+                                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                    <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                                </svg>
+                            </span>
+                            <input type="text" id="topup-search" placeholder="Search by cashier, student, or LRN…" oninput="topupLiveSearch(this.value)" autocomplete="off">
+                        </div>
+                        <button class="btn-topup" onclick="openTopupModal()">
+                            <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path d="M12 5v14M5 12h14"/>
+                            </svg>
+                            New Top-Up
+                        </button>
+                    </div>
+                </div>
+                <div class="table-scroll">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Cashier</th>
+                                <th>Student</th>
+                                <th>LRN</th>
+                                <th>Amount</th>
+                                <th>Mode of Payment</th>
+                                <th>Date &amp; Time</th>
+                            </tr>
+                        </thead>
+                        <tbody id="topup-tbody">
+                            <?php if (empty($topupHistory)): ?>
+                            <tr id="topup-empty-state">
+                                <td colspan="6">
+                                    <div class="empty-state visible">
+                                        <svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                                            <circle cx="12" cy="12" r="9"/>
+                                            <path d="M12 7v10M9 9.5c0-1.1 1.3-2 3-2s3 .9 3 2-1.3 1.5-3 2-3 .9-3 2 1.3 2 3 2 3-.9 3-2"/>
+                                        </svg>
+                                        <p>No top-ups recorded yet.</p>
+                                    </div>
+                                </td>
+                            </tr>
+                            <?php else: ?>
+                            <?php foreach ($topupHistory as $row):
+                                $modeMap   = ['cash' => ['cash', 'Cash'], 'gcash' => ['gcash', 'GCash'], 'bank_transfer' => ['bank-transfer', 'Bank Transfer']];
+                                [$modeClass, $modeLabel] = $modeMap[$row['payment_mode']] ?? ['gcash', ucfirst($row['payment_mode'] ?? '—')];
+                                $studentName = htmlspecialchars(trim($row['student_first_name'] . ' ' . $row['student_last_name']));
+                                $cashierName = htmlspecialchars($row['cashier_name'] ?? '—');
+                                $lrn         = htmlspecialchars($row['lrn'] ?? '—');
+                                $amountFmt   = '+₱' . number_format($row['amount'], 2);
+                            ?>
+                            <tr class="topup-row"
+                                data-cashier="<?= $cashierName ?>"
+                                data-student="<?= $studentName ?>"
+                                data-lrn="<?= $lrn ?>"
+                            >
+                                <td><?= $cashierName ?></td>
+                                <td>
+                                    <div class="student-cell">
+                                        <div class="student-avatar"><?= strtoupper(substr($row['student_first_name'], 0, 1) . substr($row['student_last_name'], 0, 1)) ?></div>
+                                        <span class="student-name"><?= $studentName ?></span>
+                                    </div>
+                                </td>
+                                <td><span class="ref-badge"><?= $lrn ?></span></td>
+                                <td class="amount-cell is-topup-credit"><?= $amountFmt ?></td>
+                                <td><span class="type-badge <?= $modeClass ?>"><?= $modeLabel ?></span></td>
+                                <td class="date-cell"><?= htmlspecialchars(formatDatePH($row['created_at'])) ?></td>
+                            </tr>
+                            <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                    <div class="no-results" id="topup-no-results">
+                        <svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                        </svg>
+                        No records match your search.
+                    </div>
+                </div>
+                <div class="history-pagination" id="topup-pagination"></div>
+            </div>
+        </div><!-- /view-topup -->
+
     </div><!-- /main-area -->
 </div><!-- /app-shell -->                        <label>Reference Number</label>
                         <div class="val ref" id="cal-view-ref-number">—</div>
@@ -768,6 +869,96 @@ $stats        = computeStats($submissions);
 
 
 <!-- ============================
+     STUDENT TOP-UP MODAL
+     Cashier-side wallet/token credit. Cashiers can only ADD credit —
+     there is no deduct control here. The amount per transaction is
+     capped by the admin-set limit (cafeteria_settings.max_topup_amount).
+============================ -->
+<div id="topupModal" class="modal-overlay">
+    <div class="modal-card onsite-card">
+        <div class="modal-topbar">
+            <h2>Student ID Top-Up</h2>
+            <button class="btn-close-modal" onclick="closeTopupModal()">&#x2715;</button>
+        </div>
+        <div class="onsite-body">
+
+            <div class="pd-announcement-banner topup-banner">
+                <div class="pd-announcement-icon">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="9"/>
+                        <path d="M12 7v10M9 9.5c0-1.1 1.3-2 3-2s3 .9 3 2-1.3 1.5-3 2-3 .9-3 2 1.3 2 3 2 3-.9 3-2"/>
+                    </svg>
+                </div>
+                <div class="pd-announcement-text">
+                    <strong>Add credit only</strong>
+                    <span id="topup-limit-note">Cashiers can only load funds onto a student's ID. Deductions are admin-only.</span>
+                </div>
+            </div>
+
+            <div class="onsite-grid">
+                <div class="form-group full">
+                    <label for="tu-student-id">Student ID / LRN / Name / Section</label>
+                    <div class="typeahead-wrap">
+                        <div class="input-with-btn">
+                            <input type="text" id="tu-student-id" placeholder="Type a name, LRN, ID, or section…" autocomplete="off"
+                                   oninput="onTopupSearchInput(this.value)"
+                                   onkeydown="onTopupSearchKeydown(event)"
+                                   onfocus="onTopupSearchInput(this.value)">
+                            <button class="btn-lookup" onclick="lookupTopupStudent()">
+                                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                    <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                                </svg>
+                                Look Up
+                            </button>
+                        </div>
+                        <div id="tu-suggest-list" class="typeahead-list" hidden></div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="tu-student-name">Student Name</label>
+                    <input type="text" id="tu-student-name" placeholder="Auto-filled after lookup…" readonly>
+                </div>
+                <div class="form-group">
+                    <label for="tu-grade-section">Grade &amp; Section</label>
+                    <input type="text" id="tu-grade-section" placeholder="Auto-filled after lookup…" readonly>
+                </div>
+                <div class="form-group">
+                    <label>Current Balance</label>
+                    <div class="val topup-current-balance" id="tu-current-balance">—</div>
+                </div>
+                <div class="form-group">
+                    <label for="tu-amount">Amount to Add</label>
+                    <div class="peso-input-wrap">
+                        <span class="peso-symbol">₱</span>
+                        <input type="text" id="tu-amount" placeholder="0.00" autocomplete="off" inputmode="decimal" disabled>
+                    </div>
+                    <span class="topup-hint" id="tu-limit-hint"></span>
+                </div>
+                <div class="form-group">
+                    <label for="tu-payment-mode">Mode of Payment</label>
+                    <select id="tu-payment-mode">
+                        <option value="">— Select —</option>
+                        <option value="cash">Cash</option>
+                        <option value="gcash">GCash</option>
+                        <option value="bank_transfer">Bank Transfer</option>
+                    </select>
+                </div>
+            </div>
+            <div class="onsite-actions">
+                <button class="btn-onsite-cancel" onclick="closeTopupModal()">Cancel</button>
+                <button class="btn-onsite-submit btn-topup-submit" onclick="submitTopup()" disabled>
+                    <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                        <path d="M5 13l4 4L19 7"/>
+                    </svg>
+                    Add Credit
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- ============================
      SET PAYMENT DUE MODAL — ANNOUNCEMENT BROADCAST
      Sends a payment deadline notice to ALL currently enrolled students.
      Registered (new) students paying enrollment fees are excluded.
@@ -866,6 +1057,8 @@ window.APP_CONFIG = {
     paymentDueUrl:'CashierManagement.php?action=payment-due',
     lookupUrl:    'CashierManagement.php?action=lookup',
     suggestUrl:   'CashierManagement.php?action=suggest',
+    walletLookupUrl: 'CashierManagement.php?action=wallet-lookup',
+    topupUrl:     'CashierManagement.php?action=topup',
     markViewedUrl:'CashierManagement.php?action=mark-viewed',
     logoutUrl:    'CashierManagement.php?action=logout',
     countdownSec: 10,
@@ -977,6 +1170,35 @@ function getCashierInfo(PDO $pdo, int $cashierId): array
     $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
     $row['school_name'] = 'Saint Joseph College';
     return $row;
+}
+
+/**
+ * All cashier-performed Student ID Top-Ups, most recent first.
+ * Only rows attributed to a cashier (cashier_id IS NOT NULL) are shown here —
+ * admin-side "Add Funds" adjustments have their own history on the admin side.
+ */
+function getTopupHistory(PDO $pdo): array
+{
+    $sql = "
+        SELECT
+            wt.id,
+            wt.amount,
+            wt.payment_mode,
+            wt.balance_after,
+            wt.created_at,
+            c.full_name  AS cashier_name,
+            s.first_name AS student_first_name,
+            s.last_name  AS student_last_name,
+            s.lrn
+        FROM   wallet_transactions wt
+        JOIN   students s  ON s.id = wt.student_id
+        LEFT JOIN cashiers c ON c.id = wt.cashier_id
+        WHERE  wt.type = 'credit'
+          AND  wt.cashier_id IS NOT NULL
+        ORDER  BY wt.created_at DESC
+        LIMIT  300
+    ";
+    return $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
 }
 
 function computeStats(array $rows): array
@@ -1505,6 +1727,167 @@ function handleLookup(PDO $pdo): void
 }
 
 /**
+ * GET /cashier/wallet-lookup?q=<student_id_or_lrn>
+ *
+ * Finds a student and returns their current cafeteria/ID wallet balance
+ * plus the admin-set per-transaction top-up limit, so the Student Top-Up
+ * modal can display and pre-validate before the cashier submits.
+ *
+ * Response: { found, student_id, name, grade_section, enrollment_status,
+ *             balance, max_topup_amount }
+ *   max_topup_amount = 0 means the admin has not set a per-transaction cap.
+ */
+function handleWalletLookup(PDO $pdo): void
+{
+    $q = trim($_GET['q'] ?? '');
+
+    $limitStmt = $pdo->query("SELECT max_topup_amount FROM cafeteria_settings ORDER BY id LIMIT 1");
+    $maxTopup  = (float) ($limitStmt->fetchColumn() ?: 0);
+
+    if ($q === '') {
+        echo json_encode(['found' => false, 'max_topup_amount' => $maxTopup]);
+        return;
+    }
+
+    $sql = "
+        SELECT
+            s.id,
+            CONCAT(s.first_name,
+                   IF(s.middle_name IS NOT NULL AND s.middle_name <> '', CONCAT(' ', s.middle_name), ''),
+                   ' ', s.last_name) AS name,
+            CONCAT(gl.display_name,
+                   IF(sec.name IS NOT NULL, CONCAT(' – ', sec.name), '')) AS grade_section,
+            e.status AS enrollment_status,
+            COALESCE(w.balance, 0) AS balance
+        FROM  students s
+        LEFT JOIN grade_levels gl ON gl.id = s.grade_level_id
+        LEFT JOIN enrollments  e  ON e.student_id = s.id
+        LEFT JOIN section_school_years ssy ON ssy.id = e.section_sy_id
+        LEFT JOIN sections sec ON sec.id = ssy.section_id
+        LEFT JOIN student_wallets w ON w.student_id = s.id
+    ";
+
+    $isNumeric = ctype_digit($q);
+    if ($isNumeric) {
+        $stmt = $pdo->prepare($sql . " WHERE (s.id = ? OR s.lrn = ?) LIMIT 1");
+        $stmt->execute([$q, $q]);
+    } else {
+        $stmt = $pdo->prepare($sql . " WHERE s.lrn = ? LIMIT 1");
+        $stmt->execute([$q]);
+    }
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$row) {
+        echo json_encode(['found' => false, 'max_topup_amount' => $maxTopup]);
+        return;
+    }
+
+    echo json_encode([
+        'found'             => true,
+        'student_id'        => (int) $row['id'],
+        'name'              => $row['name'],
+        'grade_section'     => $row['grade_section'],
+        'enrollment_status' => $row['enrollment_status'],
+        'balance'           => (float) $row['balance'],
+        'max_topup_amount'  => $maxTopup,
+    ]);
+}
+
+/**
+ * POST /cashier/topup
+ * Body: { student_id: int, amount: float, cashier_id: int }
+ *
+ * Cashier-side Student ID Top-Up. Credits a student's cafeteria/token
+ * wallet (student_wallets.balance) and logs the movement in
+ * wallet_transactions.
+ *
+ * Admin restrictions enforced here (never trust the client):
+ *   - Cashiers can only ADD credit. There is no deduct branch reachable
+ *     from this endpoint — deducting a student's balance is an admin-only
+ *     capability handled elsewhere in the system.
+ *   - A single top-up cannot exceed cafeteria_settings.max_topup_amount,
+ *     the same admin-controlled ceiling used for "Add Funds" transactions
+ *     (0 = admin has not set a limit).
+ */
+function handleTopup(PDO $pdo, int $cashierId): void
+{
+    $body        = getJsonBody();
+    $studentId   = (int) ($body['student_id'] ?? 0);
+    $amount      = isset($body['amount']) ? round((float) $body['amount'], 2) : 0;
+    $paymentMode = trim($body['payment_mode'] ?? '');
+
+    $allowedModes = ['cash', 'gcash', 'bank_transfer'];
+
+    if (!$studentId)                       { jsonError('Select a valid student first.'); }
+    if (!$amount || $amount <= 0)          { jsonError('Enter a valid top-up amount.'); }
+    if (!in_array($paymentMode, $allowedModes, true)) { jsonError('Select the mode of payment.'); }
+
+    try {
+        $pdo->beginTransaction();
+
+        // Confirm the student exists (lock row to avoid concurrent edits)
+        $stmt = $pdo->prepare("SELECT id, first_name, last_name, lrn FROM students WHERE id = ? LIMIT 1 FOR UPDATE");
+        $stmt->execute([$studentId]);
+        $student = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$student) { $pdo->rollBack(); jsonError('Student not found.', 404); }
+
+        // Admin-set per-transaction ceiling — authoritative check, not just UI hinting
+        $limitStmt = $pdo->query("SELECT max_topup_amount FROM cafeteria_settings ORDER BY id LIMIT 1");
+        $maxTopup  = (float) ($limitStmt->fetchColumn() ?: 0);
+
+        if ($maxTopup > 0 && $amount > $maxTopup) {
+            $pdo->rollBack();
+            jsonError('Amount exceeds the admin-set top-up limit of ₱' . number_format($maxTopup, 2) . ' per transaction.');
+        }
+
+        // Lock (or create) the wallet row, then credit it
+        $wStmt = $pdo->prepare("SELECT id, balance FROM student_wallets WHERE student_id = ? FOR UPDATE");
+        $wStmt->execute([$studentId]);
+        $wallet = $wStmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($wallet) {
+            $newBalance = round((float) $wallet['balance'] + $amount, 2);
+            $pdo->prepare("UPDATE student_wallets SET balance = ?, updated_at = NOW() WHERE id = ?")
+                ->execute([$newBalance, $wallet['id']]);
+        } else {
+            $newBalance = $amount;
+            $pdo->prepare("INSERT INTO student_wallets (student_id, balance, updated_at) VALUES (?, ?, NOW())")
+                ->execute([$studentId, $newBalance]);
+        }
+
+        // Ledger entry — admin_id stays NULL for cashier-initiated top-ups;
+        // cashier_id records who actually performed it (see wallet_topup_migration.sql)
+        $cashierName = getCashierInfo($pdo, $cashierId)['full_name'] ?? 'Cashier';
+        $note = "Top-up by cashier: {$cashierName}";
+        $pdo->prepare("
+            INSERT INTO wallet_transactions
+                (student_id, admin_id, cashier_id, type, payment_mode, amount, balance_after, note, created_at)
+            VALUES
+                (?, NULL, ?, 'credit', ?, ?, ?, ?, NOW())
+        ")->execute([$studentId, $cashierId, $paymentMode, $amount, $newBalance, $note]);
+
+        $pdo->commit();
+
+        echo json_encode([
+            'success'      => true,
+            'message'      => 'Top-up successful.',
+            'student_id'   => $studentId,
+            'student_name' => trim($student['first_name'] . ' ' . $student['last_name']),
+            'lrn'          => $student['lrn'],
+            'cashier_name' => $cashierName,
+            'amount_added' => $amount,
+            'new_balance'  => $newBalance,
+            'payment_mode' => $paymentMode,
+            'created_at'   => date('Y-m-d H:i:s'),
+        ]);
+    } catch (\Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        error_log('[handleTopup] ' . $e->getMessage());
+        jsonError('Failed to process top-up. Please try again.', 500);
+    }
+}
+
+/**
  * GET /cashier/suggest?q=<partial_query>
  *
  * Typeahead / live-search endpoint.
@@ -1579,18 +1962,20 @@ function handleSuggest(PDO $pdo): void
                 OR s.middle_name LIKE ?
                 OR CONCAT(s.first_name, ' ', s.last_name)  LIKE ?
                 OR CONCAT(s.last_name,  ' ', s.first_name) LIKE ?
+                OR sec.name LIKE ?
             )
             ORDER BY
                 CASE
                     WHEN s.first_name LIKE ? THEN 0
                     WHEN s.last_name  LIKE ? THEN 1
-                    ELSE 2
+                    WHEN sec.name     LIKE ? THEN 2
+                    ELSE 3
                 END,
                 s.last_name, s.first_name
             LIMIT 8
         ");
         $startLike = $q . '%';
-        $stmt->execute([$like, $like, $like, $like, $like, $startLike, $startLike]);
+        $stmt->execute([$like, $like, $like, $like, $like, $like, $startLike, $startLike, $startLike]);
     }
 
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
