@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fit Track - Member Dashboard</title>
+    
+    <link rel="icon" type="image/png" href="images/icon-192.png">
+
+    <script>
+        (function () {
+            const SESSION_MAX_MS = 24 * 60 * 60 * 1000;
+            const loginAt = Number(localStorage.getItem("loginAt") || 0);
+            const expired = loginAt && (Date.now() - loginAt > SESSION_MAX_MS);
+            const role = (localStorage.getItem("userRole") || "").toLowerCase();
+            if (!localStorage.getItem("loggedInUser") || role !== "member" || expired) {
+                window.location.replace("index.html");
+            }
+        })();
+    </script>
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+
+
+    <link rel="stylesheet" href="css/styles.css">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { corePlugins: { preflight: false } }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/bookings-ui.js"></script>
+</head>
+<body class="member-page">
+
+    <aside class="sidebar" aria-label="Primary navigation">
+        <div class="brand" style="font-family: inherit; font-size: 18px; font-weight: 700; color: var(--text-primary); padding: 20px 16px 8px; letter-spacing: -0.02em;">FitTrack</div>
+
+        <ul class="nav-menu" id="navMenu" role="list">
+            <li class="nav-item active nav-clickable" onclick="switchTab('dashboard', this)" aria-current="page" tabindex="0">
+                <i class="fa-solid fa-house-user" aria-hidden="true"></i> <span class="menu-text">Home</span>
+            </li>
+
+            <li class="nav-item nav-clickable" onclick="switchTab('trainers', this)" tabindex="0">
+                <i class="fa-solid fa-users-viewfinder" aria-hidden="true"></i> <span class="menu-text">Trainers</span>
+            </li>
+
+            <li class="nav-item nav-clickable" onclick="switchTab('bookings', this)" tabindex="0">
+                <i class="fa-solid fa-calendar-check" aria-hidden="true"></i> <span class="menu-text">Bookings</span>
+            </li>
+
+            <li class="nav-item nav-clickable" onclick="openChatTab('all', this, 'Gym Directory'); clearMessagesBadge()" tabindex="0" style="position:relative;">
+                <i class="fa-solid fa-comments" aria-hidden="true" id="navMessagesIcon" style="position:relative;"></i>
+                <span class="menu-text">Messages</span>
+                <span id="messagesBadgeDot" style="display:none; position:absolute; top:8px; right:28px; background:var(--primary-red); width:10px; height:10px; border-radius:50%;"></span>
+            </li>
+        </ul>
+        <div class="sidebar-footer" onclick="openProfileSettingsModal()" style="margin-top: auto; padding: 12px; border-radius: 16px; background: rgba(0, 0, 0, 0.03); display: flex; align-items: center; gap: 10px; border: 0.5px solid rgba(0, 0, 0, 0.05); cursor: pointer; transition: background 0.2s; margin: 12px;">
+            <div class="avatar" id="sidebarAvatar" style="width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, #f87171, var(--primary-red)); display: grid; place-items: center; color: white; font-weight: 600; font-size: 13px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.5);">AV</div>
+            <div class="user-meta" style="display: flex; flex-direction: column; line-height: 1.2;">
+                <span class="name" id="sidebarUserName" style="font-size: 13px; font-weight: 600; color: var(--text-primary); text-align: left;">Adrian V.</span>
+                <span class="role" style="font-size: 10px; color: var(--text-muted); font-family: 'Geist Mono', Monaco, monospace; letter-spacing: 0.04em;">GYM MEMBER</span>
+            </div>
+            <i class="fa-solid fa-ellipsis" style="margin-left: auto; color: var(--text-muted); font-size: 13px;"></i>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <header class="topbar">
+            <div class="topbar-left" style="display: flex; align-items: center; gap: 16px;">
+                <div class="topbar-greeting-wrapper" style="display: flex; flex-direction: column;">
+                    <div class="topbar-greeting" id="greetingText" style="font-size: 15px; font-weight: 700; color: var(--text-primary); line-height: 1.2;">
+                        Good Morning, <span style="color: var(--primary-red);">XFit</span>.
+                    </div>
+                    <div class="topbar-subtext" id="liveClock" style="font-size: 10px; color: var(--text-muted); margin-top: 2px; font-family: 'Geist Mono', Monaco, Consolas, monospace; letter-spacing: 0.04em;">
+                        Loading time...
+                    </div>
+                </div>
+            </div>
+            <div class="topbar-right">
+                <button onclick="toggleDarkMode()" title="Toggle dark mode" aria-label="Toggle dark mode" class="icon-btn-circle">
+                    <i id="darkModeIcon" class="fas fa-moon" aria-hidden="true"></i>
+                </button>
+
+
+            </div>
+        </header>
+
+        <div id="dashboard" class="content-section active-section">
+            
+            <div id="memberNotificationArea"></div>
+
+            <div class="panel is-bare">
+                <div class="panel-body greeting-row">
+                    <div class="greeting-stats">
+                        <div class="greeting-stat">
+                            <div class="greeting-stat-label">Current Plan</div>
+                            <div id="myPlanName" class="greeting-stat-value">Loading...</div>
+                            <div id="myPlanDays" class="greeting-stat-foot"><i class="fa-regular fa-clock"></i> Checking...</div>
+                        </div>
+                        <div class="greeting-stat greeting-stat-wide">
+                            <div class="greeting-stat-label">Personal Training</div>
+                            <div class="sessions-row">
+                                <span id="mySessionsRemaining" class="sessions-remaining">--</span>
+                                <span class="sessions-divider">/</span>
+                                <span id="mySessionsTotal" class="sessions-total">--</span>
+                                <span class="sessions-tag">Remaining</span>
+                            </div>
+                            <div class="sessions-progress">
+                                <div id="mySessionsBar" class="sessions-progress-fill"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="dashboard-grid">
+                <div class="panel is-flex-col">
+                    <div class="panel-header"><i class="fa-solid fa-clipboard-user" aria-hidden="true"></i> My Recent Attendance</div>
+                    <div class="table-container">
+                        <table id="myAttendanceTable">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Date</th>
+                                    <th scope="col">Time In</th>
+                                    <th scope="col">Time Out</th>
+                                    <th scope="col">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="myAttendanceBody">
+                                <tr><td colspan="4" class="member-loading-row" aria-live="polite">Loading your logs...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="dashboard-side-stack">
+                    <!-- Fitness Goals Card -->
+                    <div class="panel panel-tight">
+                        <div class="panel-header panel-header-split">
+                            <span><i class="fa-solid fa-bullseye" aria-hidden="true"></i> My Fitness Goals</span>
+                            <button id="saveGoalsBtn" class="btn btn-ghost btn-sm" onclick="saveFitnessGoals()">
+                                <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Save
+                            </button>
+                        </div>
+                        <div class="panel-body">
+                            <label for="fitnessGoalsInput" class="sr-only">Fitness goals</label>
+                            <textarea id="fitnessGoalsInput" class="goals-textarea" maxlength="2000" placeholder="What are you working towards? (e.g., Lose 5kg, Bench 100kg, Run a 5k...)"></textarea>
+                            <p class="goals-hint">
+                                <i class="fa-solid fa-circle-info" aria-hidden="true"></i> Your trainer can see these to better help you.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Trainers on Floor Card -->
+                    <div class="panel panel-tight">
+                        <div class="panel-header"><i class="fa-solid fa-users-gear" aria-hidden="true"></i> Trainers on Floor</div>
+                        <div class="panel-body trainers-floor-feed" id="dashActiveTrainersFeed" aria-live="polite"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="trainers" class="content-section">
+            <div class="panel">
+                <div class="panel-header"><i class="fa-solid fa-users-gear" aria-hidden="true"></i> Gym Trainers</div>
+                <div class="panel-body">
+                    <div class="search-box trainer-search-box">
+                        <i class="fas fa-search" aria-hidden="true"></i>
+                        <label for="memberTrainerSearch" class="sr-only">Search trainers</label>
+                        <input type="text" id="memberTrainerSearch" placeholder="Search by name or specialty..." onkeyup="filterMemberTrainers()" autocomplete="off">
+                    </div>
+
+                    <div class="trainer-grid" id="memberTrainerGrid" aria-live="polite"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="bookings" class="content-section">
+            <div class="member-table-controls">
+                <div class="search-box member-search-box">
+                    <i class="fas fa-search" aria-hidden="true"></i>
+                    <label for="myBookingSearch" class="sr-only">Search bookings</label>
+                    <input type="text" id="myBookingSearch" placeholder="Search sessions..." onkeyup="filterMyBookings()" autocomplete="off">
+                </div>
+                <button class="action-btn inline-flex items-center justify-center px-5 py-2.5 text-sm font-semibold text-white bg-red-800 shadow-sm rounded-xl hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-700 transition-all duration-200" onclick="openMemberBookingModal()"<i class="fas fa-calendar-plus" aria-hidden="true"></i> Book a Session</button>
+            </div>
+
+            <div class="panel">
+                <div class="panel-header"><i class="fas fa-calendar-alt" aria-hidden="true"></i> Session Schedules</div>
+                <div class="table-container">
+                    <table id="myBookingsTable">
+                        <thead>
+                            <tr>
+                                <th scope="col">Trainer</th>
+                                <th scope="col">Date</th>
+                                <th scope="col">Time</th>
+                                <th scope="col">Status</th>
+                                <th scope="col">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="myBookingsBody" aria-live="polite"></tbody>
+                    </table>
+                </div>
+                <div class="table-footer">
+                    <div id="myBkRecordCount" class="record-count"></div>
+                    <div class="pagination-controls" id="myBkPagination"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="chats" class="content-section content-section-flush">
+            <div class="chat-container">
+                <div class="chat-sidebar">
+                    <div id="chatDirectoryTitle" class="chat-directory-title">
+                        <i class="fa-solid fa-address-book" aria-hidden="true"></i> Contacts
+                    </div>
+                    <div class="chat-search-wrap">
+                        <div class="search-box chat-search-box">
+                            <i class="fas fa-search" aria-hidden="true"></i>
+                            <label for="chatSearch" class="sr-only">Search contacts</label>
+                            <input type="text" id="chatSearch" placeholder="Search staff or trainers..." onkeyup="filterChatUsers()" autocomplete="off">
+                        </div>
+                    </div>
+                    <div id="chatUserList" class="chat-user-list" role="list"></div>
+                </div>
+                <div class="chat-main">
+                    <div class="chat-main-header">
+                        <button class="mobile-only-btn chat-back-btn" onclick="closeMobileChat()" aria-label="Back to contacts">
+                            <i class="fas fa-arrow-left" aria-hidden="true"></i>
+                        </button>
+                        <div id="chatHeader" class="chat-header-title">Select a user to start chatting</div>
+                    </div>
+
+                    <div id="chatHistory" class="chat-history" aria-live="polite">
+                        <div class="chat-empty">
+                            <i class="fa-regular fa-comments" aria-hidden="true"></i>
+                            <p>No chat selected</p>
+                        </div>
+                    </div>
+                    <div class="chat-composer">
+                        <label for="chatInput" class="sr-only">Message</label>
+                        <input type="text" id="chatInput" class="chat-input" placeholder="Type a message..." onkeypress="if(event.key === 'Enter') sendMessage()" autocomplete="off" disabled>
+                        <button id="chatSendBtn" class="chat-send-btn" onclick="sendMessage()" aria-label="Send message" disabled>
+                            <i class="fas fa-paper-plane" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <div id="memberBookingModal" class="modal fixed inset-0 z-[2000] items-end sm:items-center justify-center p-0 sm:p-6 bg-gray-900/50 backdrop-blur-sm overflow-auto" role="dialog" aria-modal="true" aria-labelledby="memberBookingModalTitle" aria-hidden="true" onclick="if(event.target===this)closeModal('memberBookingModal')">
+        <div class="modal-content booking-modal-content relative w-[95%] sm:w-full max-w-4xl mx-auto bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl ring-1 ring-gray-900/5 border border-gray-100 p-0 overflow-hidden transition-all duration-300 ease-out max-h-[92vh]">
+            <div class="modal-header">
+                <h3 id="memberBookingModalTitle">Request a Training Session</h3>
+                <button type="button" class="close-btn" onclick="closeModal('memberBookingModal')"> aria-label="Close booking dialog">&times;</button>
+            </div>
+            <div class="booking-layout-wrapper">
+                <!-- Left/Main Column: Selection Steps -->
+                <div class="booking-steps-section">
+                    <!-- Step 1: Select Trainer -->
+                    <div class="booking-step-card">
+                        <label class="booking-step-label" for="memberBookTrainer"><span class="step-badge" aria-hidden="true">1</span> Select a Trainer</label>
+                        <select id="memberBookTrainer" required class="booking-select" aria-required="true"></select>
+                    </div>
+
+                    <!-- Step 2 & 3: Calendar & Time Grid wrapper -->
+                    <div class="booking-datetime-grid" id="bookingDateTimeGrid" hidden>
+                        <!-- Step 2: Custom Calendar Picker -->
+                        <div class="custom-cal-container">
+                            <p class="booking-step-label" id="bookingStep2Label"><span class="step-badge" aria-hidden="true">2</span> Select Date</p>
+                            <div class="custom-cal-header">
+                                <button type="button" class="cal-nav-btn" id="calPrevMonthBtn" aria-label="Previous month">&lt;</button>
+                                <span class="cal-month-title" id="calMonthTitle" aria-live="polite">May 2026</span>
+                                <button type="button" class="cal-nav-btn" id="calNextMonthBtn" aria-label="Next month">&gt;</button>
+                            </div>
+                            <div class="custom-cal-weekdays" aria-hidden="true">
+                                <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+                            </div>
+                            <div class="custom-cal-days" id="calDaysGrid" role="grid" aria-labelledby="bookingStep2Label">
+                                <!-- Days dynamically populated -->
+                            </div>
+                        </div>
+
+                        <!-- Step 3: Time Slot Picker -->
+                        <div class="booking-step-card booking-step-card-time">
+                            <p class="booking-step-label" id="bookingStep3Label"><span class="step-badge" aria-hidden="true">3</span> Select Time Slot</p>
+                            <div class="selected-date-header" id="selectedDateHeader" aria-live="polite">Select a date first</div>
+                            <div class="time-slots-grid" id="timeSlotsGrid" role="list" aria-labelledby="bookingStep3Label">
+                                <!-- Time slots dynamically populated -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Service/Booking Details Summary -->
+                <aside class="booking-details-sidebar" id="bookingDetailsSidebar" aria-label="Booking summary" hidden>
+                    <div class="sidebar-header">Service Details</div>
+                    <div class="sidebar-body">
+                        <h4 class="service-title">PERSONAL TRAINING</h4>
+
+                        <div class="details-item">
+                            <i class="fa-regular fa-clock" aria-hidden="true"></i>
+                            <div>
+                                <strong id="summaryDateTime">Choose Date & Time</strong>
+                                <span class="sub-detail">Duration: 1 hr</span>
+                            </div>
+                        </div>
+
+                        <div class="details-item">
+                            <i class="fa-solid fa-dumbbell" aria-hidden="true"></i>
+                            <div>
+                                <strong id="summaryTrainer">Trainer Not Selected</strong>
+                                <span class="sub-detail">Assigned Specialist</span>
+                            </div>
+                        </div>
+
+                        <div class="details-item">
+                            <i class="fa-solid fa-location-dot" aria-hidden="true"></i>
+                            <div>
+                                <strong>XFit Track Main Floor</strong>
+                                <span class="sub-detail">PT Zone</span>
+                            </div>
+                        </div>
+
+                        <div class="details-item">
+                            <i class="fa-solid fa-ticket" aria-hidden="true"></i>
+                            <div>
+                                <strong>1 Session Credit</strong>
+                                <span class="sub-detail" id="memberCreditsDisplay">Deducted from plan</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="sidebar-footer">
+                        <button type="button" id="confirmBookingBtn" class="action-btn next-btn" disabled aria-disabled="true">
+                            <i class="fas fa-paper-plane" aria-hidden="true"></i> Send Request
+                        </button>
+                    </div>
+                </aside>
+            </div>
+        </div>
+    </div>
+
+    <div id="membershipExpiredModal" class="modal modal-expired fixed inset-0 z-[2000] items-end sm:items-center justify-center p-0 sm:p-6 bg-gray-900/50 backdrop-blur-sm overflow-auto">
+        <div class="modal-content expired-modal relative w-[95%] sm:w-full max-w-md mx-auto bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl ring-1 ring-gray-900/5 border border-gray-100 p-6 sm:p-8 transition-all duration-300 ease-out text-center">
+            <div class="expired-modal-body">
+                <div class="expired-modal-icon">
+                    <i class="fa-solid fa-hourglass-end"></i>
+                </div>
+                <h2 class="expired-modal-title">Membership Expired</h2>
+                <p class="expired-modal-text">
+                    Your membership has expired. To continue using our facilities and booking sessions, please renew your plan at the front desk.
+                </p>
+            </div>
+            <div class="expired-modal-actions">
+                <button onclick="handleLogout()" class="btn btn-primary btn-block">
+                    <i class="fa-solid fa-power-off"></i> Logout
+                </button>
+                <p class="expired-modal-note">
+                    Need help? Contact us at support@fittrack.com
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="js/script.js"></script>
+
+
+    <script>
+        function filterMemberTrainers() {
+            const filter = document.getElementById('memberTrainerSearch').value.toLowerCase();
+            const cards = document.querySelectorAll('.member-trainer-card');
+            
+            cards.forEach(card => {
+                const searchData = card.getAttribute('data-search');
+                if (searchData.includes(filter)) {
+                    card.style.display = "flex";
+                } else {
+                    card.style.display = "none";
+                }
+            });
+        }
+
+        // NEW: Intercept clicks on the chat list to slide the chat window open on mobile
+        document.addEventListener('click', function(e) {
+            if (e.target.closest('.chat-user-item')) {
+                if (window.innerWidth <= 768) {
+                    const chatContainer = document.querySelector('.chat-container');
+                    if(chatContainer) chatContainer.classList.add('mobile-chat-open');
+                }
+            }
+            // Auto close mobile tabs if they click a bottom nav link
+            if (e.target.closest('.nav-clickable')) {
+                closeMobileChat();
+            }
+        });
+
+        // NEW: Function attached to the "Back" arrow
+        window.closeMobileChat = function() {
+            const chatContainer = document.querySelector('.chat-container');
+            if(chatContainer) chatContainer.classList.remove('mobile-chat-open');
+        }
+    </script>
+</body>
+</html>
