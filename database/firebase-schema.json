@@ -1,0 +1,77 @@
+{
+  "students": {
+    "std_2023_01900": {
+      "student_id": "2023-01900",
+      "full_name": "Juan Dela Cruz",
+      "grade_level": 11,
+      "rfid_tag_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "credit_balance": 350.00,
+      "pay_later_allowance": true,
+      "pay_later_balance": 0.00,
+      "daily_spend_limit": 200.00,
+      "daily_spent_today": 45.00
+    },
+    "std_2023_01901": {
+      "student_id": "2023-01901",
+      "full_name": "Maria Santos",
+      "grade_level": 10,
+      "rfid_tag_hash": "8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4",
+      "credit_balance": 180.50,
+      "pay_later_allowance": false,
+      "pay_later_balance": 0.00,
+      "daily_spend_limit": 150.00,
+      "daily_spent_today": 0.00
+    }
+  },
+  "transactions": {
+    "txn_1001": {
+      "timestamp": "2026-07-28T12:15:00Z",
+      "student_id": "2023-01900",
+      "items_purchased": [
+        {
+          "item_id": "item_002",
+          "item_name": "Classic Cheeseburger",
+          "qty": 1,
+          "unit_price": 75.00
+        },
+        {
+          "item_id": "item_005",
+          "item_name": "Mineral Water (500ml)",
+          "qty": 1,
+          "unit_price": 20.00
+        }
+      ],
+      "total_amount": 95.00,
+      "payment_method": "RFID_CREDIT",
+      "tray_image_url": "https://firebasestorage.googleapis.com/v0/b/novalunch.appspot.com/o/trays%2Ftxn_1001_tray.jpg?alt=media",
+      "sync_status": "SYNCED"
+    }
+  },
+  "pre_orders": {
+    "ord_5001": {
+      "student_id": "2023-01900",
+      "order_date": "2026-07-29",
+      "items": [
+        {
+          "item_id": "item_001",
+          "item_name": "Crispy Chicken Bowl with Rice",
+          "qty": 1,
+          "unit_price": 85.00
+        }
+      ],
+      "status": "PENDING",
+      "claim_timestamp": null
+    }
+  },
+  "gcash_topups": {
+    "top_9001": {
+      "parent_id": "par_8801",
+      "student_id": "2023-01900",
+      "amount": 500.00,
+      "receipt_proof_url": "https://firebasestorage.googleapis.com/v0/b/novalunch.appspot.com/o/receipts%2Fgcash_ref_10029384.jpg?alt=media",
+      "status": "PENDING",
+      "verified_by": null,
+      "created_at": "2026-07-28T14:20:00Z"
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "rules": {
+    "students": {
+      ".read": true,
+      ".write": true,
+      ".indexOn": ["rfid_tag_hash", "student_id"]
+    },
+    "transactions": {
+      ".read": true,
+      ".write": true,
+      ".indexOn": ["student_id", "timestamp", "sync_status"]
+    },
+    "pre_orders": {
+      ".read": true,
+      ".write": true,
+      ".indexOn": ["student_id", "order_date", "status"]
+    },
+    "gcash_topups": {
+      ".read": true,
+      ".write": true,
+      ".indexOn": ["student_id", "status", "parent_id"]
+    }
+  }
+}

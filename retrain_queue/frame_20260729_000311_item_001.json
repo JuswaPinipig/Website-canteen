@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-07-29T00:03:11.047184",
+  "action": "DELETE",
+  "item_id": "item_001",
+  "original_prediction": "Crispy Chicken Bowl with Rice",
+  "corrected_label": "Burger",
+  "cashier_override": true,
+  "frame_image": "frame_20260729_000311_item_001.jpg"
+}
