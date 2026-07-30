@@ -118,6 +118,180 @@ const CanteenDB = {
     },
 
     // -------------------------------------------------------------------------
+    // USER REGISTRATION & AUTH PROFILE HELPERS
+    // -------------------------------------------------------------------------
+    async registerUser(payload) {
+        // payload: { email, full_name, role, student_id_number, rfid_uid, pin_code }
+        let profile;
+        if (supabase) {
+            const { data, error } = await supabase.from('profiles').insert([payload]).select().single();
+            if (error) throw error;
+            profile = data;
+        } else {
+            const res = await this._postREST('profiles', payload);
+            profile = res[0];
+        }
+
+        // Initialize wallet for students automatically
+        if (payload.role === 'student' && profile && profile.id) {
+            const walletPayload = {
+                user_id: profile.id,
+                balance: 0.00,
+                daily_limit: 200.00,
+                daily_spent: 0.00
+            };
+            if (supabase) {
+                await supabase.from('wallets').insert([walletPayload]);
+            } else {
+                await this._postREST('wallets', walletPayload);
+            }
+        }
+
+        // Emit Welcome Notification
+        await this.createNotification({
+            user_id: profile.id,
+            title: "Welcome to NovaLunch!",
+            message: `Your ${payload.role.toUpperCase()} account has been created successfully.`,
+            type: "account_created"
+        });
+
+        return profile;
+    },
+
+    // -------------------------------------------------------------------------
+    // PARENT-STUDENT LINKING REQUEST WORKFLOW
+    // -------------------------------------------------------------------------
+    async sendParentLinkRequest(parentId, studentIdentifier) {
+        // Search student by student_id_number or email
+        let student = null;
+        if (supabase) {
+            const { data } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('role', 'student')
+                .or(`student_id_number.eq.${studentIdentifier},email.eq.${studentIdentifier}`)
+                .maybeSingle();
+            student = data;
+        } else {
+            const res = await this._fetchREST(`profiles?select=*&role=eq.student&or=(student_id_number.eq.${encodeURIComponent(studentIdentifier)},email.eq.${encodeURIComponent(studentIdentifier)})`);
+            student = res.length > 0 ? res[0] : null;
+        }
+
+        if (!student) {
+            throw new Error(`No student found matching ID or Email "${studentIdentifier}". Please verify credentials.`);
+        }
+
+        // Check if already linked
+        if (supabase) {
+            const { data: existingLink } = await supabase.from('parent_student_links').select('*').eq('parent_id', parentId).eq('student_id', student.id).maybeSingle();
+            if (existingLink) throw new Error(`Student ${student.full_name} is already linked to your parent account.`);
+        }
+
+        // Create pending link request
+        const reqPayload = {
+            parent_id: parentId,
+            student_id: student.id,
+            student_id_number: student.student_id_number || studentIdentifier,
+            status: 'pending'
+        };
+
+        let linkReq;
+        if (supabase) {
+            const { data, error } = await supabase.from('parent_student_link_requests').insert([reqPayload]).select().single();
+            if (error) {
+                if (error.code === '23505') throw new Error(`A link request for ${student.full_name} is already pending approval.`);
+                throw error;
+            }
+            linkReq = data;
+        } else {
+            const res = await this._postREST('parent_student_link_requests', reqPayload);
+            linkReq = res[0];
+        }
+
+        // Send Notification to Student
+        await this.createNotification({
+            user_id: student.id,
+            title: "Parent Account Link Request",
+            message: `A parent account has requested to link to your canteen account. Please review and confirm.`,
+            type: "link_request",
+            metadata: { request_id: linkReq.id, parent_id: parentId }
+        });
+
+        return { request: linkReq, student };
+    },
+
+    async getPendingLinkRequests(studentId) {
+        if (!supabase) {
+            return await this._fetchREST(`parent_student_link_requests?select=*,parent:profiles!parent_id(*)&student_id=eq.${studentId}&status=eq.pending`);
+        }
+        const { data, error } = await supabase.from('parent_student_link_requests').select('*, parent:profiles!parent_id(*)').eq('student_id', studentId).eq('status', 'pending');
+        if (error) throw error;
+        return data || [];
+    },
+
+    async respondToLinkRequest(requestId, parentId, studentId, accept, studentName = 'Student') {
+        const newStatus = accept ? 'accepted' : 'rejected';
+        
+        if (supabase) {
+            const { error } = await supabase.from('parent_student_link_requests').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', requestId);
+            if (error) throw error;
+        }
+
+        if (accept) {
+            // Create active link record
+            const linkPayload = { parent_id: parentId, student_id: studentId };
+            if (supabase) {
+                await supabase.from('parent_student_links').insert([linkPayload]);
+            } else {
+                await this._postREST('parent_student_links', linkPayload);
+            }
+        }
+
+        // Notify parent
+        await this.createNotification({
+            user_id: parentId,
+            title: accept ? "Link Request Accepted! 🎉" : "Link Request Declined",
+            message: accept ? `${studentName} accepted your account link request.` : `${studentName} declined your account link request.`,
+            type: accept ? "link_accepted" : "link_rejected"
+        });
+
+        return { status: newStatus };
+    },
+
+    // -------------------------------------------------------------------------
+    // UNIVERSAL NOTIFICATIONS
+    // -------------------------------------------------------------------------
+    async createNotification({ user_id, title, message, type = 'system', metadata = null }) {
+        const notifPayload = { user_id, title, message, type, is_read: false, metadata };
+        if (supabase) {
+            const { data, error } = await supabase.from('notifications').insert([notifPayload]).select();
+            if (error) console.warn("Error creating notification:", error);
+            return data;
+        } else {
+            return await this._postREST('notifications', notifPayload);
+        }
+    },
+
+    async getNotifications(userId) {
+        if (!supabase) return await this._fetchREST(`notifications?select=*&user_id=eq.${userId}&order=created_at.desc`);
+        const { data, error } = await supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+        if (error) throw error;
+        return data || [];
+    },
+
+    async markNotificationRead(notificationId) {
+        if (supabase) {
+            await supabase.from('notifications').update({ is_read: true }).eq('id', notificationId);
+        }
+    },
+
+    async markAllNotificationsRead(userId) {
+        if (supabase) {
+            await supabase.from('notifications').update({ is_read: true }).eq('user_id', userId);
+        }
+    },
+
+    // -------------------------------------------------------------------------
     // REST FALLBACK UTILITIES
     // -------------------------------------------------------------------------
     async _fetchREST(endpoint) {

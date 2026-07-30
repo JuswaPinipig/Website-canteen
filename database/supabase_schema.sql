@@ -99,6 +99,42 @@ CREATE TABLE IF NOT EXISTS public.parent_student_links (
 );
 
 -- ------------------------------------------------------------------------------
+-- 4B. PARENT-STUDENT LINK REQUESTS TABLE (Request & Acceptance Flow)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.parent_student_link_requests (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    parent_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    student_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    student_id_number TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected')),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (parent_id, student_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_link_req_parent ON public.parent_student_link_requests(parent_id);
+CREATE INDEX IF NOT EXISTS idx_link_req_student ON public.parent_student_link_requests(student_id);
+CREATE INDEX IF NOT EXISTS idx_link_req_status ON public.parent_student_link_requests(status);
+
+-- ------------------------------------------------------------------------------
+-- 4C. SYSTEM NOTIFICATIONS TABLE (Universal notification center across all roles)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.notifications (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'system' CHECK (type IN ('link_request', 'link_accepted', 'link_rejected', 'wallet_topup', 'purchase', 'account_created', 'system')),
+    is_read BOOLEAN DEFAULT FALSE,
+    metadata JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON public.notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_read ON public.notifications(is_read);
+
+
+-- ------------------------------------------------------------------------------
 -- 5. WALLETS TABLE (Student balances & daily limits)
 -- ------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.wallets (
@@ -281,6 +317,9 @@ ALTER TABLE public.ai_detection_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.canteen_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
+ALTER TABLE public.parent_student_link_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+
 -- Allow public read access to active products & categories for POS/Kiosk display
 CREATE POLICY "Public read active categories" ON public.menu_categories FOR SELECT USING (is_active = true);
 CREATE POLICY "Public read available products" ON public.products FOR SELECT USING (is_available = true);
@@ -295,6 +334,8 @@ CREATE POLICY "Allow full access orders" ON public.orders FOR ALL USING (true);
 CREATE POLICY "Allow full access order_items" ON public.order_items FOR ALL USING (true);
 CREATE POLICY "Allow full access rfid_cards" ON public.rfid_cards FOR ALL USING (true);
 CREATE POLICY "Allow full access ai_detection_logs" ON public.ai_detection_logs FOR ALL USING (true);
+CREATE POLICY "Allow full access parent_student_link_requests" ON public.parent_student_link_requests FOR ALL USING (true);
+CREATE POLICY "Allow full access notifications" ON public.notifications FOR ALL USING (true);
 
 -- ------------------------------------------------------------------------------
 -- 17. SEED DATA (Default categories, products, and operational settings)
