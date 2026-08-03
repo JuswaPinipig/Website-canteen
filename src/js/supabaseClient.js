@@ -42,6 +42,82 @@ const CanteenDB = {
         return data;
     },
 
+    async updateProductAiLabel(productId, aiLabel) {
+        if (supabase) {
+            const { data, error } = await supabase.from('products').update({ ai_label: aiLabel }).eq('id', productId).select();
+            if (error) console.warn("Error updating AI label:", error);
+            return data;
+        }
+    },
+
+    // -------------------------------------------------------------------------
+    // INVENTORY BATCH & EXPIRY MANAGEMENT
+    // -------------------------------------------------------------------------
+    async getInventoryBatches() {
+        if (!supabase) return await this._fetchREST('inventory_batches?select=*,products(name)');
+        try {
+            const { data, error } = await supabase.from('v_inventory_batch_monitor').select('*');
+            if (!error && data && data.length > 0) return data;
+        } catch (e) {
+            console.warn("View v_inventory_batch_monitor fallback", e);
+        }
+        const { data, error } = await supabase.from('inventory_batches').select('*, products(name)');
+        if (error) throw error;
+        return data || [];
+    },
+
+    async addInventoryBatch(batchPayload) {
+        if (supabase) {
+            const { data, error } = await supabase.from('inventory_batches').insert([batchPayload]).select().single();
+            if (error) throw error;
+            return data;
+        } else {
+            const res = await this._postREST('inventory_batches', batchPayload);
+            return res[0];
+        }
+    },
+
+    async deductStockFifo(productId, quantity) {
+        if (supabase) {
+            try {
+                const { data, error } = await supabase.rpc('fn_deduct_stock_fifo', { p_product_id: productId, p_quantity: quantity });
+                if (!error) return data;
+            } catch (e) {
+                console.warn("RPC fn_deduct_stock_fifo error", e);
+            }
+            // Fallback direct stock update
+            const { data: prod } = await supabase.from('products').select('stock_quantity').eq('id', productId).single();
+            if (prod) {
+                const newStock = Math.max(0, (prod.stock_quantity || 0) - quantity);
+                await supabase.from('products').update({ stock_quantity: newStock }).eq('id', productId);
+            }
+        }
+    },
+
+    async logSpoilage(batchId, quantity, reason, loggedBy) {
+        if (supabase) {
+            try {
+                const { data, error } = await supabase.rpc('fn_log_spoilage', {
+                    p_batch_id: batchId,
+                    p_quantity: quantity,
+                    p_reason: reason,
+                    p_logged_by: loggedBy
+                });
+                if (!error) return data;
+            } catch (e) {
+                console.warn("RPC fn_log_spoilage fallback", e);
+            }
+            // Fallback direct log insert
+            return await supabase.from('inventory_logs').insert([{
+                batch_id: batchId,
+                action_type: 'SPOILAGE',
+                quantity_changed: -quantity,
+                reason: reason,
+                logged_by: loggedBy
+            }]);
+        }
+    },
+
     // -------------------------------------------------------------------------
     // RFID & USER WALLETS
     // -------------------------------------------------------------------------
@@ -121,23 +197,25 @@ const CanteenDB = {
     // USER REGISTRATION & AUTH PROFILE HELPERS
     // -------------------------------------------------------------------------
     async registerUser(payload) {
-        // payload: { email, full_name, role, student_id_number, rfid_uid, pin_code }
+        // payload: { email, full_name, first_name, last_name, role, student_id_number, rfid_uid, pin_code, initial_balance, daily_limit }
+        const { initial_balance, daily_limit, ...profileFields } = payload;
+
         let profile;
         if (supabase) {
-            const { data, error } = await supabase.from('profiles').insert([payload]).select().single();
+            const { data, error } = await supabase.from('profiles').insert([profileFields]).select().single();
             if (error) throw error;
             profile = data;
         } else {
-            const res = await this._postREST('profiles', payload);
+            const res = await this._postREST('profiles', profileFields);
             profile = res[0];
         }
 
         // Initialize wallet for students automatically
-        if (payload.role === 'student' && profile && profile.id) {
+        if ((payload.role?.toLowerCase() === 'student') && profile && profile.id) {
             const walletPayload = {
                 user_id: profile.id,
-                balance: 0.00,
-                daily_limit: 200.00,
+                balance: typeof initial_balance === 'number' ? initial_balance : (parseFloat(initial_balance) || 0.00),
+                daily_limit: typeof daily_limit === 'number' ? daily_limit : (parseFloat(daily_limit) || 200.00),
                 daily_spent: 0.00
             };
             if (supabase) {
@@ -295,29 +373,45 @@ const CanteenDB = {
     // REST FALLBACK UTILITIES
     // -------------------------------------------------------------------------
     async _fetchREST(endpoint) {
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/${endpoint}`, {
-            headers: {
-                "apikey": SUPABASE_ANON_KEY,
-                "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
+        try {
+            const res = await fetch(`${SUPABASE_URL}/rest/v1/${endpoint}`, {
+                headers: {
+                    "apikey": SUPABASE_ANON_KEY,
+                    "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
+                }
+            });
+            if (!res.ok) {
+                const errBody = await res.json().catch(() => ({ message: res.statusText }));
+                throw new Error(errBody.message || `Database query failed (${res.status})`);
             }
-        });
-        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-        return await res.json();
+            return await res.json();
+        } catch(err) {
+            console.warn(`[CanteenDB REST Fetch Error] ${endpoint}:`, err);
+            throw err;
+        }
     },
 
     async _postREST(endpoint, body) {
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/${endpoint}`, {
-            method: "POST",
-            headers: {
-                "apikey": SUPABASE_ANON_KEY,
-                "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-                "Content-Type": "application/json",
-                "Prefer": "return=representation"
-            },
-            body: JSON.stringify(body)
-        });
-        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-        return await res.json();
+        try {
+            const res = await fetch(`${SUPABASE_URL}/rest/v1/${endpoint}`, {
+                method: "POST",
+                headers: {
+                    "apikey": SUPABASE_ANON_KEY,
+                    "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+                    "Content-Type": "application/json",
+                    "Prefer": "return=representation"
+                },
+                body: JSON.stringify(body)
+            });
+            if (!res.ok) {
+                const errBody = await res.json().catch(() => ({ message: res.statusText }));
+                throw new Error(errBody.message || `Database save failed (${res.status})`);
+            }
+            return await res.json();
+        } catch(err) {
+            console.warn(`[CanteenDB REST Post Error] ${endpoint}:`, err);
+            throw err;
+        }
     }
 };
 

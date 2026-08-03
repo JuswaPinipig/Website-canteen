@@ -7,8 +7,8 @@
       "role": "student",
       "student_id_number": "2023-01900",
       "rfid_uid": "9A-4F-21-C8",
-      "balance": 350.00,
-      "daily_limit": 200.00
+      "balance": 280.0,
+      "daily_limit": 200.0
     },
     {
       "full_name": "Sophia Dela Cruz",
@@ -17,8 +17,8 @@
       "role": "student",
       "student_id_number": "2023-01988",
       "rfid_uid": "7B-3E-11-F4",
-      "balance": 420.00,
-      "daily_limit": 250.00
+      "balance": 420.0,
+      "daily_limit": 250.0
     },
     {
       "full_name": "Mark Anthony Santos",
@@ -27,8 +27,8 @@
       "role": "student",
       "student_id_number": "2023-02104",
       "rfid_uid": "5C-2A-88-D1",
-      "balance": 85.00,
-      "daily_limit": 150.00
+      "balance": 85.0,
+      "daily_limit": 150.0
     },
     {
       "full_name": "Beatriz Ramos",
@@ -37,8 +37,8 @@
       "role": "student",
       "student_id_number": "2023-03011",
       "rfid_uid": "3D-11-99-B0",
-      "balance": 120.00,
-      "daily_limit": 200.00
+      "balance": 120.0,
+      "daily_limit": 200.0
     }
   ],
   "parents": [
@@ -47,14 +47,19 @@
       "email": "parent.maria@sjc.edu.ph",
       "password": "Parent123!",
       "role": "parent",
-      "linked_students": ["juan.student@sjc.edu.ph", "sophia.student@sjc.edu.ph"]
+      "linked_students": [
+        "juan.student@sjc.edu.ph",
+        "sophia.student@sjc.edu.ph"
+      ]
     },
     {
       "full_name": "Carlos Dela Cruz",
       "email": "parent.carlos@sjc.edu.ph",
       "password": "Parent123!",
       "role": "parent",
-      "linked_students": ["juan.student@sjc.edu.ph"]
+      "linked_students": [
+        "juan.student@sjc.edu.ph"
+      ]
     }
   ],
   "cashiers": [

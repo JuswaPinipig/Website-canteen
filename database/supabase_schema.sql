@@ -367,4 +367,83 @@ INSERT INTO public.canteen_settings (key, value, description) VALUES
 ('ai_kiosk_mode', '{"enabled": true, "auto_checkout": false, "min_confidence": 0.80}', 'Settings for AI Vision Self-Checkout Kiosk')
 ON CONFLICT (key) DO NOTHING;
 
+-- ------------------------------------------------------------------------------
+-- 18. ATOMIC AI KIOSK TRANSACTION SETTLEMENT STORED PROCEDURE
+-- ------------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.settle_ai_kiosk_transaction(
+    p_student_id UUID,
+    p_items JSONB, -- Array of {"product_id": "...", "name": "...", "qty": 1, "price": 100.00}
+    p_total_amount NUMERIC
+) RETURNS JSONB AS $$
+DECLARE
+    v_wallet_id UUID;
+    v_current_balance NUMERIC;
+    v_order_id UUID;
+    v_order_num TEXT;
+    item JSONB;
+BEGIN
+    -- 1. Lock student wallet record for update
+    SELECT id, balance INTO v_wallet_id, v_current_balance
+    FROM public.wallets
+    WHERE user_id = p_student_id
+    FOR UPDATE;
+
+    IF v_wallet_id IS NULL THEN
+        RAISE EXCEPTION 'WALLET_NOT_FOUND: No wallet associated with student %', p_student_id;
+    END IF;
+
+    IF v_current_balance < p_total_amount THEN
+        RAISE EXCEPTION 'INSUFFICIENT_FUNDS: Required %, Available %', p_total_amount, v_current_balance;
+    END IF;
+
+    -- 2. Deduct wallet balance
+    UPDATE public.wallets
+    SET balance = balance - p_total_amount,
+        daily_spent = daily_spent + p_total_amount,
+        updated_at = NOW()
+    WHERE id = v_wallet_id;
+
+    -- 3. Create POS order record
+    v_order_num := 'ORD-AI-' || TO_CHAR(NOW(), 'YYYYMMDD-HH24MISS') || '-' || SUBSTRING(CAST(gen_random_uuid() AS TEXT), 1, 4);
+    
+    INSERT INTO public.orders (order_number, user_id, total_amount, final_amount, payment_method, payment_status, order_source, order_status)
+    VALUES (v_order_num, p_student_id, p_total_amount, p_total_amount, 'rfid', 'paid', 'ai_kiosk', 'completed')
+    RETURNING id INTO v_order_id;
+
+    -- 4. Record wallet ledger transaction
+    INSERT INTO public.wallet_transactions (wallet_id, user_id, amount, transaction_type, payment_method, reference_id, description)
+    VALUES (v_wallet_id, p_student_id, -p_total_amount, 'purchase', 'rfid', v_order_num, 'AI Kiosk Tray Auto-Deduction');
+
+    -- 5. Loop through detected tray items: Insert order items & decrement inventory stock
+    FOR item IN SELECT * FROM jsonb_array_elements(p_items)
+    LOOP
+        -- Decrement inventory stock
+        UPDATE public.products
+        SET stock_quantity = GREATEST(0, stock_quantity - (item->>'qty')::INT),
+            updated_at = NOW()
+        WHERE id = (item->>'product_id')::UUID;
+
+        -- Insert order line item
+        INSERT INTO public.order_items (order_id, product_id, product_name, unit_price, quantity, subtotal)
+        VALUES (
+            v_order_id,
+            (item->>'product_id')::UUID,
+            item->>'name',
+            (item->>'price')::NUMERIC,
+            (item->>'qty')::INT,
+            (item->>'price')::NUMERIC * (item->>'qty')::INT
+        );
+    END LOOP;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'order_id', v_order_id,
+        'order_number', v_order_num,
+        'remaining_balance', v_current_balance - p_total_amount
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- Done!
+
