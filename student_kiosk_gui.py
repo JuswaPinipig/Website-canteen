@@ -281,17 +281,23 @@ class DatabaseManager:
     def find_student_by_rfid(self, rfid_uid):
         if not rfid_uid:
             return None
-        clean_scanned = str(rfid_uid).strip().replace("-", "").upper().lstrip("0")
+        raw_scanned = str(rfid_uid).strip()
+        scanned_upper = raw_scanned.upper()
+        scanned_clean = scanned_upper.replace("-", "")
+        scanned_nozero = scanned_clean.lstrip("0")
+
         students = self.load_accounts()
         
         for student in students:
             db_rfid = str(student.get("rfid_uid", "")).strip()
             db_id = str(student.get("student_id_number", "")).strip()
-            clean_db_rfid = db_rfid.replace("-", "").upper().lstrip("0")
-            clean_db_id = db_id.replace("-", "").upper().lstrip("0")
+            db_email = str(student.get("email", "")).strip()
             
-            if (clean_scanned == clean_db_rfid or clean_scanned == clean_db_id or
-                str(rfid_uid).strip() == db_rfid or str(rfid_uid).strip() == db_id):
+            db_rfid_clean = db_rfid.upper().replace("-", "")
+            db_id_clean = db_id.upper().replace("-", "")
+            
+            # Exact Match
+            if raw_scanned in (db_rfid, db_id, db_email):
                 return {
                     "id": student.get("student_id_number"),
                     "name": student.get("full_name"),
@@ -300,6 +306,29 @@ class DatabaseManager:
                     "balance": float(student.get("balance", 0.0)),
                     "daily_limit": float(student.get("daily_limit", 200.0))
                 }
+
+            # Normalized Hyphenless Case-Insensitive Match
+            if scanned_clean and (scanned_clean == db_rfid_clean or scanned_clean == db_id_clean):
+                return {
+                    "id": student.get("student_id_number"),
+                    "name": student.get("full_name"),
+                    "email": student.get("email"),
+                    "rfidUid": student.get("rfid_uid"),
+                    "balance": float(student.get("balance", 0.0)),
+                    "daily_limit": float(student.get("daily_limit", 200.0))
+                }
+
+            # Zero-stripped fallback only if non-empty
+            if scanned_nozero and (scanned_nozero == db_rfid_clean.lstrip("0") or scanned_nozero == db_id_clean.lstrip("0")):
+                return {
+                    "id": student.get("student_id_number"),
+                    "name": student.get("full_name"),
+                    "email": student.get("email"),
+                    "rfidUid": student.get("rfid_uid"),
+                    "balance": float(student.get("balance", 0.0)),
+                    "daily_limit": float(student.get("daily_limit", 200.0))
+                }
+
         return None
 
     def deduct_student_balance(self, student_id, amount):
@@ -307,7 +336,9 @@ class DatabaseManager:
         updated = False
         new_balance = 0.0
         for student in students:
-            if student.get("student_id_number") == student_id or student.get("email") == student_id:
+            if (student.get("student_id_number") == student_id or 
+                student.get("email") == student_id or 
+                student.get("id") == student_id):
                 curr_bal = float(student.get("balance", 0.0))
                 new_balance = max(0.0, curr_bal - amount)
                 student["balance"] = new_balance
@@ -318,7 +349,8 @@ class DatabaseManager:
             # Sync balance patch to Supabase Cloud if online
             def _patch_supabase():
                 try:
-                    q = f"{SUPABASE_URL}/rest/v1/profiles?student_id_number=eq.{urllib.parse.quote(str(student_id))}&select=id"
+                    quoted_id = urllib.parse.quote(str(student_id))
+                    q = f"{SUPABASE_URL}/rest/v1/profiles?or=(student_id_number.eq.{quoted_id},id.eq.{quoted_id},email.eq.{quoted_id})&select=id"
                     req = urllib.request.Request(q, headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {SUPABASE_ANON_KEY}"})
                     with urllib.request.urlopen(req, timeout=4) as r:
                         p_data = json.loads(r.read().decode('utf-8'))
@@ -337,8 +369,8 @@ class DatabaseManager:
                                 method="PATCH"
                             )
                             urllib.request.urlopen(p_req, timeout=4)
-                except Exception:
-                    pass
+                except Exception as patch_err:
+                    print(f"[DB MANAGER WARN] Cloud wallet patch error: {patch_err}")
             threading.Thread(target=_patch_supabase, daemon=True).start()
 
         return new_balance

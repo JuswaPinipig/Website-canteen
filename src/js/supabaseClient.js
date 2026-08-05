@@ -358,6 +358,77 @@ const CanteenDB = {
         return profile;
     },
 
+    async getAllUsers() {
+        if (!supabase) {
+            try {
+                return await this._fetchREST('profiles?select=*,wallets(*)&order=created_at.desc');
+            } catch (e) { return []; }
+        }
+        const { data, error } = await supabase.from('profiles').select('*, wallets(*)').order('created_at', { ascending: false });
+        if (error) return [];
+        return data || [];
+    },
+
+    async updateUser(userId, updatePayload) {
+        // Separate profile fields from wallet fields
+        const { balance, daily_limit, credit_liability, dailyCap, creditLimit, ...profileFields } = updatePayload;
+        
+        let updatedProfile = null;
+        if (supabase) {
+            const { data, error } = await supabase.from('profiles').update(profileFields).eq('id', userId).select().single();
+            if (error) console.warn("Supabase profile update warning:", error);
+            updatedProfile = data;
+        } else {
+            try {
+                const res = await this._patchREST(`profiles?id=eq.${userId}`, profileFields);
+                updatedProfile = res[0];
+            } catch (e) {
+                console.warn("REST profile update warning:", e);
+            }
+        }
+
+        // Update Wallet fields if balance, daily_limit, or credit_liability is provided
+        const cleanBalance = balance !== undefined ? (parseFloat(balance) || 0.0) : undefined;
+        const cleanDailyCap = daily_limit !== undefined ? (parseFloat(daily_limit) || 200.0) : (dailyCap !== undefined ? (parseFloat(dailyCap) || 200.0) : undefined);
+        const cleanLiability = credit_liability !== undefined ? (parseFloat(credit_liability) || 0.0) : undefined;
+
+        const walletPatch = {};
+        if (cleanBalance !== undefined) walletPatch.balance = cleanBalance;
+        if (cleanDailyCap !== undefined) walletPatch.daily_limit = cleanDailyCap;
+        if (cleanLiability !== undefined) walletPatch.credit_liability = cleanLiability;
+
+        if (Object.keys(walletPatch).length > 0) {
+            walletPatch.updated_at = new Date().toISOString();
+            if (supabase) {
+                await supabase.from('wallets').update(walletPatch).eq('user_id', userId).catch(e => console.warn("Wallet update error:", e));
+            } else {
+                try {
+                    await fetch(`${SUPABASE_URL}/rest/v1/wallets?user_id=eq.${userId}`, {
+                        method: 'PATCH',
+                        headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json" },
+                        body: JSON.stringify(walletPatch)
+                    });
+                } catch (e) {}
+            }
+        }
+
+        return updatedProfile;
+    },
+
+    async archiveUser(userId) {
+        return await this.updateUser(userId, { status: 'archived' });
+    },
+
+    async updateUserDailyLimit(userId, newLimit) {
+        const cleanLimit = Math.max(0, parseFloat(newLimit) || 0);
+        return await this.updateUser(userId, { daily_limit: cleanLimit, dailyCap: cleanLimit });
+    },
+
+    async updateUserRfid(userId, rfidUid) {
+        return await this.updateUser(userId, { rfid_uid: rfidUid });
+    },
+
+
     // -------------------------------------------------------------------------
     // PARENT-STUDENT LINKING REQUEST WORKFLOW
     // -------------------------------------------------------------------------

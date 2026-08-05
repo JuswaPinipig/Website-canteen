@@ -2205,30 +2205,44 @@
 
             const handleFormSubmit = async (e) => {
                 e.preventDefault();
-                if (supabaseClient && username.includes('@')) {
+                const cleanUser = username.trim().toLowerCase();
+                
+                // Match profile in registeredUsers array
+                const matchedUser = registeredUsers.find(u => 
+                    (u.email && u.email.toLowerCase() === cleanUser) || 
+                    (u.studentId && u.studentId.toLowerCase() === cleanUser) ||
+                    (u.rfidUid && u.rfidUid.toLowerCase() === cleanUser) ||
+                    (u.id && u.id.toLowerCase() === cleanUser)
+                );
+
+                if (supabaseClient && cleanUser.includes('@')) {
                     try {
                         const { data, error } = await supabaseClient.auth.signInWithPassword({
                             email: username,
                             password: password
                         });
                         if (error) {
-                            alert(`Authentication Failed: ${error.message}\n(Make sure you ran seed_dummy_data.sql in Supabase SQL Editor!)`);
-                            return;
+                            console.warn(`Cloud Auth Notice: ${error.message}. Continuing with local session router.`);
                         }
                     } catch (err) {
                         console.warn("Cloud auth error, falling back to local session router");
                     }
                 }
                 
-                if (username.toLowerCase().includes('student') || username.toLowerCase().includes('juan') || username.includes('@')) {
-                    onSelectRoleQuick('STUDENT', username);
-                } else if (username.toLowerCase().includes('parent') || username.toLowerCase().includes('maria')) {
-                    onSelectRoleQuick('PARENT', username);
-                } else if (username.toLowerCase().includes('pos') || username.toLowerCase().includes('cashier')) {
-                    onSelectRoleQuick('CASHIER', username);
-                } else {
-                    onSelectRoleQuick('ADMIN', username);
+                let targetRole = 'STUDENT';
+                if (matchedUser && matchedUser.role) {
+                    targetRole = matchedUser.role.toUpperCase();
+                } else if (cleanUser.includes('parent') || cleanUser.includes('maria')) {
+                    targetRole = 'PARENT';
+                } else if (cleanUser.includes('pos') || cleanUser.includes('cashier')) {
+                    targetRole = 'CASHIER';
+                } else if (cleanUser.includes('admin') || cleanUser.includes('manager')) {
+                    targetRole = 'ADMIN';
+                } else if (cleanUser.includes('student') || cleanUser.includes('juan') || cleanUser.includes('@') || /^\d{4}-\d{5}$/.test(cleanUser)) {
+                    targetRole = 'STUDENT';
                 }
+
+                onSelectRoleQuick(targetRole, username);
             };
 
             const handleResetSubmit = (e) => {
@@ -5427,6 +5441,7 @@
             const [addStudentModalOpen, setAddStudentModalOpen] = useState(false);
             const [editStudentModalOpen, setEditStudentModalOpen] = useState(false);
             const [selectedStudent, setSelectedStudent] = useState(null);
+            const [editStudentError, setEditStudentError] = useState('');
 
             const [addProductModalOpen, setAddProductModalOpen] = useState(false);
             const [editProductModalOpen, setEditProductModalOpen] = useState(false);
@@ -5760,6 +5775,7 @@
                 setEditCreditLimit(user.creditLimit !== undefined ? user.creditLimit.toString() : '500');
                 setEditPayLaterAllowance(user.payLaterAllowance !== false);
                 setEditStatus(user.status);
+                setEditStudentError('');
                 setEditStudentModalOpen(true);
             };
 
@@ -5777,15 +5793,41 @@
 
             const handleSaveStudentEdit = (e) => {
                 e.preventDefault();
+                setEditStudentError('');
                 if (!selectedStudent) return;
+
+                const cleanId = editIdNum.trim();
+                const cleanRfid = editRfid.trim().toUpperCase();
+
+                if (!cleanId) {
+                    setEditStudentError('Student ID Number is required.');
+                    return;
+                }
+
+                // Duplicate Student ID Check
+                const dupId = registeredUsers.find(u => u.studentId && u.studentId.trim().toLowerCase() === cleanId.toLowerCase() && u.id !== selectedStudent.id);
+                if (dupId) {
+                    setEditStudentError(`Student ID "${cleanId}" is already assigned to ${dupId.name}.`);
+                    return;
+                }
+
+                // Duplicate RFID UID Check
+                if (cleanRfid) {
+                    const dupRfid = registeredUsers.find(u => u.rfidUid && u.rfidUid.trim().toUpperCase() === cleanRfid && u.id !== selectedStudent.id);
+                    if (dupRfid) {
+                        setEditStudentError(`RFID Badge UID "${cleanRfid}" is already assigned to ${dupRfid.name}.`);
+                        return;
+                    }
+                }
+
                 onUpdateStudent({
                     ...selectedStudent,
-                    name: editName,
-                    studentId: editIdNum,
-                    rfidUid: editRfid,
-                    dailyCap: parseFloat(editCap) || 200,
-                    balance: parseFloat(editBalance) || 0,
-                    creditLimit: parseFloat(editCreditLimit) || 500,
+                    name: editName.trim(),
+                    studentId: cleanId,
+                    rfidUid: cleanRfid,
+                    dailyCap: Math.max(0, parseFloat(editCap) || 0),
+                    balance: Math.max(0, parseFloat(editBalance) || 0),
+                    creditLimit: Math.max(0, parseFloat(editCreditLimit) || 0),
                     payLaterAllowance: editPayLaterAllowance,
                     status: editStatus
                 });
@@ -6726,6 +6768,12 @@
                     {/* MODAL: EDIT STUDENT */}
                     <CustomModal isOpen={editStudentModalOpen} onClose={() => setEditStudentModalOpen(false)} title="Edit Student Account" subtitle="Update account details & RFID badge UID" icon={Icon.Edit} size="md">
                         <form onSubmit={handleSaveStudentEdit} className="space-y-3">
+                            {editStudentError && (
+                                <div className="flex items-center gap-2 p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs font-medium">
+                                    <Icon.AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                                    <span>{editStudentError}</span>
+                                </div>
+                            )}
                             <div><label className="block font-semibold mb-1">Full Name</label><input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full bg-slate-50 border rounded p-2 text-xs" /></div>
                             <div className="grid grid-cols-2 gap-2">
                                 <div><label className="block font-semibold mb-1">Student ID</label><input type="text" value={editIdNum} onChange={(e) => setEditIdNum(e.target.value)} className="w-full bg-slate-50 border rounded p-2 text-xs" /></div>
@@ -8510,25 +8558,33 @@
 
             // Edit & Archive Handlers
             const handleUpdateStudent = async (updatedUser) => {
-                setRegisteredUsers(registeredUsers.map(u => u.id === updatedUser.id ? updatedUser : u));
-                showToast(`Updated student profile for ${updatedUser.name}!`);
+                setRegisteredUsers(prev => prev.map(u => u.id === updatedUser.id ? { ...u, ...updatedUser } : u));
+                if (currentStudent && currentStudent.id === updatedUser.id) {
+                    setCurrentStudent(prev => ({ ...prev, ...updatedUser }));
+                    if (updatedUser.balance !== undefined) setStudentBalance(updatedUser.balance);
+                    if (updatedUser.dailyCap !== undefined) setDailyLimit(updatedUser.dailyCap);
+                }
+                showToast(`Updated profile for ${updatedUser.name}!`);
 
-                if (supabaseClient) {
-                    await supabaseClient.from('profiles').update({
+                if (window.CanteenDB) {
+                    await window.CanteenDB.updateUser(updatedUser.id, {
                         full_name: updatedUser.name,
                         student_id_number: updatedUser.studentId,
                         rfid_uid: updatedUser.rfidUid,
-                        status: updatedUser.status
-                    }).eq('id', updatedUser.id);
+                        status: updatedUser.status,
+                        balance: updatedUser.balance,
+                        daily_limit: updatedUser.dailyCap,
+                        credit_liability: updatedUser.creditLiability
+                    }).catch(e => console.warn("User update cloud sync warning:", e));
                 }
             };
 
             const handleArchiveStudent = async (userId) => {
-                setRegisteredUsers(registeredUsers.map(u => u.id === userId ? { ...u, status: 'archived' } : u));
-                showToast(`Archived student account`);
+                setRegisteredUsers(prev => prev.map(u => u.id === userId ? { ...u, status: 'archived' } : u));
+                showToast(`Archived account`);
 
-                if (supabaseClient) {
-                    await supabaseClient.from('profiles').update({ status: 'archived' }).eq('id', userId);
+                if (window.CanteenDB) {
+                    await window.CanteenDB.archiveUser(userId).catch(e => console.warn(e));
                 }
             };
 
@@ -8752,8 +8808,19 @@
                                     currentStudent={currentStudent}
                                     recentOrders={recentOrders}
                                     reloadLogs={reloadLogs}
-                                    registeredUsers={registeredUsers}
-                                    onUpdateDailyLimit={(l) => { setDailyLimit(l); showToast("Updated daily limit"); }}
+                                    onUpdateDailyLimit={(l) => {
+                                        const cleanLimit = Math.max(0, parseFloat(l) || 0);
+                                        setDailyLimit(cleanLimit);
+                                        if (currentStudent) {
+                                            const targetId = currentStudent.id;
+                                            setRegisteredUsers(prev => prev.map(u => u.id === targetId ? { ...u, dailyCap: cleanLimit, daily_limit: cleanLimit } : u));
+                                            setCurrentStudent(prev => prev ? { ...prev, dailyCap: cleanLimit, daily_limit: cleanLimit } : prev);
+                                            if (window.CanteenDB && targetId) {
+                                                window.CanteenDB.updateUserDailyLimit(targetId, cleanLimit).catch(e => console.warn(e));
+                                            }
+                                        }
+                                        showToast(`Updated daily spending cap to ₱${cleanLimit.toFixed(2)}!`);
+                                    }}
                                     onUploadReceipt={handleUploadReceipt}
                                     activeTab={activeTab}
                                     setActiveTab={setActiveTab}
