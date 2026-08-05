@@ -6,11 +6,11 @@ Enterprise-grade, multi-threaded Pygame & OpenCV interface for Saint Joseph Coll
 
 System Architecture (Customer-Facing Display / Passive Monitor Edition):
 - Passive, high-visibility 2026 Student-Facing Display (CFD) facing the customer.
-- Built-in prototype counter platform overhead AI camera scanning zone.
+- Built-in prototype counter platform overhead AI camera scanning zone with dual hardware & synthetic stream fallback.
 - Institutional Logo integration (assets/images/branding/school no bg.png).
 - Automatic hardware event pipeline (Overhead Camera, 125kHz RFID Wedge Reader).
 - Clean light minimalist maroon theme optimized for high legibility under canteen lighting.
-- Multi-threaded OpenCV video stream, YOLOv8 inference, SQLite transaction persistence, and TTS audio announcements.
+- Multi-threaded OpenCV video stream, YOLOv8 inference, SQLite transaction persistence, Supabase Dual-Sync, and TTS audio announcements.
 """
 
 import sys
@@ -66,15 +66,39 @@ class CloudSyncWorker(threading.Thread):
         for row in rows:
             tx_id, student_id, items_json, total_amt, pay_method, ts = row
             try:
-                payload = json.dumps({
-                    "order_number": tx_id,
-                    "student_id": student_id,
+                # 1. Resolve student UUID from Supabase profiles if possible
+                user_uuid = None
+                try:
+                    q_url = f"{SUPABASE_URL}/rest/v1/profiles?student_id_number=eq.{urllib.parse.quote(str(student_id))}&select=id"
+                    req_prof = urllib.request.Request(
+                        q_url,
+                        headers={
+                            "apikey": SUPABASE_ANON_KEY,
+                            "Authorization": f"Bearer {SUPABASE_ANON_KEY}"
+                        }
+                    )
+                    with urllib.request.urlopen(req_prof, timeout=4) as p_resp:
+                        p_data = json.loads(p_resp.read().decode('utf-8'))
+                        if p_data and len(p_data) > 0:
+                            user_uuid = p_data[0].get("id")
+                except Exception as p_err:
+                    print(f"[CLOUD DUAL-SYNC NOTICE] Could not resolve UUID for student {student_id}: {p_err}")
+
+                order_num = tx_id if str(tx_id).startswith("ORD-") else f"ORD-AI-{tx_id}"
+
+                payload_dict = {
+                    "order_number": order_num,
                     "total_amount": total_amt,
                     "final_amount": total_amt,
-                    "payment_method": pay_method,
-                    "order_source": "KIOSK_EDGE",
-                    "status": "COMPLETED"
-                }).encode('utf-8')
+                    "payment_method": "rfid",       # Valid enum: 'rfid', 'wallet', 'cash', 'online', 'pay_later'
+                    "payment_status": "paid",       # Valid enum: 'paid', 'pending', 'refunded', 'failed'
+                    "order_source": "ai_kiosk",     # Valid enum: 'cashier_pos', 'ai_kiosk', 'mobile_preorder'
+                    "order_status": "completed"     # Valid enum: 'completed', 'preparing', 'cancelled'
+                }
+                if user_uuid:
+                    payload_dict["user_id"] = user_uuid
+
+                payload = json.dumps(payload_dict).encode('utf-8')
 
                 req = urllib.request.Request(
                     f"{SUPABASE_URL}/rest/v1/orders",
@@ -94,7 +118,7 @@ class CloudSyncWorker(threading.Thread):
                         c.execute("UPDATE pending_transactions SET sync_status = 'SYNCED_TO_CLOUD' WHERE transaction_id = ?", (tx_id,))
                         conn.commit()
                         conn.close()
-                        print(f"[CLOUD DUAL-SYNC SUCCESS] ☁️ Uploaded transaction {tx_id} to Supabase cloud.")
+                        print(f"[CLOUD DUAL-SYNC SUCCESS] ☁️ Uploaded transaction {tx_id} ({order_num}) to Supabase cloud.")
             except Exception as err:
                 print(f"[CLOUD DUAL-SYNC NOTICE] Tx {tx_id} sync attempt deferred (Offline or Cloud unreachable): {err}")
 
@@ -138,13 +162,14 @@ STATE_SETTLEMENT = 4
 STATE_ERROR = 6
 
 # ==============================================================================
-# DATABASE MANAGER (DYNAMIC ACCOUNTS & SQLITE PERSISTENCE)
+# DATABASE MANAGER (DYNAMIC ACCOUNTS, SUPABASE CLOUD & SQLITE PERSISTENCE)
 # ==============================================================================
 class DatabaseManager:
     def __init__(self, accounts_json_path="database/accounts.json", sqlite_db_path="novalunch_edge.db"):
         self.accounts_json_path = os.path.abspath(accounts_json_path)
         self.sqlite_db_path = os.path.abspath(sqlite_db_path)
         self._init_sqlite_db()
+        self.sync_remote_accounts()
         self.sync_worker = CloudSyncWorker(self.sqlite_db_path)
         self.sync_worker.start()
 
@@ -178,6 +203,58 @@ class DatabaseManager:
             conn.close()
         except Exception as e:
             print(f"[DB MANAGER WARN] SQLite init warning: {e}")
+
+    def sync_remote_accounts(self):
+        """Attempts to fetch fresh student account profiles & wallet balances from Supabase."""
+        def _fetch_remote():
+            try:
+                url = f"{SUPABASE_URL}/rest/v1/profiles?role=eq.student&select=id,full_name,email,student_id_number,rfid_uid,wallets(balance,daily_limit)"
+                req = urllib.request.Request(
+                    url,
+                    headers={
+                        "apikey": SUPABASE_ANON_KEY,
+                        "Authorization": f"Bearer {SUPABASE_ANON_KEY}"
+                    }
+                )
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    if resp.status == 200:
+                        remote_profiles = json.loads(resp.read().decode('utf-8'))
+                        if remote_profiles and isinstance(remote_profiles, list):
+                            local_students = self.load_accounts()
+                            by_id = {st.get("student_id_number"): st for st in local_students}
+                            
+                            for p in remote_profiles:
+                                st_id = p.get("student_id_number")
+                                if not st_id:
+                                    continue
+                                w_data = p.get("wallets") or [{}]
+                                w_first = w_data[0] if isinstance(w_data, list) and len(w_data) > 0 else {}
+                                bal = float(w_first.get("balance", p.get("balance", 200.0)))
+                                d_lim = float(w_first.get("daily_limit", p.get("daily_limit", 200.0)))
+                                
+                                if st_id in by_id:
+                                    by_id[st_id]["balance"] = bal
+                                    by_id[st_id]["daily_limit"] = d_lim
+                                    if p.get("rfid_uid"):
+                                        by_id[st_id]["rfid_uid"] = p.get("rfid_uid")
+                                else:
+                                    by_id[st_id] = {
+                                        "full_name": p.get("full_name", "Student"),
+                                        "email": p.get("email", ""),
+                                        "role": "student",
+                                        "student_id_number": st_id,
+                                        "rfid_uid": p.get("rfid_uid", ""),
+                                        "balance": bal,
+                                        "daily_limit": d_lim
+                                    }
+                            
+                            updated_list = list(by_id.values())
+                            self.save_accounts(updated_list)
+                            print(f"[DB MANAGER] ☁️ Synced {len(remote_profiles)} student accounts from Supabase cloud.")
+            except Exception as e:
+                print(f"[DB MANAGER NOTICE] Remote Supabase sync deferred (Offline mode active): {e}")
+
+        threading.Thread(target=_fetch_remote, daemon=True).start()
 
     def load_accounts(self):
         if os.path.exists(self.accounts_json_path):
@@ -238,6 +315,32 @@ class DatabaseManager:
                 break
         if updated:
             self.save_accounts(students)
+            # Sync balance patch to Supabase Cloud if online
+            def _patch_supabase():
+                try:
+                    q = f"{SUPABASE_URL}/rest/v1/profiles?student_id_number=eq.{urllib.parse.quote(str(student_id))}&select=id"
+                    req = urllib.request.Request(q, headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {SUPABASE_ANON_KEY}"})
+                    with urllib.request.urlopen(req, timeout=4) as r:
+                        p_data = json.loads(r.read().decode('utf-8'))
+                        if p_data and len(p_data) > 0:
+                            u_id = p_data[0]["id"]
+                            patch_payload = json.dumps({"balance": new_balance}).encode('utf-8')
+                            p_req = urllib.request.Request(
+                                f"{SUPABASE_URL}/rest/v1/wallets?user_id=eq.{u_id}",
+                                data=patch_payload,
+                                headers={
+                                    "apikey": SUPABASE_ANON_KEY,
+                                    "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
+                                    "Content-Type": "application/json",
+                                    "Prefer": "return=minimal"
+                                },
+                                method="PATCH"
+                            )
+                            urllib.request.urlopen(p_req, timeout=4)
+                except Exception:
+                    pass
+            threading.Thread(target=_patch_supabase, daemon=True).start()
+
         return new_balance
 
     def record_transaction(self, transaction_id, student_id, cart_items, total_amount, tray_image_url=""):
@@ -263,7 +366,7 @@ class DatabaseManager:
             print(f"[DB MANAGER ERROR] Failed to record transaction: {e}")
 
 # ==============================================================================
-# THREADED CAMERA CAPTURE MANAGER & AI VISION PIPELINE (WARM STANDBY)
+# THREADED CAMERA CAPTURE MANAGER & AI VISION PIPELINE (DYNAMIC DUAL FALLBACK)
 # ==============================================================================
 YOLO_MODEL_INSTANCE = None
 YOLO_LOAD_ATTEMPTED = False
@@ -301,118 +404,195 @@ class CameraThread(threading.Thread):
         self.lock = threading.Lock()
         self.running = True
         self.is_connected = False
+        self.manual_enabled = True
 
         self._init_camera()
 
     def _init_camera(self):
-        try:
-            self.cap = cv2.VideoCapture(self.camera_index)
-            if not self.cap.isOpened():
-                self.cap = cv2.VideoCapture(1)
-            if self.cap.isOpened():
-                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-                self.is_connected = True
-                print("[CAMERA LIFECYCLE] 🟢 Warm-standby counter camera stream initialized.")
-        except Exception as e:
-            print(f"[CAMERA LIFECYCLE WARN] Video init warning: {e}")
-            self.is_connected = False
+        """Scans hardware indices [0, 1, 2] to acquire live video stream."""
+        for idx in [self.camera_index, 0, 1, 2]:
+            try:
+                cap_test = cv2.VideoCapture(idx)
+                if cap_test and cap_test.isOpened():
+                    cap_test.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                    cap_test.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                    ret, test_frame = cap_test.read()
+                    if ret and test_frame is not None:
+                        self.cap = cap_test
+                        self.is_connected = True
+                        print(f"[CAMERA LIFECYCLE] 🟢 Video camera stream (hardware index {idx}) initialized.")
+                        return
+                    else:
+                        cap_test.release()
+            except Exception as e:
+                print(f"[CAMERA LIFECYCLE WARN] Index {idx} probe warning: {e}")
+        
+        self.is_connected = False
+        print("[CAMERA LIFECYCLE WARN] No hardware camera available. Synthetic Vision Fallback active.")
+
+    def toggle_manual(self):
+        """Toggles hardware/manual camera state without throwing AttributeError."""
+        with self.lock:
+            self.manual_enabled = not self.manual_enabled
+            return self.manual_enabled
+
+    def _generate_synthetic_frame(self, angle_deg):
+        """Renders dynamic synthetic video stream with animated tray & simulated food items."""
+        h, w = 480, 640
+        canvas = np.full((h, w, 3), (30, 35, 45), dtype=np.uint8)
+
+        # Counter scanning platform grid
+        for x in range(0, w, 40):
+            cv2.line(canvas, (x, 0), (x, h), (45, 50, 65), 1)
+        for y in range(0, h, 40):
+            cv2.line(canvas, (0, y), (w, y), (45, 50, 65), 1)
+
+        # Tray boundary outline
+        cv2.rectangle(canvas, (100, 70), (540, 410), (60, 65, 80), 2)
+        cv2.putText(canvas, "NOVALUNCH OVERHEAD SCANNER PLATFORM (SYNTHETIC FEED)", (115, 95), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (160, 175, 200), 1)
+
+        # Sweeping cyan laser line
+        sweep_y = int(80 + (320 * (math.sin(math.radians(angle_deg)) + 1.0) / 2.0))
+        cv2.line(canvas, (105, sweep_y), (535, sweep_y), (212, 182, 6), 2)
+
+        # Simulated Food Item 1: Buttercream Crackers
+        cv2.rectangle(canvas, (150, 130), (320, 270), (14, 14, 74), -1)
+        cv2.rectangle(canvas, (150, 130), (320, 270), (74, 24, 201), 2)
+        cv2.putText(canvas, "Buttercream Crackers", (160, 160), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
+        cv2.putText(canvas, "P35.00", (160, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (199, 243, 254), 1)
+
+        # Simulated Food Item 2: Mineral Water 500ml
+        cv2.rectangle(canvas, (360, 150), (480, 360), (74, 14, 23), -1)
+        cv2.rectangle(canvas, (360, 150), (480, 360), (217, 119, 6), 2)
+        cv2.putText(canvas, "Mineral Water", (370, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
+        cv2.putText(canvas, "500ml - P20.00", (370, 200), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (254, 243, 199), 1)
+
+        detections = [
+            {
+                "ai_label": "buttercream_crackers",
+                "name": "Buttercream Crackers",
+                "category": "SNACK",
+                "qty": 1,
+                "price": 35.00,
+                "stock": 50,
+                "bbox": [150, 130, 170, 140],
+                "conf": 0.98
+            },
+            {
+                "ai_label": "water_bottle",
+                "name": "Mineral Water 500ml",
+                "category": "BEVERAGE",
+                "qty": 1,
+                "price": 20.00,
+                "stock": 150,
+                "bbox": [360, 150, 120, 210],
+                "conf": 0.96
+            }
+        ]
+
+        return canvas, detections
 
     def run(self):
+        synth_angle = 0
         while self.running:
-            if not self.is_connected or self.cap is None:
-                time.sleep(0.1)
-                continue
-
             try:
-                ret, frame = self.cap.read()
-                if ret and frame is not None:
-                    self.fps_counter += 1
-                    if time.time() - self.fps_start_time >= 1.0:
-                        self.fps_display = self.fps_counter
-                        self.fps_counter = 0
-                        self.fps_start_time = time.time()
+                if self.is_connected and self.manual_enabled and self.cap is not None:
+                    ret, frame = self.cap.read()
+                    if ret and frame is not None:
+                        self.fps_counter += 1
+                        if time.time() - self.fps_start_time >= 1.0:
+                            self.fps_display = self.fps_counter
+                            self.fps_counter = 0
+                            self.fps_start_time = time.time()
 
-                    h_f, w_f, _ = frame.shape
-                    self.frame_size = (w_f, h_f)
-                    
-                    detections = []
-                    model = get_yolo_model("novalunch_yolo.pt")
+                        h_f, w_f, _ = frame.shape
+                        self.frame_size = (w_f, h_f)
+                        
+                        detections = []
+                        model = get_yolo_model("novalunch_yolo.pt")
 
-                    if model is not None:
-                        self.ai_engine_name = "YOLOv8 Engine"
-                        try:
-                            results = model(frame, conf=0.25, verbose=False)
-                            for r in results:
-                                for box in r.boxes:
-                                    cls_id = int(box.cls[0])
-                                    cls_name = model.names.get(cls_id, f"Class {cls_id}")
-                                    conf = float(box.conf[0])
-                                    x1, y1, x2, y2 = map(int, box.xyxy[0])
+                        if model is not None:
+                            self.ai_engine_name = "YOLOv8 Engine"
+                            try:
+                                results = model(frame, conf=0.25, verbose=False)
+                                for r in results:
+                                    for box in r.boxes:
+                                        cls_id = int(box.cls[0])
+                                        cls_name = model.names.get(cls_id, f"Class {cls_id}")
+                                        conf = float(box.conf[0])
+                                        x1, y1, x2, y2 = map(int, box.xyxy[0])
 
-                                    pos_info = POS_CATALOG_DATABASE.get(cls_name) or POS_CATALOG_DATABASE.get(cls_name.lower())
-                                    price = pos_info["price"] if pos_info else 35.00
-                                    display_name = pos_info["name"] if pos_info else cls_name
-                                    category = pos_info["category"] if pos_info else "ITEM"
-                                    stock = pos_info["stock"] if pos_info else 50
+                                        pos_info = POS_CATALOG_DATABASE.get(cls_name) or POS_CATALOG_DATABASE.get(cls_name.lower())
+                                        price = pos_info["price"] if pos_info else 35.00
+                                        display_name = pos_info["name"] if pos_info else cls_name
+                                        category = pos_info["category"] if pos_info else "ITEM"
+                                        stock = pos_info["stock"] if pos_info else 50
 
-                                    detections.append({
-                                        "ai_label": cls_name,
-                                        "name": display_name,
-                                        "category": category,
-                                        "qty": 1,
-                                        "price": price,
-                                        "stock": stock,
-                                        "bbox": [x1, y1, max(20, x2 - x1), max(20, y2 - y1)],
-                                        "conf": conf
-                                    })
-                        except Exception as err:
-                            print(f"[AI INFERENCE WARN] YOLO model error: {err}")
+                                        detections.append({
+                                            "ai_label": cls_name,
+                                            "name": display_name,
+                                            "category": category,
+                                            "qty": 1,
+                                            "price": price,
+                                            "stock": stock,
+                                            "bbox": [x1, y1, max(20, x2 - x1), max(20, y2 - y1)],
+                                            "conf": conf
+                                        })
+                            except Exception as err:
+                                print(f"[AI INFERENCE WARN] YOLO model error: {err}")
 
-                    if model is None:
-                        self.ai_engine_name = "Native Vision Engine"
+                        if model is None:
+                            self.ai_engine_name = "Native Vision Engine"
 
-                    if not detections:
-                        try:
-                            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                            _, thresh = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-                            contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                            
-                            valid_contours = [c for c in contours if cv2.contourArea(c) > 6000]
-                            for i, c in enumerate(valid_contours[:3]):
-                                x, y, bw, bh = cv2.boundingRect(c)
-                                if x < 10 or y < 10 or (x + bw) > (w_f - 10) or (y + bh) > (h_f - 10):
-                                    continue
-                                item_key = "Buttercream Crackers"
-                                pos_info = POS_CATALOG_DATABASE.get(item_key)
-                                if pos_info:
-                                    detections.append({
-                                        "ai_label": item_key,
-                                        "name": pos_info["name"],
-                                        "category": pos_info["category"],
-                                        "qty": 1,
-                                        "price": pos_info["price"],
-                                        "stock": pos_info["stock"],
-                                        "bbox": [x, y, bw, bh],
-                                        "conf": 0.96 - (i * 0.03)
-                                    })
-                        except Exception:
-                            pass
+                        if not detections:
+                            try:
+                                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                                _, thresh = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+                                contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                                
+                                valid_contours = [c for c in contours if cv2.contourArea(c) > 6000]
+                                for i, c in enumerate(valid_contours[:3]):
+                                    x, y, bw, bh = cv2.boundingRect(c)
+                                    if x < 10 or y < 10 or (x + bw) > (w_f - 10) or (y + bh) > (h_f - 10):
+                                        continue
+                                    item_key = "Buttercream Crackers"
+                                    pos_info = POS_CATALOG_DATABASE.get(item_key)
+                                    if pos_info:
+                                        detections.append({
+                                            "ai_label": item_key,
+                                            "name": pos_info["name"],
+                                            "category": pos_info["category"],
+                                            "qty": 1,
+                                            "price": pos_info["price"],
+                                            "stock": pos_info["stock"],
+                                            "bbox": [x, y, bw, bh],
+                                            "conf": 0.96 - (i * 0.03)
+                                        })
+                            except Exception:
+                                pass
 
-                    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    with self.lock:
-                        self.current_frame = rgb_frame
-                        self.latest_detections = detections
+                        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        with self.lock:
+                            self.current_frame = rgb_frame
+                            self.latest_detections = detections
+                    else:
+                        self.is_connected = False
+                        time.sleep(0.1)
                 else:
+                    # Synthetic Fallback Frame Stream
+                    synth_angle = (synth_angle + 4) % 360
+                    frame_rgb, detections = self._generate_synthetic_frame(synth_angle)
+                    self.ai_engine_name = "Synthetic Vision Engine"
+                    self.fps_display = 60
+                    self.frame_size = (640, 480)
                     with self.lock:
-                        self.current_frame = None
-                        self.latest_detections = []
-                    self.is_connected = False
+                        self.current_frame = frame_rgb
+                        self.latest_detections = detections
             except Exception as e:
                 print(f"[CAMERA THREAD] Frame read error: {e}")
                 time.sleep(0.1)
 
-            time.sleep(0.015)
+            time.sleep(0.016)
 
     def get_frame(self):
         with self.lock:
@@ -471,7 +651,7 @@ def speak_text(text):
             try:
                 if shutil.which("say"):
                     subprocess.run(["killall", "say"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL, check=False)
-                    subprocess.run(["say", "-r", "240", "-v", "Samantha", text], check=False)
+                    subprocess.run(["say", "-r", "240", "-v", "Samantha", text], timeout=4, check=False)
                 else:
                     print(f"[VOICE ANNOUNCEMENT]: {text}")
             except Exception as e:
@@ -483,7 +663,8 @@ def create_synthesized_sounds():
     """Generates synthesized audio effects in memory."""
     sounds = {"success": None, "tick": None, "error": None}
     try:
-        pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
+        if not pygame.mixer.get_init():
+            pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
         sample_rate = 44100
         
         # Success Chime Sound
@@ -860,7 +1041,7 @@ class NovaLunchKioskGUI:
         ai_engine, fps_val, frame_dim = self.camera_thread.get_ai_status()
 
         if cam_frame is not None:
-            status_text = f"LIVE HD CAMERA • {ai_engine} ({fps_val} FPS)"
+            status_text = f"LIVE STREAM • {ai_engine} ({fps_val} FPS)"
             badge_bg = COLOR_EMERALD_BG
             badge_fg = COLOR_EMERALD
         else:
@@ -923,7 +1104,8 @@ class NovaLunchKioskGUI:
                     pygame.draw.rect(self.screen, COLOR_MAROON_DARK, bg_label_rect, border_radius=4)
                     pygame.draw.rect(self.screen, c_color, bg_label_rect, width=1, border_radius=4)
                     self.screen.blit(label_surf, (rx + 4, ry - 20))
-            except Exception:
+            except Exception as render_err:
+                print(f"[UI RENDER WARN] Video render fallback: {render_err}")
                 self.render_camera_fallback(video_area)
         else:
             self.render_camera_fallback(video_area)
@@ -1021,7 +1203,7 @@ class NovaLunchKioskGUI:
             (self.btn_step1, "Step 1: Tap ID", "💳", COLOR_MAROON_HEADER, "[1]"),
             (self.btn_step2, "Step 2: AI Scan", "🍱", COLOR_MAROON_HEADER, "[2]"),
             (self.btn_step3, "Step 3: 5s Timer", "⏳", COLOR_MAROON_HEADER, "[3]"),
-            (self.btn_step4, "Step 4: Pay ₱115", "✓", COLOR_ROSE_VIBRANT, "[4]")
+            (self.btn_step4, "Step 4: Pay ₱55", "✓", COLOR_ROSE_VIBRANT, "[4]")
         ]
 
         for rect, label, icon, bg_color, key_hint in btn_configs:
@@ -1151,7 +1333,7 @@ class NovaLunchKioskGUI:
         msg_surf = self.font_footer.render(f"SYSTEM STATUS: {self.status_message}", True, COLOR_WHITE)
         self.screen.blit(msg_surf, (24, 690))
 
-        keybind_surf = self.font_subtitle_bold.render("[CASHIER SIMULATION SHORTCUTS: 1-4 | SPACE | M | R]", True, COLOR_GOLD_LIGHT)
+        keybind_surf = self.font_subtitle_bold.render("[CASHIER SIMULATION SHORTCUTS: 1-4 | SPACE | M | R | C]", True, COLOR_GOLD_LIGHT)
         self.screen.blit(keybind_surf, (SCREEN_WIDTH - keybind_surf.get_width() - 24, 690))
 
     # --------------------------------------------------------------------------
@@ -1171,7 +1353,7 @@ class NovaLunchKioskGUI:
         print("  - [SPACEBAR] : Advance Step Flow / Tap ID / Auto Pay")
         print("  - [M]        : Toggle Platform Motion (Pauses 5s Timer)")
         print("  - [I]        : Toggle Insufficient Balance Mode")
-        print("  - [C]        : Toggle Camera On/Off")
+        print("  - [C]        : Toggle Hardware/Synthetic Camera Feed")
         print("  - [R]        : Reset System to IDLE State")
         print("=============================================================")
 
@@ -1217,7 +1399,7 @@ class NovaLunchKioskGUI:
                         print(f"[DEMO OPTION] Insufficient balance simulation: {mode_str}")
                     elif event.key == pygame.K_c:
                         is_on = self.camera_thread.toggle_manual()
-                        cam_str = "ENABLED" if is_on else "DISABLED (Fallback Active)"
+                        cam_str = "HARDWARE LIVE" if is_on else "SYNTHETIC DEMO"
                         print(f"[DEMO OPTION] Manual Camera Hardware State: {cam_str}")
 
                     if event.unicode and (event.unicode.isdigit() or event.unicode.isalnum()):

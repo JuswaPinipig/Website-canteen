@@ -79,6 +79,9 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     pin_code TEXT,
     avatar_url TEXT,
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'inactive')),
+    credit_liability NUMERIC(10, 2) DEFAULT 0.00 CHECK (credit_liability >= 0),
+    credit_limit NUMERIC(10, 2) DEFAULT 500.00,
+    pay_later_allowance BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -143,6 +146,7 @@ CREATE TABLE IF NOT EXISTS public.wallets (
     balance NUMERIC(10, 2) NOT NULL DEFAULT 0.00 CHECK (balance >= 0),
     daily_limit NUMERIC(10, 2) DEFAULT 200.00,
     daily_spent NUMERIC(10, 2) DEFAULT 0.00,
+    credit_liability NUMERIC(10, 2) DEFAULT 0.00 CHECK (credit_liability >= 0),
     last_spent_date DATE DEFAULT CURRENT_DATE,
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -211,8 +215,10 @@ CREATE TABLE IF NOT EXISTS public.orders (
     total_amount NUMERIC(10, 2) NOT NULL CHECK (total_amount >= 0),
     discount_amount NUMERIC(10, 2) DEFAULT 0.00,
     final_amount NUMERIC(10, 2) NOT NULL CHECK (final_amount >= 0),
-    payment_method TEXT NOT NULL CHECK (payment_method IN ('rfid', 'wallet', 'cash', 'online')),
+    payment_method TEXT NOT NULL CHECK (payment_method IN ('rfid', 'wallet', 'cash', 'online', 'pay_later')),
     payment_status TEXT NOT NULL DEFAULT 'paid' CHECK (payment_status IN ('paid', 'pending', 'refunded', 'failed')),
+    pay_later_note TEXT,
+    manager_approved_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
     order_source TEXT NOT NULL DEFAULT 'cashier_pos' CHECK (order_source IN ('cashier_pos', 'ai_kiosk', 'mobile_preorder')),
     order_status TEXT NOT NULL DEFAULT 'completed' CHECK (order_status IN ('completed', 'preparing', 'cancelled')),
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -445,5 +451,75 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- ------------------------------------------------------------------------------
+-- 19. ATOMIC PAY LATER TAB REPAYMENT & DEBT SETTLEMENT STORED PROCEDURE
+-- ------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.settle_pay_later_liability(
+    p_user_id UUID,
+    p_amount NUMERIC,
+    p_payment_method TEXT, -- 'cash' | 'rfid' | 'online'
+    p_cashier_id UUID DEFAULT NULL
+) RETURNS JSONB AS $$
+DECLARE
+    v_wallet_id UUID;
+    v_current_liability NUMERIC;
+    v_current_balance NUMERIC;
+    v_new_liability NUMERIC;
+BEGIN
+    -- 1. Lock wallet record
+    SELECT id, credit_liability, balance INTO v_wallet_id, v_current_liability, v_current_balance
+    FROM public.wallets
+    WHERE user_id = p_user_id
+    FOR UPDATE;
+
+    IF v_wallet_id IS NULL THEN
+        RAISE EXCEPTION 'WALLET_NOT_FOUND: No wallet associated with student %', p_user_id;
+    END IF;
+
+    IF v_current_liability <= 0 THEN
+        RAISE EXCEPTION 'NO_OUTSTANDING_DEBT: Student has zero Pay Later debt.';
+    END IF;
+
+    -- If paid via RFID wallet balance, ensure sufficient RFID funds
+    IF p_payment_method = 'rfid' AND v_current_balance < p_amount THEN
+        RAISE EXCEPTION 'INSUFFICIENT_RFID_FUNDS: Available %, Repayment %', v_current_balance, p_amount;
+    END IF;
+
+    v_new_liability := GREATEST(0, v_current_liability - p_amount);
+
+    -- 2. Deduct credit liability & deduct wallet balance if RFID payment
+    IF p_payment_method = 'rfid' THEN
+        UPDATE public.wallets
+        SET credit_liability = v_new_liability,
+            balance = balance - p_amount,
+            updated_at = NOW()
+        WHERE id = v_wallet_id;
+    ELSE
+        UPDATE public.wallets
+        SET credit_liability = v_new_liability,
+            updated_at = NOW()
+        WHERE id = v_wallet_id;
+    END IF;
+
+    -- Sync profile table
+    UPDATE public.profiles
+    SET credit_liability = v_new_liability,
+        updated_at = NOW()
+    WHERE id = p_user_id;
+
+    -- 3. Log ledger transaction
+    INSERT INTO public.wallet_transactions (wallet_id, user_id, amount, transaction_type, payment_method, reference_id, description)
+    VALUES (v_wallet_id, p_user_id, p_amount, 'topup', p_payment_method, 'TAB-REPAY-' || TO_CHAR(NOW(), 'YYYYMMDD-HH24MISS'), 'Pay Later Debt Repayment (' || UPPER(p_payment_method) || ')');
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'previous_liability', v_current_liability,
+        'remaining_liability', v_new_liability,
+        'amount_paid', p_amount
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- Done!
+
 

@@ -50,6 +50,30 @@ const CanteenDB = {
         }
     },
 
+    async createProduct(productPayload) {
+        if (supabase) {
+            const { data, error } = await supabase.from('products').insert([productPayload]).select().single();
+            if (error) throw error;
+            return data;
+        } else {
+            const res = await this._postREST('products', productPayload);
+            return res[0];
+        }
+    },
+
+    async updateProduct(productId, updatePayload) {
+        if (supabase) {
+            const { data, error } = await supabase.from('products').update(updatePayload).eq('id', productId).select();
+            if (error) {
+                console.warn("Error updating product:", error);
+                throw error;
+            }
+            return data;
+        } else {
+            return await this._patchREST(`products?id=eq.${productId}`, updatePayload);
+        }
+    },
+
     // -------------------------------------------------------------------------
     // INVENTORY BATCH & EXPIRY MANAGEMENT
     // -------------------------------------------------------------------------
@@ -81,15 +105,40 @@ const CanteenDB = {
         if (supabase) {
             try {
                 const { data, error } = await supabase.rpc('fn_deduct_stock_fifo', { p_product_id: productId, p_quantity: quantity });
-                if (!error) return data;
+                if (!error && data !== null) return data;
             } catch (e) {
                 console.warn("RPC fn_deduct_stock_fifo error", e);
             }
-            // Fallback direct stock update
-            const { data: prod } = await supabase.from('products').select('stock_quantity').eq('id', productId).single();
-            if (prod) {
-                const newStock = Math.max(0, (prod.stock_quantity || 0) - quantity);
-                await supabase.from('products').update({ stock_quantity: newStock }).eq('id', productId);
+            // Fallback direct stock & batch update
+            try {
+                const { data: prod } = await supabase.from('products').select('stock_quantity').eq('id', productId).single();
+                if (prod) {
+                    const newStock = Math.max(0, (prod.stock_quantity || 0) - quantity);
+                    await supabase.from('products').update({ stock_quantity: newStock }).eq('id', productId);
+                }
+
+                // Fallback batch deduction (FIFO by expiration_date)
+                const { data: batches } = await supabase.from('inventory_batches')
+                    .select('*')
+                    .eq('product_id', productId)
+                    .gt('quantity_remaining', 0)
+                    .order('expiration_date', { ascending: true });
+
+                if (batches && batches.length > 0) {
+                    let qtyToDeduct = quantity;
+                    for (const batch of batches) {
+                        if (qtyToDeduct <= 0) break;
+                        const deductFromThis = Math.min(batch.quantity_remaining, qtyToDeduct);
+                        const newRem = batch.quantity_remaining - deductFromThis;
+                        const newStatus = newRem === 0 ? 'DEPLETED' : batch.status;
+                        await supabase.from('inventory_batches')
+                            .update({ quantity_remaining: newRem, status: newStatus })
+                            .eq('id', batch.id);
+                        qtyToDeduct -= deductFromThis;
+                    }
+                }
+            } catch (fallbackErr) {
+                console.warn("Fallback direct stock update warning:", fallbackErr);
             }
         }
     },
@@ -140,6 +189,79 @@ const CanteenDB = {
         if (error) throw error;
         return data;
     },
+
+    async updateStudentBalance(userId, newBalance) {
+        const cleanBalance = Math.max(0, parseFloat(newBalance) || 0);
+        if (supabase) {
+            try {
+                await supabase.from('wallets').update({ balance: cleanBalance, updated_at: new Date().toISOString() }).eq('user_id', userId);
+            } catch(e) {
+                console.warn("Error updating wallets table balance:", e);
+            }
+            try {
+                await supabase.from('profiles').update({ balance: cleanBalance }).eq('id', userId);
+            } catch(e) {
+                console.warn("Error updating profiles table balance:", e);
+            }
+        } else {
+            try {
+                await fetch(`${SUPABASE_URL}/rest/v1/wallets?user_id=eq.${userId}`, {
+                    method: 'PATCH',
+                    headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({ balance: cleanBalance })
+                });
+            } catch(e) {}
+        }
+        return cleanBalance;
+    },
+
+    async updateStudentCreditLiability(userId, newLiability) {
+        const cleanLiability = Math.max(0, parseFloat(newLiability) || 0);
+        if (supabase) {
+            try {
+                await supabase.from('wallets').update({ credit_liability: cleanLiability, updated_at: new Date().toISOString() }).eq('user_id', userId);
+            } catch(e) {
+                console.warn("Error updating wallets table liability:", e);
+            }
+            try {
+                await supabase.from('profiles').update({ credit_liability: cleanLiability }).eq('id', userId);
+            } catch(e) {
+                console.warn("Error updating profiles table liability:", e);
+            }
+        } else {
+            try {
+                await fetch(`${SUPABASE_URL}/rest/v1/wallets?user_id=eq.${userId}`, {
+                    method: 'PATCH',
+                    headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({ credit_liability: cleanLiability })
+                });
+            } catch(e) {}
+        }
+        return cleanLiability;
+    },
+
+    async settleStudentDebt(userId, amountPaid, paymentMethod = 'cash', cashierId = null) {
+        if (supabase) {
+            try {
+                const { data, error } = await supabase.rpc('settle_pay_later_liability', {
+                    p_user_id: userId,
+                    p_amount: amountPaid,
+                    p_payment_method: paymentMethod.toLowerCase(),
+                    p_cashier_id: cashierId
+                });
+                if (!error && data) return data;
+            } catch(e) {
+                console.warn("RPC settle_pay_later_liability fallback", e);
+            }
+        }
+        // Fallback update
+        const wallet = await this.getWalletByUserId(userId).catch(() => null);
+        const currentDebt = wallet ? (parseFloat(wallet.credit_liability) || 0) : 0;
+        const newDebt = Math.max(0, currentDebt - amountPaid);
+        await this.updateStudentCreditLiability(userId, newDebt);
+        return { success: true, remaining_liability: newDebt };
+    },
+
 
     // -------------------------------------------------------------------------
     // POS TRANSACTIONS & ORDERS
@@ -370,6 +492,120 @@ const CanteenDB = {
     },
 
     // -------------------------------------------------------------------------
+    // PRE-ORDERS & EXPRESS CLAIM TOKENS
+    // -------------------------------------------------------------------------
+    async createPreorder(payload) {
+        // payload: { student_id, item_name, price, token, status, created_at }
+        if (supabase) {
+            const { data, error } = await supabase.from('preorders').insert([payload]).select().single();
+            if (error) {
+                console.warn("Preorder Cloud DB insert warning, falling back local:", error);
+                return payload;
+            }
+            return data;
+        } else {
+            try {
+                const res = await this._postREST('preorders', payload);
+                return res[0];
+            } catch (e) {
+                console.warn("Preorder REST API fallback warning:", e);
+                return payload;
+            }
+        }
+    },
+
+    async getPreorders(studentId) {
+        if (!supabase) {
+            try {
+                return await this._fetchREST(`preorders?select=*${studentId ? `&student_id=eq.${studentId}` : ''}&order=created_at.desc`);
+            } catch (e) { return []; }
+        }
+        let query = supabase.from('preorders').select('*').order('created_at', { ascending: false });
+        if (studentId) query = query.eq('student_id', studentId);
+        const { data, error } = await query;
+        if (error) return [];
+        return data || [];
+    },
+
+    async updatePreorderStatus(preorderId, status) {
+        if (supabase) {
+            await supabase.from('preorders').update({ status, updated_at: new Date().toISOString() }).eq('id', preorderId);
+        } else {
+            try {
+                await fetch(`${SUPABASE_URL}/rest/v1/preorders?id=eq.${preorderId}`, {
+                    method: 'PATCH',
+                    headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({ status })
+                });
+            } catch(e) {}
+        }
+    },
+
+    // -------------------------------------------------------------------------
+    // GCASH RELOAD QUEUE & TOP-UPS
+    // -------------------------------------------------------------------------
+    async submitGcashReload(payload) {
+        // payload: { id, parent_name, student_name, student_id, amount, date, ref_no, status, receipt_img, submitter_role }
+        if (supabase) {
+            const { data, error } = await supabase.from('topup_requests').insert([payload]).select().single();
+            if (error) {
+                console.warn("GCash reload Cloud DB insert warning:", error);
+                return payload;
+            }
+            return data;
+        } else {
+            try {
+                const res = await this._postREST('topup_requests', payload);
+                return res[0];
+            } catch (e) {
+                return payload;
+            }
+        }
+    },
+
+    async getGcashQueue() {
+        if (!supabase) {
+            try {
+                return await this._fetchREST('topup_requests?select=*&order=created_at.desc');
+            } catch (e) { return []; }
+        }
+        const { data, error } = await supabase.from('topup_requests').select('*').order('created_at', { ascending: false });
+        if (error) return [];
+        return data || [];
+    },
+
+    async updateGcashReloadStatus(reloadId, status, adminNote = '') {
+        if (supabase) {
+            await supabase.from('topup_requests').update({ status, admin_note: adminNote, reviewed_at: new Date().toISOString() }).eq('id', reloadId);
+        }
+    },
+
+    // -------------------------------------------------------------------------
+    // STUDENT ORDERS & E-RECEIPTS
+    // -------------------------------------------------------------------------
+    async getStudentOrders(studentId) {
+        if (!supabase) {
+            try {
+                return await this._fetchREST(`orders?select=*,order_items(*)&user_id=eq.${studentId}&order=created_at.desc`);
+            } catch(e) { return []; }
+        }
+        const { data, error } = await supabase.from('orders').select('*, order_items(*)').eq('user_id', studentId).order('created_at', { ascending: false });
+        if (error) return [];
+        return data || [];
+    },
+
+    // -------------------------------------------------------------------------
+    // SECURITY & RFID PIN CODE
+    // -------------------------------------------------------------------------
+    async updateStudentPin(userId, pinCode) {
+        if (supabase) {
+            const { data, error } = await supabase.from('profiles').update({ pin_code: pinCode }).eq('id', userId).select();
+            if (error) throw error;
+            return data;
+        }
+    },
+
+    // -------------------------------------------------------------------------
     // REST FALLBACK UTILITIES
     // -------------------------------------------------------------------------
     async _fetchREST(endpoint) {
@@ -410,6 +646,29 @@ const CanteenDB = {
             return await res.json();
         } catch(err) {
             console.warn(`[CanteenDB REST Post Error] ${endpoint}:`, err);
+            throw err;
+        }
+    },
+
+    async _patchREST(endpoint, body) {
+        try {
+            const res = await fetch(`${SUPABASE_URL}/rest/v1/${endpoint}`, {
+                method: "PATCH",
+                headers: {
+                    "apikey": SUPABASE_ANON_KEY,
+                    "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+                    "Content-Type": "application/json",
+                    "Prefer": "return=representation"
+                },
+                body: JSON.stringify(body)
+            });
+            if (!res.ok) {
+                const errBody = await res.json().catch(() => ({ message: res.statusText }));
+                throw new Error(errBody.message || `Database update failed (${res.status})`);
+            }
+            return await res.json();
+        } catch(err) {
+            console.warn(`[CanteenDB REST Patch Error] ${endpoint}:`, err);
             throw err;
         }
     }
