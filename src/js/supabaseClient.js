@@ -199,13 +199,20 @@ const CanteenDB = {
                 console.warn("Error updating wallets table balance:", e);
             }
             try {
-                await supabase.from('profiles').update({ balance: cleanBalance }).eq('id', userId);
+                await supabase.from('profiles').update({ balance: cleanBalance, updated_at: new Date().toISOString() }).eq('id', userId);
             } catch(e) {
                 console.warn("Error updating profiles table balance:", e);
             }
         } else {
             try {
                 await fetch(`${SUPABASE_URL}/rest/v1/wallets?user_id=eq.${userId}`, {
+                    method: 'PATCH',
+                    headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({ balance: cleanBalance })
+                });
+            } catch(e) {}
+            try {
+                await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
                     method: 'PATCH',
                     headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json" },
                     body: JSON.stringify({ balance: cleanBalance })
@@ -301,6 +308,24 @@ const CanteenDB = {
         return order;
     },
 
+    async updateOrderStatus(orderId, status) {
+        if (supabase) {
+            const { data, error } = await supabase.from('orders').update({ order_status: status, updated_at: new Date().toISOString() }).or(`id.eq.${orderId},order_number.eq.${orderId}`).select();
+            if (error) console.warn("Error updating order status in Supabase:", error);
+            return data;
+        } else {
+            try {
+                return await fetch(`${SUPABASE_URL}/rest/v1/orders?or=(id.eq.${orderId},order_number.eq.${orderId})`, {
+                    method: 'PATCH',
+                    headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({ order_status: status })
+                });
+            } catch(e) {
+                console.warn("REST updateOrderStatus error:", e);
+            }
+        }
+    },
+
     // -------------------------------------------------------------------------
     // AI CAMERA DETECTION LOGS
     // -------------------------------------------------------------------------
@@ -319,13 +344,45 @@ const CanteenDB = {
     // USER REGISTRATION & AUTH PROFILE HELPERS
     // -------------------------------------------------------------------------
     async registerUser(payload) {
-        // payload: { email, full_name, first_name, last_name, role, student_id_number, rfid_uid, pin_code, initial_balance, daily_limit }
-        const { initial_balance, daily_limit, ...profileFields } = payload;
+        // payload: { email, full_name, first_name, last_name, role, student_id_number, rfid_uid, pin_code, initial_balance, daily_limit, password }
+        const { initial_balance, daily_limit, first_name, last_name, password, tempPassword, ...profileFields } = payload;
+
+        if (!profileFields.full_name && (first_name || last_name)) {
+            profileFields.full_name = `${first_name || ''} ${last_name || ''}`.trim();
+        }
+
+        const authPass = password || tempPassword || 'SJC#2026!';
+
+        // Create Supabase Auth account if online
+        if (supabase && profileFields.email) {
+            try {
+                const { data: authData, error: authError } = await supabase.auth.signUp({
+                    email: profileFields.email,
+                    password: authPass,
+                    options: {
+                        data: {
+                            full_name: profileFields.full_name,
+                            role: profileFields.role || 'student'
+                        }
+                    }
+                });
+                if (authError) {
+                    console.warn("Supabase Auth signUp note:", authError.message);
+                } else if (authData?.user?.id) {
+                    profileFields.id = authData.user.id;
+                }
+            } catch(aErr) {
+                console.warn("Supabase Auth sign up exception:", aErr);
+            }
+        }
 
         let profile;
         if (supabase) {
             const { data, error } = await supabase.from('profiles').insert([profileFields]).select().single();
-            if (error) throw error;
+            if (error) {
+                console.error("Supabase profile registration error:", error);
+                throw new Error(error.message || `Database error creating account for ${profileFields.email}`);
+            }
             profile = data;
         } else {
             const res = await this._postREST('profiles', profileFields);
@@ -341,9 +398,9 @@ const CanteenDB = {
                 daily_spent: 0.00
             };
             if (supabase) {
-                await supabase.from('wallets').insert([walletPayload]);
+                await supabase.from('wallets').insert([walletPayload]).catch(wErr => console.warn("Wallet init warning:", wErr));
             } else {
-                await this._postREST('wallets', walletPayload);
+                await this._postREST('wallets', walletPayload).catch(wErr => console.warn("REST Wallet init warning:", wErr));
             }
         }
 
@@ -351,7 +408,7 @@ const CanteenDB = {
         await this.createNotification({
             user_id: profile.id,
             title: "Welcome to NovaLunch!",
-            message: `Your ${payload.role.toUpperCase()} account has been created successfully.`,
+            message: `Your ${(payload.role || 'user').toUpperCase()} account has been created successfully.`,
             type: "account_created"
         });
 
@@ -371,20 +428,19 @@ const CanteenDB = {
 
     async updateUser(userId, updatePayload) {
         // Separate profile fields from wallet fields
-        const { balance, daily_limit, credit_liability, dailyCap, creditLimit, ...profileFields } = updatePayload;
+        const { balance, daily_limit, credit_liability, dailyCap, creditLimit, first_name, last_name, firstName, lastName, ...profileFields } = updatePayload;
         
         let updatedProfile = null;
         if (supabase) {
             const { data, error } = await supabase.from('profiles').update(profileFields).eq('id', userId).select().single();
-            if (error) console.warn("Supabase profile update warning:", error);
+            if (error) {
+                console.error("Supabase profile update error:", error);
+                throw new Error(error.message || `Database error updating profile`);
+            }
             updatedProfile = data;
         } else {
-            try {
-                const res = await this._patchREST(`profiles?id=eq.${userId}`, profileFields);
-                updatedProfile = res[0];
-            } catch (e) {
-                console.warn("REST profile update warning:", e);
-            }
+            const res = await this._patchREST(`profiles?id=eq.${userId}`, profileFields);
+            updatedProfile = res[0];
         }
 
         // Update Wallet fields if balance, daily_limit, or credit_liability is provided
@@ -433,23 +489,27 @@ const CanteenDB = {
     // PARENT-STUDENT LINKING REQUEST WORKFLOW
     // -------------------------------------------------------------------------
     async sendParentLinkRequest(parentId, studentIdentifier) {
-        // Search student by student_id_number or email
+        const cleanIdentifier = String(studentIdentifier || '').trim();
+        if (!cleanIdentifier) {
+            throw new Error("Student Identifier cannot be empty. Please enter a valid Student ID or Email.");
+        }
+        // Search student by student_id_number, email, or id
         let student = null;
         if (supabase) {
             const { data } = await supabase
                 .from('profiles')
                 .select('*')
                 .eq('role', 'student')
-                .or(`student_id_number.eq.${studentIdentifier},email.eq.${studentIdentifier}`)
+                .or(`student_id_number.eq.${cleanIdentifier},email.eq.${cleanIdentifier},id.eq.${cleanIdentifier}`)
                 .maybeSingle();
             student = data;
         } else {
-            const res = await this._fetchREST(`profiles?select=*&role=eq.student&or=(student_id_number.eq.${encodeURIComponent(studentIdentifier)},email.eq.${encodeURIComponent(studentIdentifier)})`);
+            const res = await this._fetchREST(`profiles?select=*&role=eq.student&or=(student_id_number.eq.${encodeURIComponent(cleanIdentifier)},email.eq.${encodeURIComponent(cleanIdentifier)},id.eq.${encodeURIComponent(cleanIdentifier)})`);
             student = res.length > 0 ? res[0] : null;
         }
 
         if (!student) {
-            throw new Error(`No student found matching ID or Email "${studentIdentifier}". Please verify credentials.`);
+            throw new Error(`No student found matching ID or Email "${cleanIdentifier}". Please verify credentials.`);
         }
 
         // Check if already linked

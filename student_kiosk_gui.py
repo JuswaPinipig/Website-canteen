@@ -329,6 +329,46 @@ class DatabaseManager:
                     "daily_limit": float(student.get("daily_limit", 200.0))
                 }
 
+        # Cloud Fallback Lookup if not found in local accounts cache
+        try:
+            quoted_uid = urllib.parse.quote(raw_scanned)
+            url = f"{SUPABASE_URL}/rest/v1/profiles?role=eq.student&or=(rfid_uid.eq.{quoted_uid},student_id_number.eq.{quoted_uid},email.eq.{quoted_uid})&select=id,full_name,email,student_id_number,rfid_uid,wallets(balance,daily_limit)"
+            req = urllib.request.Request(url, headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {SUPABASE_ANON_KEY}"})
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                if resp.status == 200:
+                    data = json.loads(resp.read().decode('utf-8'))
+                    if data and len(data) > 0:
+                        p = data[0]
+                        w_data = p.get("wallets") or [{}]
+                        w_first = w_data[0] if isinstance(w_data, list) and len(w_data) > 0 else {}
+                        bal = float(w_first.get("balance", p.get("balance", 200.0)))
+                        d_lim = float(w_first.get("daily_limit", p.get("daily_limit", 200.0)))
+                        st_id = p.get("student_id_number") or p.get("id")
+                        
+                        # Cache into local accounts.json
+                        new_st = {
+                            "full_name": p.get("full_name", "Student"),
+                            "email": p.get("email", ""),
+                            "role": "student",
+                            "student_id_number": st_id,
+                            "rfid_uid": p.get("rfid_uid", raw_scanned),
+                            "balance": bal,
+                            "daily_limit": d_lim
+                        }
+                        students.append(new_st)
+                        self.save_accounts(students)
+                        print(f"[DB MANAGER] ☁️ Resolved new RFID tag {raw_scanned} directly from Supabase Cloud: {new_st['full_name']}")
+                        return {
+                            "id": st_id,
+                            "name": new_st["full_name"],
+                            "email": new_st["email"],
+                            "rfidUid": new_st["rfid_uid"],
+                            "balance": bal,
+                            "daily_limit": d_lim
+                        }
+        except Exception as c_err:
+            print(f"[DB MANAGER NOTICE] Online RFID fallback lookup error: {c_err}")
+
         return None
 
     def deduct_student_balance(self, student_id, amount):
@@ -357,6 +397,8 @@ class DatabaseManager:
                         if p_data and len(p_data) > 0:
                             u_id = p_data[0]["id"]
                             patch_payload = json.dumps({"balance": new_balance}).encode('utf-8')
+                            
+                            # Patch wallets table
                             p_req = urllib.request.Request(
                                 f"{SUPABASE_URL}/rest/v1/wallets?user_id=eq.{u_id}",
                                 data=patch_payload,
@@ -369,6 +411,20 @@ class DatabaseManager:
                                 method="PATCH"
                             )
                             urllib.request.urlopen(p_req, timeout=4)
+
+                            # Patch profiles table
+                            prof_req = urllib.request.Request(
+                                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{u_id}",
+                                data=patch_payload,
+                                headers={
+                                    "apikey": SUPABASE_ANON_KEY,
+                                    "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
+                                    "Content-Type": "application/json",
+                                    "Prefer": "return=minimal"
+                                },
+                                method="PATCH"
+                            )
+                            urllib.request.urlopen(prof_req, timeout=4)
                 except Exception as patch_err:
                     print(f"[DB MANAGER WARN] Cloud wallet patch error: {patch_err}")
             threading.Thread(target=_patch_supabase, daemon=True).start()
@@ -396,6 +452,18 @@ class DatabaseManager:
             print(f"[DB MANAGER] 🟢 Saved SQLite transaction {transaction_id} to novalunch_edge.db")
         except Exception as e:
             print(f"[DB MANAGER ERROR] Failed to record transaction: {e}")
+
+    def get_student_daily_spent(self, student_id):
+        try:
+            conn = sqlite3.connect(self.sqlite_db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT SUM(total_amount) FROM pending_transactions WHERE student_id = ? AND date(timestamp) = date('now')", (student_id,))
+            row = cursor.fetchone()
+            conn.close()
+            return float(row[0]) if row and row[0] is not None else 0.0
+        except Exception as e:
+            print(f"[DB MANAGER WARN] Error querying daily spent: {e}")
+            return 0.0
 
 # ==============================================================================
 # THREADED CAMERA CAPTURE MANAGER & AI VISION PIPELINE (DYNAMIC DUAL FALLBACK)
@@ -931,8 +999,14 @@ class NovaLunchKioskGUI:
                     }
 
             student_bal = self.active_student["balance"] if self.active_student else 0.0
-            if student_bal >= self.total_amount and self.total_amount > 0:
-                student_id = self.active_student["id"]
+            student_id = self.active_student["id"] if self.active_student else "GUEST"
+            daily_limit = float(self.active_student.get("daily_limit", 200.0)) if self.active_student else 200.0
+            daily_spent = self.db_manager.get_student_daily_spent(student_id)
+
+            if self.total_amount > 0 and (daily_spent + self.total_amount) > daily_limit:
+                self.status_message = f"⚠️ DAILY SPENDING CAP EXCEEDED (Cap: ₱{daily_limit:.2f}, Spent Today: ₱{daily_spent:.2f})"
+                speak_text(f"Warning! Purchase exceeds your daily spending limit of {int(daily_limit)} pesos.")
+            elif student_bal >= self.total_amount and self.total_amount > 0:
                 rem_balance = self.db_manager.deduct_student_balance(student_id, self.total_amount)
                 self.active_student["balance"] = rem_balance
                 
@@ -966,17 +1040,24 @@ class NovaLunchKioskGUI:
         self.total_amount = sum(item["price"] * item["qty"] for item in self.cart_items)
 
     def handle_rfid_tap(self, scanned_uid=None):
+        now_ts = time.time()
+        if hasattr(self, 'last_rfid_tap_timestamp') and (now_ts - self.last_rfid_tap_timestamp < 1.0):
+            print("[RFID DEBOUNCE] Ignored rapid tap event within 1.0s window.")
+            return
+        self.last_rfid_tap_timestamp = now_ts
+
         if scanned_uid:
-            student = self.db_manager.find_student_by_rfid(scanned_uid)
+            clean_uid = str(scanned_uid).strip()
+            student = self.db_manager.find_student_by_rfid(clean_uid)
             if student:
                 self.active_student = student
                 print(f"[RFID SUCCESS] Matched Student: {student['name']} ({student['id']}) | UID: {student['rfidUid']} | Balance: ₱{student['balance']:.2f}")
                 self.transition_to_state(STATE_GREET)
                 return
             else:
-                print(f"[RFID DENIED] Unregistered Card UID: '{scanned_uid}'")
-                self.status_message = f"⚠️ UNRECOGNIZED CARD (UID: {scanned_uid}) — VISIT ADMIN TO ENROLL"
-                speak_text(f"Warning! Unrecognized RFID card {scanned_uid}.")
+                print(f"[RFID DENIED] Unregistered Card UID: '{clean_uid}'")
+                self.status_message = f"⚠️ UNRECOGNIZED CARD (UID: {clean_uid}) — VISIT ADMIN TO ENROLL"
+                speak_text(f"Warning! Unrecognized RFID card {clean_uid}.")
                 self.transition_to_state(STATE_ERROR)
                 return
 

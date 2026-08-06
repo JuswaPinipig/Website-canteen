@@ -3988,6 +3988,7 @@
 
             const [nearExpiryModalItem, setNearExpiryModalItem] = useState(null);
             const [lastCompletedOrder, setLastCompletedOrder] = useState(null);
+            const [isProcessingCheckout, setIsProcessingCheckout] = useState(false);
 
             // Pay Later & Manager PIN Override State (FR-07)
             const [managerPinModalOpen, setManagerPinModalOpen] = useState(false);
@@ -4184,7 +4185,8 @@
                 setQrClaimInput('');
             };
 
-            const handleCheckoutSubmit = (bypassManagerPin = false) => {
+            const handleCheckoutSubmit = async (bypassManagerPin = false) => {
+                if (isProcessingCheckout) return;
                 if (posCart.length === 0) return alert("Please select items to add to the checkout order.");
                 if (isRfidShortage) return alert("Cannot complete checkout: Customer RFID balance is insufficient.");
                 if (paymentMethod === 'cash' && cashTenderedVal < netTotal) return alert("Cannot complete checkout: Cash tendered is less than order total.");
@@ -4213,35 +4215,44 @@
                     }
                 }
 
-                const orderData = {
-                    orderNo: `ORD-2026-${Math.floor(1000 + Math.random() * 9000)}`,
-                    student: selectedStudent ? selectedStudent.name : "Walk-in Student",
-                    studentId: selectedStudent ? selectedStudent.studentId : "N/A",
-                    rfidUid: selectedStudent ? selectedStudent.rfidUid : "N/A",
-                    items: [...posCart],
-                    subtotal: cartSubtotal,
-                    discountAmount: discountAmount,
-                    discountLabel: discountLabel,
-                    total: netTotal,
-                    paymentMethod: paymentMethod.toUpperCase(),
-                    payLaterNote: paymentMethod === 'pay_later' ? (payLaterNote || 'Canteen Emergency Credit') : null,
-                    cashTendered: paymentMethod === 'cash' ? cashTenderedVal : null,
-                    cashChange: paymentMethod === 'cash' ? cashChange : null,
-                    timestamp: new Date().toLocaleString(),
-                    status: 'COMPLETED'
-                };
+                try {
+                    setIsProcessingCheckout(true);
 
-                if (paymentMethod === 'rfid' && selectedStudent) {
-                    selectedStudent.dailySpent = (selectedStudent.dailySpent || 0.0) + netTotal;
+                    const orderData = {
+                        orderNo: `ORD-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+                        student: selectedStudent ? selectedStudent.name : "Walk-in Student",
+                        studentId: selectedStudent ? selectedStudent.studentId : "N/A",
+                        rfidUid: selectedStudent ? selectedStudent.rfidUid : "N/A",
+                        items: [...posCart],
+                        subtotal: cartSubtotal,
+                        discountAmount: discountAmount,
+                        discountLabel: discountLabel,
+                        total: netTotal,
+                        paymentMethod: paymentMethod.toUpperCase(),
+                        payLaterNote: paymentMethod === 'pay_later' ? (payLaterNote || 'Canteen Emergency Credit') : null,
+                        cashTendered: paymentMethod === 'cash' ? cashTenderedVal : null,
+                        cashChange: paymentMethod === 'cash' ? cashChange : null,
+                        timestamp: new Date().toLocaleString(),
+                        status: 'COMPLETED'
+                    };
+
+                    if (paymentMethod === 'rfid' && selectedStudent) {
+                        selectedStudent.dailySpent = (selectedStudent.dailySpent || 0.0) + netTotal;
+                    }
+
+                    setLastCompletedOrder(orderData);
+                    await onCompleteCheckout(orderData);
+                    setReceiptModalOpen(true);
+                    setCashTendered('');
+                    setPayLaterNote('');
+                    setDiscountType('NONE');
+                    setCustomDiscountInput('');
+                } catch (err) {
+                    console.error("Checkout processing error:", err);
+                    alert("An error occurred during checkout processing. Please try again.");
+                } finally {
+                    setIsProcessingCheckout(false);
                 }
-
-                setLastCompletedOrder(orderData);
-                onCompleteCheckout(orderData);
-                setReceiptModalOpen(true);
-                setCashTendered('');
-                setPayLaterNote('');
-                setDiscountType('NONE');
-                setCustomDiscountInput('');
             };
 
             const currentTab = ['register', 'ai_camera', 'qr_claim', 'shift_history', 'shift'].includes(activeTab) ? activeTab : 'register';
@@ -4379,8 +4390,8 @@
                                                         )}
                                                         <div className="flex gap-3.5 items-center">
                                                             <img src={item.img} alt={item.name} className="w-16 h-16 object-cover rounded-xl shrink-0 ring-1 ring-slate-100 shadow-sm group-hover:shadow-md transition-shadow" />
-                                                            <div className="space-y-1">
-                                                                <div className="font-bold text-[13px] text-slate-900 leading-snug">{item.name}</div>
+                                                            <div className="space-y-1 overflow-hidden">
+                                                                <div className="font-bold text-[13px] text-slate-900 leading-snug line-clamp-2 overflow-hidden text-ellipsis">{item.name}</div>
                                                                 <div className="text-[10px] text-slate-500 font-medium">{item.category}</div>
                                                                 <span className="inline-flex px-1.5 py-0.5 bg-slate-100 rounded-md text-[10px] text-slate-500 font-mono font-medium">Stock: {item.stock}</span>
                                                             </div>
@@ -4581,11 +4592,11 @@
                                     </div>
                                     <ActionButton 
                                         variant="primary" 
-                                        disabled={posCart.length === 0 || isRfidShortage || hasDietaryConflict || (paymentMethod === 'cash' && cashTenderedVal < netTotal)} 
+                                        disabled={isProcessingCheckout || posCart.length === 0 || isRfidShortage || hasDietaryConflict || (paymentMethod === 'cash' && cashTenderedVal < netTotal)} 
                                         onClick={() => handleCheckoutSubmit(false)} 
-                                        className={`w-full py-3.5 text-sm font-bold ${posCart.length > 0 && !isRfidShortage && !hasDietaryConflict ? 'pos-checkout-ready' : ''}`}
+                                        className={`w-full py-3.5 text-sm font-bold ${posCart.length > 0 && !isRfidShortage && !hasDietaryConflict && !isProcessingCheckout ? 'pos-checkout-ready' : ''}`}
                                     >
-                                        Complete Checkout & Print Receipt
+                                        {isProcessingCheckout ? "Processing Transaction..." : "Complete Checkout & Print Receipt"}
                                     </ActionButton>
                                 </div>
                             </aside>
@@ -5705,7 +5716,8 @@
                         rfid_uid: finalRfid,
                         pin_code: finalManagerPin,
                         initial_balance: finalBalance,
-                        daily_limit: finalDailyCap
+                        daily_limit: finalDailyCap,
+                        password: accountPassword
                     };
 
                     let newProfile = null;
@@ -5713,7 +5725,10 @@
                         try {
                             newProfile = await window.CanteenDB.registerUser(userPayload);
                         } catch(err) {
-                            console.warn("Cloud registration fallback to local state", err);
+                            console.error("Cloud registration database error:", err);
+                            setAccountFormError(err.message || 'Database error provisioning account.');
+                            setIsProvisioning(false);
+                            return;
                         }
                     }
 
@@ -5791,7 +5806,7 @@
                 setEditProductModalOpen(true);
             };
 
-            const handleSaveStudentEdit = (e) => {
+            const handleSaveStudentEdit = async (e) => {
                 e.preventDefault();
                 setEditStudentError('');
                 if (!selectedStudent) return;
@@ -5820,18 +5835,23 @@
                     }
                 }
 
-                onUpdateStudent({
-                    ...selectedStudent,
-                    name: editName.trim(),
-                    studentId: cleanId,
-                    rfidUid: cleanRfid,
-                    dailyCap: Math.max(0, parseFloat(editCap) || 0),
-                    balance: Math.max(0, parseFloat(editBalance) || 0),
-                    creditLimit: Math.max(0, parseFloat(editCreditLimit) || 0),
-                    payLaterAllowance: editPayLaterAllowance,
-                    status: editStatus
-                });
-                setEditStudentModalOpen(false);
+                try {
+                    await onUpdateStudent({
+                        ...selectedStudent,
+                        name: editName.trim(),
+                        studentId: cleanId,
+                        rfidUid: cleanRfid,
+                        dailyCap: Math.max(0, parseFloat(editCap) || 0),
+                        balance: Math.max(0, parseFloat(editBalance) || 0),
+                        creditLimit: Math.max(0, parseFloat(editCreditLimit) || 0),
+                        payLaterAllowance: editPayLaterAllowance,
+                        status: editStatus
+                    });
+                    setEditStudentModalOpen(false);
+                } catch(err) {
+                    console.error("Edit student error:", err);
+                    setEditStudentError(err.message || 'Failed to update student profile in database.');
+                }
             };
 
             const handleSaveProductEdit = (e) => {
@@ -8043,14 +8063,19 @@
             };
 
             const handleSendParentLinkRequest = async (studentIdentifier) => {
+                const cleanIdentifier = String(studentIdentifier || '').trim();
+                if (!cleanIdentifier) {
+                    throw new Error("Student Identifier cannot be empty. Please enter a valid Student ID or Email.");
+                }
+
                 const targetStud = registeredUsers.find(u => 
-                    (u.studentId && u.studentId.toLowerCase() === studentIdentifier.toLowerCase()) || 
-                    (u.email && u.email.toLowerCase() === studentIdentifier.toLowerCase()) ||
-                    (u.name && u.name.toLowerCase().includes(studentIdentifier.toLowerCase()))
+                    (u.studentId && u.studentId.toLowerCase() === cleanIdentifier.toLowerCase()) || 
+                    (u.email && u.email.toLowerCase() === cleanIdentifier.toLowerCase()) ||
+                    (u.name && u.name.toLowerCase().includes(cleanIdentifier.toLowerCase()))
                 );
 
                 if (!targetStud) {
-                    throw new Error(`No student found matching Student ID or Email "${studentIdentifier}". Please verify credentials.`);
+                    throw new Error(`No student found matching Student ID or Email "${cleanIdentifier}". Please verify credentials.`);
                 }
 
                 const isAlreadyLinked = parentStudentLinks.some(l => l.studentId === targetStud.id || l.studentIdNumber === targetStud.studentId);
@@ -8490,7 +8515,7 @@
                 return true;
             };
 
-            const handleApproveTopup = (queueItem, adminNote = "Verified by Canteen Admin") => {
+            const handleApproveTopup = async (queueItem, adminNote = "Verified by Canteen Admin") => {
                 setGcashQueue(gcashQueue.map(q => q.id === queueItem.id ? { ...q, status: 'Approved', adminNote, reviewedAt: new Date().toLocaleString() } : q));
                 setReloadLogs(reloadLogs.map(r => r.id === queueItem.id ? { ...r, status: 'Approved' } : r));
                 
@@ -8498,26 +8523,26 @@
                     window.CanteenDB.updateGcashReloadStatus(queueItem.id, 'Approved', adminNote).catch(e => console.warn(e));
                 }
 
+                const targetUser = registeredUsers.find(u => u.id === queueItem.studentId || u.studentId === queueItem.studentIdNumber || (u.name && queueItem.student.includes(u.name)));
+                const targetUserId = targetUser?.id || queueItem.studentId;
+                const currentBal = targetUser?.balance || 0;
+                const newBal = currentBal + queueItem.amount;
+
                 // Balance Update in Registered Users
                 setRegisteredUsers(registeredUsers.map(u => {
-                    if (u.id === queueItem.studentId || u.studentId === queueItem.studentIdNumber || (u.name && queueItem.student.includes(u.name))) {
-                        return { ...u, balance: (u.balance || 0) + queueItem.amount };
+                    if (u.id === targetUserId || u.studentId === queueItem.studentIdNumber) {
+                        return { ...u, balance: newBal };
                     }
                     return u;
                 }));
 
-                if (currentStudent && (currentStudent.id === queueItem.studentId || queueItem.student.includes(currentStudent.name))) {
+                if (currentStudent && (currentStudent.id === targetUserId || queueItem.student.includes(currentStudent.name))) {
                     setStudentBalance(prev => prev + queueItem.amount);
                 }
 
-                // Cloud Supabase sync
-                if (supabaseClient && queueItem.studentId) {
-                    supabaseClient.from('profiles').select('balance').eq('id', queueItem.studentId).single()
-                        .then(({ data }) => {
-                            if (data) {
-                                supabaseClient.from('profiles').update({ balance: (data.balance || 0) + queueItem.amount }).eq('id', queueItem.studentId);
-                            }
-                        }).catch(e => console.warn("Supabase balance update error", e));
+                // Cloud Supabase sync via atomic updateStudentBalance
+                if (window.CanteenDB && targetUserId) {
+                    window.CanteenDB.updateStudentBalance(targetUserId, newBal).catch(e => console.warn("Balance update sync warning:", e));
                 }
 
                 // Dispatch In-App Notification
@@ -8558,6 +8583,23 @@
 
             // Edit & Archive Handlers
             const handleUpdateStudent = async (updatedUser) => {
+                if (window.CanteenDB) {
+                    try {
+                        await window.CanteenDB.updateUser(updatedUser.id, {
+                            full_name: updatedUser.name,
+                            student_id_number: updatedUser.studentId,
+                            rfid_uid: updatedUser.rfidUid || null,
+                            status: updatedUser.status,
+                            balance: updatedUser.balance,
+                            daily_limit: updatedUser.dailyCap,
+                            credit_liability: updatedUser.creditLiability
+                        });
+                    } catch(e) {
+                        console.error("User update cloud sync error:", e);
+                        throw new Error(`Database Error: ${e.message || 'Failed to update profile'}`);
+                    }
+                }
+
                 setRegisteredUsers(prev => prev.map(u => u.id === updatedUser.id ? { ...u, ...updatedUser } : u));
                 if (currentStudent && currentStudent.id === updatedUser.id) {
                     setCurrentStudent(prev => ({ ...prev, ...updatedUser }));
@@ -8565,18 +8607,6 @@
                     if (updatedUser.dailyCap !== undefined) setDailyLimit(updatedUser.dailyCap);
                 }
                 showToast(`Updated profile for ${updatedUser.name}!`);
-
-                if (window.CanteenDB) {
-                    await window.CanteenDB.updateUser(updatedUser.id, {
-                        full_name: updatedUser.name,
-                        student_id_number: updatedUser.studentId,
-                        rfid_uid: updatedUser.rfidUid,
-                        status: updatedUser.status,
-                        balance: updatedUser.balance,
-                        daily_limit: updatedUser.dailyCap,
-                        credit_liability: updatedUser.creditLiability
-                    }).catch(e => console.warn("User update cloud sync warning:", e));
-                }
             };
 
             const handleArchiveStudent = async (userId) => {
@@ -8732,6 +8762,22 @@
                                             return;
                                         }
 
+                                        // 2. Financial Balance Validation Guardrail
+                                        const currentBal = studentBalance || 0;
+                                        if (currentBal < item.price) {
+                                            showToast(`⚠️ Insufficient wallet balance! Current balance: ₱${currentBal.toFixed(2)}, Item price: ₱${item.price.toFixed(2)}. Please top up via GCash.`, "danger");
+                                            return;
+                                        }
+
+                                        // 3. Daily Spending Limit Guardrail
+                                        const todayStr = new Date().toDateString();
+                                        const todayPreordersSpent = preorders.filter(p => (p.studentId === currentStudent?.id || p.student_id === currentStudent?.id) && p.status !== 'Cancelled' && new Date(p.created_at || Date.now()).toDateString() === todayStr).reduce((sum, p) => sum + (parseFloat(p.price) || 0), 0);
+                                        const currentCap = dailyLimit || currentStudent?.dailyCap || currentStudent?.daily_limit || 200.00;
+                                        if ((todayPreordersSpent + item.price) > currentCap) {
+                                            showToast(`⚠️ Pre-order exceeds your daily spending limit of ₱${currentCap.toFixed(2)}! (Already reserved today: ₱${todayPreordersSpent.toFixed(2)})`, "danger");
+                                            return;
+                                        }
+
                                         const tokenStr = `QR-2026-${Math.floor(1000 + Math.random() * 9000)}`;
                                         const preorderRecord = {
                                             student_id: currentStudent ? currentStudent.id : 'u101',
@@ -8744,12 +8790,12 @@
                                         const newPoObj = { id: 'po_' + Date.now(), name: item.name, price: item.price, token: tokenStr, status: 'Pending', studentId: currentStudent?.id };
                                         setPreorders([newPoObj, ...preorders]);
                                         
-                                        // 2. Balance deduction
-                                        const updatedBal = Math.max(0, (studentBalance || 0) - item.price);
+                                        // 4. Deduct Balance
+                                        const updatedBal = Math.max(0, currentBal - item.price);
                                         setStudentBalance(updatedBal);
                                         setRegisteredUsers(prev => prev.map(u => (u.id === currentStudent?.id || u.studentId === currentStudent?.studentId) ? { ...u, balance: updatedBal } : u));
                                         
-                                        // 3. Reserve product stock & FIFO batch stock immediately
+                                        // 5. Reserve product stock & FIFO batch stock immediately
                                         if (matchedProd) {
                                             const newStock = Math.max(0, matchedProd.stock - 1);
                                             setMenuCatalog(prev => prev.map(p => p.id === matchedProd.id ? { ...p, stock: newStock } : p));
