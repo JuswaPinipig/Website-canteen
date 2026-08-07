@@ -82,6 +82,11 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     credit_liability NUMERIC(10, 2) DEFAULT 0.00 CHECK (credit_liability >= 0),
     credit_limit NUMERIC(10, 2) DEFAULT 500.00,
     pay_later_allowance BOOLEAN DEFAULT TRUE,
+    max_daily_calories INT DEFAULT 1800,
+    allergen_mode TEXT DEFAULT 'SOFT_WARN' CHECK (allergen_mode IN ('SOFT_WARN', 'HARD_BLOCK')),
+    allergen_restrictions TEXT[] DEFAULT '{}',
+    weekly_limit NUMERIC(10, 2) DEFAULT 1000.00,
+    restricted_categories UUID[] DEFAULT '{}',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -196,6 +201,11 @@ CREATE TABLE IF NOT EXISTS public.products (
     ai_label TEXT, -- AI Detection label (e.g. 'burger', 'apple', 'canned_drink', 'sandwich', 'water_bottle')
     barcode TEXT UNIQUE,
     image_url TEXT,
+    calories INT DEFAULT 0,
+    allergens TEXT[] DEFAULT '{}',
+    protein_grams NUMERIC(5, 1) DEFAULT 0.0,
+    carbs_grams NUMERIC(5, 1) DEFAULT 0.0,
+    fat_grams NUMERIC(5, 1) DEFAULT 0.0,
     is_available BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -294,6 +304,32 @@ CREATE TABLE IF NOT EXISTS public.audit_logs (
 );
 
 -- ------------------------------------------------------------------------------
+-- 14B. PRE-ORDER PICKUP TIME SLOTS TABLE
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.preorder_slots (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    slot_name TEXT NOT NULL,
+    start_time TIME NOT NULL,
+    end_time TIME NOT NULL,
+    max_capacity INT NOT NULL DEFAULT 100,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ------------------------------------------------------------------------------
+-- 14C. HARDWARE TERMINAL MAPPINGS TABLE
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.hardware_mappings (
+    terminal_id TEXT PRIMARY KEY,
+    pos_register_name TEXT NOT NULL,
+    camera_device_index INT DEFAULT 0,
+    rfid_reader_port TEXT DEFAULT 'COM3',
+    assigned_station TEXT DEFAULT 'Hot Kitchen',
+    is_online BOOLEAN DEFAULT TRUE,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ------------------------------------------------------------------------------
 -- 15. AUTOMATIC UPDATED_AT TRIGGER FUNCTION
 -- ------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION set_updated_at()
@@ -370,8 +406,24 @@ INSERT INTO public.canteen_settings (key, value, description) VALUES
 ('canteen_status', '{"is_open": true, "message": "Canteen is open for orders"}', 'Operational status of the canteen'),
 ('daily_spending_default', '{"amount": 200.00}', 'Default daily wallet spending limit for students'),
 ('tax_rate', '{"percentage": 0.0}', 'Applicable tax percentage for items'),
-('ai_kiosk_mode', '{"enabled": true, "auto_checkout": false, "min_confidence": 0.80}', 'Settings for AI Vision Self-Checkout Kiosk')
-ON CONFLICT (key) DO NOTHING;
+('ai_kiosk_mode', '{"enabled": true, "auto_checkout": false, "min_confidence": 0.80, "review_confidence": 0.50}', 'Settings for AI Vision Self-Checkout Kiosk'),
+('gcash_verification_rules', '{"auto_approve_max": 200.00, "require_receipt_upload": true}', 'Rules for instant vs manual GCash top-up verification'),
+('pay_later_policy', '{"global_max_credit": 500.00, "allow_parent_override": true}', 'System-wide Pay Later credit settings'),
+('dietary_defaults', '{"default_daily_calories": 1800, "default_allergen_mode": "SOFT_WARN"}', 'Fallback health governance targets')
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+
+-- ------------------------------------------------------------------------------
+-- 17B. GOVERNANCE OVERRIDES AUDIT LOG TABLE
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.governance_overrides (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    student_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    cashier_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+    override_type TEXT NOT NULL CHECK (override_type IN ('calorie_limit', 'allergen_block', 'spending_limit', 'pay_later_cap')),
+    reason TEXT NOT NULL,
+    approved_by_pin BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
 
 -- ------------------------------------------------------------------------------
 -- 18. ATOMIC AI KIOSK TRANSACTION SETTLEMENT STORED PROCEDURE

@@ -614,7 +614,8 @@ class CameraThread(threading.Thread):
                         if model is not None:
                             self.ai_engine_name = "YOLOv8 Engine"
                             try:
-                                results = model(frame, conf=0.25, verbose=False)
+                                yolo_conf_val = float(os.environ.get("YOLO_CONFIDENCE", 0.50))
+                                results = model(frame, conf=yolo_conf_val, verbose=False)
                                 for r in results:
                                     for box in r.boxes:
                                         cls_id = int(box.cls[0])

@@ -326,6 +326,23 @@ const CanteenDB = {
         }
     },
 
+    async updateKdsOrderStatus(orderId, status) {
+        if (supabase) {
+            const { data, error } = await supabase.from('kds_tickets').update({ status, updated_at: new Date().toISOString() }).eq('id', orderId).select();
+            if (error) console.warn("Error updating KDS status in Supabase:", error);
+            return data;
+        }
+    },
+
+    async deductInventory(orderItems) {
+        if (!orderItems || !orderItems.length) return;
+        for (const item of orderItems) {
+            if (item.id || item.product_id) {
+                await this.deductStockFifo(item.id || item.product_id, item.qty || item.quantity || 1).catch(e => console.warn("Deduct inventory error:", e));
+            }
+        }
+    },
+
     // -------------------------------------------------------------------------
     // AI CAMERA DETECTION LOGS
     // -------------------------------------------------------------------------
@@ -473,6 +490,18 @@ const CanteenDB = {
 
     async archiveUser(userId) {
         return await this.updateUser(userId, { status: 'archived' });
+    },
+
+    async unarchiveUser(userId) {
+        return await this.updateUser(userId, { status: 'active' });
+    },
+
+    async archiveProduct(prodId) {
+        return await this.updateProduct(prodId, { is_available: false, status: 'archived' });
+    },
+
+    async unarchiveProduct(prodId) {
+        return await this.updateProduct(prodId, { is_available: true, status: 'active' });
     },
 
     async updateUserDailyLimit(userId, newLimit) {
@@ -733,6 +762,127 @@ const CanteenDB = {
             const { data, error } = await supabase.from('profiles').update({ pin_code: pinCode }).eq('id', userId).select();
             if (error) throw error;
             return data;
+        }
+    },
+
+    // -------------------------------------------------------------------------
+    // SYSTEM SETTINGS & GOVERNANCE CONFIGURATION
+    // -------------------------------------------------------------------------
+    async getSystemSettings() {
+        if (!supabase) {
+            try { return await this._fetchREST('canteen_settings?select=*'); } catch(e) { return []; }
+        }
+        const { data, error } = await supabase.from('canteen_settings').select('*');
+        if (error) return [];
+        return data || [];
+    },
+
+    async updateSystemSetting(key, value, description = '') {
+        const payload = { key, value, description, updated_at: new Date().toISOString() };
+        if (supabase) {
+            const { data, error } = await supabase.from('canteen_settings').upsert([payload]).select();
+            if (error) console.warn("Error updating system setting:", error);
+            return data;
+        } else {
+            return await this._postREST('canteen_settings', payload);
+        }
+    },
+
+    // -------------------------------------------------------------------------
+    // PRE-ORDER SLOTS MANAGEMENT
+    // -------------------------------------------------------------------------
+    async getPreorderSlots() {
+        if (!supabase) {
+            try { return await this._fetchREST('preorder_slots?select=*&order=start_time.asc'); } catch(e) { return []; }
+        }
+        const { data, error } = await supabase.from('preorder_slots').select('*').order('start_time', { ascending: true });
+        if (error) return [];
+        return data || [];
+    },
+
+    async savePreorderSlot(slotPayload) {
+        if (supabase) {
+            const { data, error } = await supabase.from('preorder_slots').upsert([slotPayload]).select();
+            if (error) throw error;
+            return data;
+        } else {
+            return await this._postREST('preorder_slots', slotPayload);
+        }
+    },
+
+    // -------------------------------------------------------------------------
+    // HARDWARE TOPOLOGY & TERMINAL MAPPINGS
+    // -------------------------------------------------------------------------
+    async getHardwareMappings() {
+        if (!supabase) {
+            try { return await this._fetchREST('hardware_mappings?select=*'); } catch(e) { return []; }
+        }
+        const { data, error } = await supabase.from('hardware_mappings').select('*');
+        if (error) return [];
+        return data || [];
+    },
+
+    async updateHardwareMapping(terminalId, payload) {
+        const fullPayload = { terminal_id: terminalId, ...payload, updated_at: new Date().toISOString() };
+        if (supabase) {
+            const { data, error } = await supabase.from('hardware_mappings').upsert([fullPayload]).select();
+            if (error) throw error;
+            return data;
+        } else {
+            return await this._postREST('hardware_mappings', fullPayload);
+        }
+    },
+
+    // -------------------------------------------------------------------------
+    // AUDIT LOGS FOR MANAGER OVERRIDES & POLICY EXCEPTIONS
+    // -------------------------------------------------------------------------
+    async logAuditEvent(action, actorId, entityType, entityId, details = {}) {
+        const auditPayload = {
+            actor_id: actorId || null,
+            action: action,
+            entity_type: entityType,
+            entity_id: String(entityId || ''),
+            details: details,
+            created_at: new Date().toISOString()
+        };
+        if (supabase) {
+            await supabase.from('audit_logs').insert([auditPayload]).catch(e => console.warn("Audit log warning:", e));
+        } else {
+            await this._postREST('audit_logs', auditPayload).catch(e => console.warn("REST Audit log warning:", e));
+        }
+    },
+
+    async updateStudentHealthGuardrails(studentId, { max_daily_calories, allergen_restrictions, allergen_mode }) {
+        const payload = {};
+        if (max_daily_calories !== undefined) payload.max_daily_calories = parseInt(max_daily_calories) || 1800;
+        if (allergen_restrictions !== undefined) payload.allergen_restrictions = Array.isArray(allergen_restrictions) ? allergen_restrictions : [];
+        if (allergen_mode !== undefined) payload.allergen_mode = allergen_mode;
+        return await this.updateUser(studentId, payload);
+    },
+
+    async updateStudentFinancialCaps(studentId, { daily_limit, weekly_limit, credit_limit, pay_later_allowance, restricted_categories }) {
+        const payload = {};
+        if (daily_limit !== undefined) payload.daily_limit = Math.max(0, parseFloat(daily_limit) || 0);
+        if (weekly_limit !== undefined) payload.weekly_limit = Math.max(0, parseFloat(weekly_limit) || 0);
+        if (credit_limit !== undefined) payload.credit_limit = Math.max(0, parseFloat(credit_limit) || 0);
+        if (pay_later_allowance !== undefined) payload.pay_later_allowance = Boolean(pay_later_allowance);
+        if (restricted_categories !== undefined) payload.restricted_categories = Array.isArray(restricted_categories) ? restricted_categories : [];
+        return await this.updateUser(studentId, payload);
+    },
+
+    async logGovernanceOverride(studentId, cashierId, overrideType, reason, approvedByPin = false) {
+        const payload = {
+            student_id: studentId,
+            cashier_id: cashierId || null,
+            override_type: overrideType,
+            reason: reason,
+            approved_by_pin: approvedByPin,
+            created_at: new Date().toISOString()
+        };
+        if (supabase) {
+            await supabase.from('governance_overrides').insert([payload]).catch(e => console.warn("Governance override log error:", e));
+        } else {
+            await this._postREST('governance_overrides', payload).catch(e => console.warn("REST Governance override log error:", e));
         }
     },
 
