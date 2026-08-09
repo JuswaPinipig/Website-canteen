@@ -425,6 +425,11 @@ CREATE TABLE IF NOT EXISTS public.governance_overrides (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE INDEX IF NOT EXISTS idx_gov_overrides_student ON public.governance_overrides(student_id);
+CREATE INDEX IF NOT EXISTS idx_gov_overrides_cashier ON public.governance_overrides(cashier_id);
+CREATE INDEX IF NOT EXISTS idx_gov_overrides_created ON public.governance_overrides(created_at DESC);
+
+
 -- ------------------------------------------------------------------------------
 -- 18. ATOMIC AI KIOSK TRANSACTION SETTLEMENT STORED PROCEDURE
 -- ------------------------------------------------------------------------------

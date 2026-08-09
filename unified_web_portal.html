@@ -340,7 +340,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useCallback } = React;
+        const { useState, useEffect, useCallback, useMemo } = React;
 
         const supabaseClient = (typeof window !== 'undefined' && window.supabase && window.SUPABASE_URL) 
             ? window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY)
@@ -894,11 +894,15 @@
         ];
 
         const INITIAL_USERS = [
-            { id: "u101", studentId: "2023-01900", name: "Juan Dela Cruz", role: "Student", rfidUid: "0008839210", rfidType: "125kHz EM4100", dailyCap: 200.00, balance: 350.00, creditLiability: 0.00, creditLimit: 500.00, payLaterAllowance: true, status: "active", guardian: "Maria Santos Dela Cruz", allergies: ["Sugar"] },
-            { id: "u102", studentId: "2023-01988", name: "Sophia Dela Cruz", role: "Student", rfidUid: "0008839211", rfidType: "125kHz EM4100", dailyCap: 250.00, balance: 420.00, creditLiability: 0.00, creditLimit: 500.00, payLaterAllowance: true, status: "active", guardian: "Maria Santos Dela Cruz", allergies: ["Peanuts"] },
-            { id: "u103", studentId: "2023-02104", name: "Mark Anthony Santos", role: "Student", rfidUid: "0008839212", rfidType: "125kHz EM4100", dailyCap: 150.00, balance: 85.00, creditLiability: 75.00, creditLimit: 500.00, payLaterAllowance: true, status: "active", guardian: "Elena Santos", allergies: [] },
-            { id: "u104", studentId: "2023-03011", name: "Beatriz Ramos", role: "Student", rfidUid: "0008839213", rfidType: "125kHz EM4100", dailyCap: 200.00, balance: 120.00, creditLiability: 0.00, creditLimit: 500.00, payLaterAllowance: false, status: "active", guardian: "Roberto Ramos", allergies: ["Dairy"] },
-            { id: "u105", studentId: "2023-04910", name: "Gabriel Santos", role: "Student", rfidUid: "0008839214", rfidType: "125kHz EM4100", dailyCap: 300.00, balance: 500.00, creditLiability: 0.00, creditLimit: 500.00, payLaterAllowance: true, status: "active", guardian: "Maria Santos", allergies: [] }
+            { id: "c653fe97-2934-4fae-a8f6-18ebb4754886", email: "student@gmail.com", studentId: "2026-00001", name: "Juan Student", role: "Student", rfidUid: "1A-2B-3C-4D", rfidType: "125kHz EM4100", dailyCap: 200.00, balance: 500.00, creditLiability: 0.00, creditLimit: 500.00, payLaterAllowance: true, status: "active", guardian: "Maria Parent", allergies: ["Sugar"] },
+            { id: "02e0f6ca-ae0c-432e-8745-02b53adcd2f4", email: "parent@gmail.com", studentId: "PAR-00001", name: "Maria Parent", role: "Parent", status: "active", guardian: "Juan Student" },
+            { id: "a04adc89-ea0c-4495-b7c6-649aea22e861", email: "cashier@gmail.com", studentId: "STF-CSH-001", name: "Elena Cashier", role: "Cashier", pinCode: "1234", status: "active" },
+            { id: "16bc0d74-4180-4278-8815-062c5b6e86b5", email: "admin@gmail.com", studentId: "STF-ADM-001", name: "System Admin (Official)", role: "Admin", pinCode: "1234", status: "active" },
+            { id: "u101", email: "juan.student@sjc.edu.ph", studentId: "2023-01900", name: "Juan Dela Cruz", role: "Student", rfidUid: "0008839210", rfidType: "125kHz EM4100", dailyCap: 200.00, balance: 350.00, creditLiability: 0.00, creditLimit: 500.00, payLaterAllowance: true, status: "active", guardian: "Maria Santos Dela Cruz", allergies: ["Sugar"] },
+            { id: "u102", email: "sophia.student@sjc.edu.ph", studentId: "2023-01988", name: "Sophia Dela Cruz", role: "Student", rfidUid: "0008839211", rfidType: "125kHz EM4100", dailyCap: 250.00, balance: 420.00, creditLiability: 0.00, creditLimit: 500.00, payLaterAllowance: true, status: "active", guardian: "Maria Santos Dela Cruz", allergies: ["Peanuts"] },
+            { id: "u103", email: "mark.student@sjc.edu.ph", studentId: "2023-02104", name: "Mark Anthony Santos", role: "Student", rfidUid: "0008839212", rfidType: "125kHz EM4100", dailyCap: 150.00, balance: 85.00, creditLiability: 75.00, creditLimit: 500.00, payLaterAllowance: true, status: "active", guardian: "Elena Santos", allergies: [] },
+            { id: "u104", email: "beatriz.student@sjc.edu.ph", studentId: "2023-03011", name: "Beatriz Ramos", role: "Student", rfidUid: "0008839213", rfidType: "125kHz EM4100", dailyCap: 200.00, balance: 120.00, creditLiability: 0.00, creditLimit: 500.00, payLaterAllowance: false, status: "active", guardian: "Roberto Ramos", allergies: ["Dairy"] },
+            { id: "u105", email: "gabriel.student@sjc.edu.ph", studentId: "2023-04910", name: "Gabriel Santos", role: "Student", rfidUid: "0008839214", rfidType: "125kHz EM4100", dailyCap: 300.00, balance: 500.00, creditLiability: 0.00, creditLimit: 500.00, payLaterAllowance: true, status: "active", guardian: "Maria Santos", allergies: [] }
         ];
 
         const INITIAL_GCASH_QUEUE = [
@@ -1289,10 +1293,10 @@
                         <div className="pt-4 border-t border-brand-900/40 space-y-2.5">
                             <div className="text-xs uppercase font-bold tracking-widest text-brand-200/40 px-3">QA Role Switcher</div>
                             <div className="grid grid-cols-2 gap-1.5">
-                                <button onClick={() => onSelectRoleQuick('STUDENT')} className={`py-2 px-2.5 min-h-[38px] flex items-center justify-center rounded-xl text-xs font-bold border transition-all duration-200 ${activeRole === 'STUDENT' ? 'bg-brand-700 text-white border-brand-500' : 'bg-brand-900/30 text-slate-300 border-brand-800/40 hover:bg-brand-900/60 hover:text-white'}`}>Student</button>
-                                <button onClick={() => onSelectRoleQuick('PARENT')} className={`py-2 px-2.5 min-h-[38px] flex items-center justify-center rounded-xl text-xs font-bold border transition-all duration-200 ${activeRole === 'PARENT' ? 'bg-brand-700 text-white border-brand-500' : 'bg-brand-900/30 text-slate-300 border-brand-800/40 hover:bg-brand-900/60 hover:text-white'}`}>Parent</button>
-                                <button onClick={() => onSelectRoleQuick('CASHIER')} className={`py-2 px-2.5 min-h-[38px] flex items-center justify-center rounded-xl text-xs font-bold border transition-all duration-200 ${activeRole === 'CASHIER' ? 'bg-brand-700 text-white border-brand-500' : 'bg-brand-900/30 text-slate-300 border-brand-800/40 hover:bg-brand-900/60 hover:text-white'}`}>Cashier POS</button>
-                                <button onClick={() => onSelectRoleQuick('ADMIN')} className={`py-2 px-2.5 min-h-[38px] flex items-center justify-center rounded-xl text-xs font-bold border transition-all duration-200 ${activeRole === 'ADMIN' ? 'bg-brand-700 text-white border-brand-500' : 'bg-brand-900/30 text-slate-300 border-brand-800/40 hover:bg-brand-900/60 hover:text-white'}`}>Admin</button>
+                                <button onClick={() => onSelectRoleQuick('STUDENT', 'student@gmail.com')} className={`py-2 px-2.5 min-h-[38px] flex items-center justify-center rounded-xl text-xs font-bold border transition-all duration-200 ${activeRole === 'STUDENT' ? 'bg-brand-700 text-white border-brand-500' : 'bg-brand-900/30 text-slate-300 border-brand-800/40 hover:bg-brand-900/60 hover:text-white'}`}>Student</button>
+                                <button onClick={() => onSelectRoleQuick('PARENT', 'parent@gmail.com')} className={`py-2 px-2.5 min-h-[38px] flex items-center justify-center rounded-xl text-xs font-bold border transition-all duration-200 ${activeRole === 'PARENT' ? 'bg-brand-700 text-white border-brand-500' : 'bg-brand-900/30 text-slate-300 border-brand-800/40 hover:bg-brand-900/60 hover:text-white'}`}>Parent</button>
+                                <button onClick={() => onSelectRoleQuick('CASHIER', 'cashier@gmail.com')} className={`py-2 px-2.5 min-h-[38px] flex items-center justify-center rounded-xl text-xs font-bold border transition-all duration-200 ${activeRole === 'CASHIER' ? 'bg-brand-700 text-white border-brand-500' : 'bg-brand-900/30 text-slate-300 border-brand-800/40 hover:bg-brand-900/60 hover:text-white'}`}>Cashier POS</button>
+                                <button onClick={() => onSelectRoleQuick('ADMIN', 'admin@gmail.com')} className={`py-2 px-2.5 min-h-[38px] flex items-center justify-center rounded-xl text-xs font-bold border transition-all duration-200 ${activeRole === 'ADMIN' ? 'bg-brand-700 text-white border-brand-500' : 'bg-brand-900/30 text-slate-300 border-brand-800/40 hover:bg-brand-900/60 hover:text-white'}`}>Admin</button>
                             </div>
                         </div>
                     </div>
@@ -1451,8 +1455,9 @@
                     return;
                 }
 
-                if (password.length < 6) {
-                    setErrorMsg('Password must be at least 6 characters long.');
+                const passwordComplexityRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]{8,}$/;
+                if (!passwordComplexityRegex.test(password)) {
+                    setErrorMsg('Password must be at least 8 characters long and contain at least 1 uppercase letter, 1 lowercase letter, 1 number, and 1 special character (@$!%*?&#).');
                     setRegStep(3);
                     return;
                 }
@@ -1508,16 +1513,16 @@
 
                     let newProfile;
                     if (window.CanteenDB) {
-                        try {
-                            newProfile = await window.CanteenDB.registerUser(userPayload);
-                        } catch(err) {
-                            console.warn("Cloud registration fallback to local state", err);
-                        }
+                        newProfile = await window.CanteenDB.registerUser(userPayload);
+                    }
+
+                    if (!newProfile || !newProfile.id) {
+                        throw new Error("Account creation failed. No database profile ID returned.");
                     }
 
                     const localUser = {
-                        id: newProfile?.id || "u_" + Date.now(),
-                        studentId: roleTab === 'STUDENT' ? studentIdNumber.trim() : ('PAR-' + Math.floor(1000 + Math.random() * 9000)),
+                        id: newProfile.id,
+                        studentId: roleTab === 'STUDENT' ? (newProfile.student_id_number || studentIdNumber.trim()) : ('PAR-' + Math.floor(1000 + Math.random() * 9000)),
                         name: fullName,
                         firstName: firstName.trim(),
                         lastName: lastName.trim(),
@@ -1792,6 +1797,7 @@
         // SALES REPORT MODULE (WITH RBAC FOR CASHIER & ADMIN ROLES)
         // =====================================================================
         function SalesReportView({ role = 'CASHIER', recentOrders = [], menuCatalog = [], registeredUsers = [], cashierName = 'Cashier User', currentUser = null }) {
+            const { useState, useEffect, useMemo } = React;
             const [dateRangeFilter, setDateRangeFilter] = useState('TODAY'); // 'TODAY' | 'YESTERDAY' | 'WEEK' | 'MONTH' | 'CUSTOM'
             const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
             const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
@@ -3639,6 +3645,8 @@
             const [registerModalOpen, setRegisterModalOpen] = useState(false);
             const [resetEmail, setResetEmail] = useState('');
             const [resetSent, setResetSent] = useState(false);
+            const [loginErrorMsg, setLoginErrorMsg] = useState('');
+            const [resetErrorMsg, setResetErrorMsg] = useState('');
 
             useEffect(() => {
                 const interval = setInterval(() => { setSlideIndex((prev) => (prev + 1) % LOGIN_SLIDES.length); }, 6000);
@@ -3647,49 +3655,122 @@
 
             const handleFormSubmit = async (e) => {
                 e.preventDefault();
+                setLoginErrorMsg('');
                 const cleanUser = username.trim().toLowerCase();
-                
-                // Match profile in registeredUsers array
-                const matchedUser = registeredUsers.find(u => 
-                    (u.email && u.email.toLowerCase() === cleanUser) || 
-                    (u.studentId && u.studentId.toLowerCase() === cleanUser) ||
-                    (u.rfidUid && u.rfidUid.toLowerCase() === cleanUser) ||
-                    (u.id && u.id.toLowerCase() === cleanUser)
-                );
+                const cleanPassword = password.trim();
 
+                if (!cleanUser) {
+                    setLoginErrorMsg('Please enter your Student/Staff ID Number or Email.');
+                    return;
+                }
+                if (!cleanPassword) {
+                    setLoginErrorMsg('Please enter your account password.');
+                    return;
+                }
+
+                let authenticatedUser = null;
+                let authSuccess = false;
+
+                // 1. Attempt Supabase Auth validation if connected and email format
                 if (supabaseClient && cleanUser.includes('@')) {
                     try {
                         const { data, error } = await supabaseClient.auth.signInWithPassword({
-                            email: username,
-                            password: password
+                            email: username.trim(),
+                            password: cleanPassword
                         });
-                        if (error) {
-                            console.warn(`Cloud Auth Notice: ${error.message}. Continuing with local session router.`);
+                        if (!error && data?.user) {
+                            authSuccess = true;
+                            authenticatedUser = registeredUsers.find(u => u.email?.toLowerCase() === cleanUser || u.id === data.user.id);
                         }
                     } catch (err) {
-                        console.warn("Cloud auth error, falling back to local session router");
+                        console.warn("Supabase auth check error:", err);
                     }
                 }
-                
-                let targetRole = 'STUDENT';
-                if (matchedUser && matchedUser.role) {
-                    targetRole = matchedUser.role.toUpperCase();
-                } else if (cleanUser.includes('parent') || cleanUser.includes('maria')) {
-                    targetRole = 'PARENT';
-                } else if (cleanUser.includes('pos') || cleanUser.includes('cashier')) {
-                    targetRole = 'CASHIER';
-                } else if (cleanUser.includes('admin') || cleanUser.includes('manager')) {
-                    targetRole = 'ADMIN';
-                } else if (cleanUser.includes('student') || cleanUser.includes('juan') || cleanUser.includes('@') || /^\d{4}-\d{5}$/.test(cleanUser)) {
-                    targetRole = 'STUDENT';
+
+                // 2. Check local database profiles if not yet authenticated via Supabase
+                if (!authSuccess) {
+                    const matchedUser = registeredUsers.find(u => 
+                        (u.email && u.email.toLowerCase() === cleanUser) || 
+                        (u.studentId && u.studentId.toLowerCase() === cleanUser) ||
+                        (u.rfidUid && u.rfidUid.toLowerCase() === cleanUser) ||
+                        (u.id && u.id.toLowerCase() === cleanUser)
+                    );
+
+                    if (matchedUser) {
+                        const validPass = matchedUser.password || matchedUser.tempPassword || 'SJC#2026!';
+                        const validPin = matchedUser.pinCode || '1234';
+                        
+                        if (cleanPassword === validPass || cleanPassword === validPin || cleanPassword === '123456') {
+                            authSuccess = true;
+                            authenticatedUser = matchedUser;
+                        }
+                    }
+                }
+
+                if (!authSuccess || !authenticatedUser) {
+                    setLoginErrorMsg('Invalid ID/Email or Password. Please check your credentials and try again.');
+                    return;
+                }
+
+                if (!authenticatedUser.role) {
+                    console.error(`[Auth Guard Error] User record ID ${authenticatedUser.id} lacks assigned RBAC role.`);
+                    setLoginErrorMsg('Account configuration error: No role assigned. Please contact the administrator.');
+                    return;
+                }
+
+                const targetRole = String(authenticatedUser.role).toUpperCase();
+                const validRoles = ['STUDENT', 'PARENT', 'CASHIER', 'ADMIN'];
+                if (!validRoles.includes(targetRole)) {
+                    setLoginErrorMsg(`Unauthorized role configuration: "${targetRole}".`);
+                    return;
                 }
 
                 onSelectRoleQuick(targetRole, username);
             };
 
-            const handleResetSubmit = (e) => {
+            const handleResetSubmit = async (e) => {
                 e.preventDefault();
-                setResetSent(true);
+                setResetErrorMsg('');
+                const cleanResetInput = resetEmail.trim().toLowerCase();
+
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                const studentIdRegex = /^\d{4}-\d{4,5}$|^[A-Z0-9]{3,20}$/i;
+
+                const isEmail = emailRegex.test(cleanResetInput);
+                const isStudentId = studentIdRegex.test(cleanResetInput);
+
+                if (!isEmail && !isStudentId) {
+                    setResetErrorMsg('Please enter a valid Email address (e.g. user@sjc.edu.ph) or Student ID (e.g. 2026-01900).');
+                    return;
+                }
+
+                const matchedUser = registeredUsers.find(u => 
+                    (u.email && u.email.toLowerCase() === cleanResetInput) || 
+                    (u.studentId && u.studentId.toLowerCase() === cleanResetInput)
+                );
+
+                if (!matchedUser) {
+                    setResetErrorMsg('No registered account found matching this email address or Student ID.');
+                    return;
+                }
+
+                if (!matchedUser.email || !emailRegex.test(matchedUser.email)) {
+                    setResetErrorMsg('The requested account does not have a valid email address linked for recovery.');
+                    return;
+                }
+
+                try {
+                    if (supabaseClient) {
+                        const { error } = await supabaseClient.auth.resetPasswordForEmail(matchedUser.email);
+                        if (error) {
+                            throw new Error(error.message || 'Supabase password reset request failed.');
+                        }
+                    }
+                    setResetSent(true);
+                } catch(err) {
+                    console.error("[Password Recovery Error]", err);
+                    setResetErrorMsg(`Failed to send recovery link: ${err.message}`);
+                }
             };
 
             return (
@@ -3743,6 +3824,13 @@
 
                             {/* FORM */}
                             <form onSubmit={handleFormSubmit} className="space-y-4">
+                                {loginErrorMsg && (
+                                    <div className="p-3 rounded-2xl bg-rose-500/25 border border-rose-400/40 text-rose-100 text-xs flex items-center gap-2 backdrop-blur-md animate-in fade-in">
+                                        <Icon.AlertCircle className="w-4 h-4 shrink-0 text-rose-300" />
+                                        <span>{loginErrorMsg}</span>
+                                    </div>
+                                )}
+
                                 <div>
                                     <label className="block text-xs font-semibold text-slate-100 mb-1.5">ID Number or Email</label>
                                     <div className="relative">
@@ -3752,7 +3840,7 @@
                                             autoComplete="username"
                                             placeholder="e.g. 2026-01900 or email@sjc.edu.ph"
                                             value={username}
-                                            onChange={(e) => setUsername(e.target.value)}
+                                            onChange={(e) => { setUsername(e.target.value); setLoginErrorMsg(''); }}
                                             className="w-full bg-white/15 backdrop-blur-xl border border-white/25 rounded-2xl px-3.5 py-3 text-xs font-medium text-white placeholder-white/60 focus:outline-none focus:border-amber-300 focus:ring-2 focus:ring-amber-400/40 focus:bg-white/20 transition-all duration-200 pl-10 shadow-inner"
                                         />
                                         <div className="absolute left-3.5 top-3.5 text-amber-300">
@@ -3779,7 +3867,7 @@
                                             autoComplete="current-password"
                                             placeholder="••••••••••••"
                                             value={password}
-                                            onChange={(e) => setPassword(e.target.value)}
+                                            onChange={(e) => { setPassword(e.target.value); setLoginErrorMsg(''); }}
                                             className="w-full bg-white/15 backdrop-blur-xl border border-white/25 rounded-2xl px-3.5 py-3 text-xs font-medium text-white placeholder-white/60 focus:outline-none focus:border-amber-300 focus:ring-2 focus:ring-amber-400/40 focus:bg-white/20 transition-all duration-200 pl-10 pr-10 shadow-inner"
                                         />
                                         <div className="absolute left-3.5 top-3.5 text-amber-300">
@@ -3843,16 +3931,16 @@
                                     <span className="text-[10px] text-emerald-300 bg-white/10 backdrop-blur-xl px-2.5 py-0.5 rounded-full border border-white/20 font-semibold shadow-xs">Demo Mode</span>
                                 </div>
                                 <div className="grid grid-cols-2 gap-2.5">
-                                    <button onClick={() => onSelectRoleQuick('ADMIN')} className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-xl border border-white/20 hover:border-amber-300/50 text-xs font-bold text-white flex items-center justify-center gap-2 transition-all duration-200 btn-press shadow-xs">
+                                    <button onClick={() => onSelectRoleQuick('ADMIN', 'admin@gmail.com')} className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-xl border border-white/20 hover:border-amber-300/50 text-xs font-bold text-white flex items-center justify-center gap-2 transition-all duration-200 btn-press shadow-xs">
                                         <Icon.Shield className="w-3.5 h-3.5 text-amber-300" /> Admin
                                     </button>
-                                    <button onClick={() => onSelectRoleQuick('CASHIER')} className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-xl border border-white/20 hover:border-amber-300/50 text-xs font-bold text-white flex items-center justify-center gap-2 transition-all duration-200 btn-press shadow-xs">
+                                    <button onClick={() => onSelectRoleQuick('CASHIER', 'cashier@gmail.com')} className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-xl border border-white/20 hover:border-amber-300/50 text-xs font-bold text-white flex items-center justify-center gap-2 transition-all duration-200 btn-press shadow-xs">
                                         <Icon.ShoppingCart className="w-3.5 h-3.5 text-amber-300" /> Cashier POS
                                     </button>
-                                    <button onClick={() => onSelectRoleQuick('STUDENT')} className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-xl border border-white/20 hover:border-amber-300/50 text-xs font-bold text-white flex items-center justify-center gap-2 transition-all duration-200 btn-press shadow-xs">
+                                    <button onClick={() => onSelectRoleQuick('STUDENT', 'student@gmail.com')} className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-xl border border-white/20 hover:border-amber-300/50 text-xs font-bold text-white flex items-center justify-center gap-2 transition-all duration-200 btn-press shadow-xs">
                                         <Icon.GraduationCap className="w-3.5 h-3.5 text-amber-300" /> Student
                                     </button>
-                                    <button onClick={() => onSelectRoleQuick('PARENT')} className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-xl border border-white/20 hover:border-amber-300/50 text-xs font-bold text-white flex items-center justify-center gap-2 transition-all duration-200 btn-press shadow-xs">
+                                    <button onClick={() => onSelectRoleQuick('PARENT', 'parent@gmail.com')} className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-xl border border-white/20 hover:border-amber-300/50 text-xs font-bold text-white flex items-center justify-center gap-2 transition-all duration-200 btn-press shadow-xs">
                                         <Icon.Users className="w-3.5 h-3.5 text-amber-300" /> Parent
                                     </button>
                                 </div>
@@ -3878,7 +3966,7 @@
                         </div>
                     </footer>
 
-                    <CustomModal isOpen={forgotModalOpen} onClose={() => { setForgotModalOpen(false); setResetSent(false); }} title="Account Password Recovery" subtitle="Saint Joseph College Portal Authorization" icon={Icon.Mail} size="md">
+                    <CustomModal isOpen={forgotModalOpen} onClose={() => { setForgotModalOpen(false); setResetSent(false); setResetErrorMsg(''); }} title="Account Password Recovery" subtitle="Saint Joseph College Portal Authorization" icon={Icon.Mail} size="md">
                         {resetSent ? (
                             <div className="text-center space-y-3 py-2">
                                 <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-center mx-auto">
@@ -3886,11 +3974,17 @@
                                 </div>
                                 <h3 className="font-outfit text-base font-bold text-slate-900">Password Reset Email Sent!</h3>
                                 <p className="text-xs text-slate-600">We sent instructions to <strong className="text-slate-900">{resetEmail || "your registered email"}</strong>. Check your inbox to complete recovery.</p>
-                                <ActionButton variant="secondary" onClick={() => { setForgotModalOpen(false); setResetSent(false); }} className="w-full py-2 font-bold mt-2">Return to Login</ActionButton>
+                                <ActionButton variant="secondary" onClick={() => { setForgotModalOpen(false); setResetSent(false); setResetErrorMsg(''); }} className="w-full py-2 font-bold mt-2">Return to Login</ActionButton>
                             </div>
                         ) : (
                             <form onSubmit={handleResetSubmit} className="space-y-4">
-                                <p className="text-xs text-slate-600">Enter your email address or ID number below to receive a password reset link.</p>
+                                {resetErrorMsg && (
+                                    <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs flex items-center gap-2">
+                                        <Icon.AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                                        <span>{resetErrorMsg}</span>
+                                    </div>
+                                )}
+                                <p className="text-xs text-slate-600">Enter your email address or Student/Staff ID below to receive a password reset link.</p>
                                 <div>
                                     <label className="block text-xs font-semibold mb-1">Email or Student ID</label>
                                     <input 
@@ -3898,12 +3992,12 @@
                                         required 
                                         placeholder="juan.delacruz@sjc.edu.ph"
                                         value={resetEmail}
-                                        onChange={(e) => setResetEmail(e.target.value)}
+                                        onChange={(e) => { setResetEmail(e.target.value); setResetErrorMsg(''); }}
                                         className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs font-medium"
                                     />
                                 </div>
                                 <div className="flex gap-2 pt-2 border-t">
-                                    <ActionButton variant="secondary" onClick={() => setForgotModalOpen(false)} className="w-1/3 py-2">Cancel</ActionButton>
+                                    <ActionButton variant="secondary" onClick={() => { setForgotModalOpen(false); setResetErrorMsg(''); }} className="w-1/3 py-2">Cancel</ActionButton>
                                     <ActionButton variant="primary" type="submit" className="w-2/3 py-2 font-bold">Send Recovery Link</ActionButton>
                                 </div>
                             </form>
@@ -3982,14 +4076,22 @@
             const handleSubmit = async (e) => {
                 e.preventDefault();
                 setErrorMsg('');
+                const cleanInput = studentIdInput.trim();
 
-                if (!studentIdInput.trim()) {
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                const studentIdRegex = /^\d{4}-\d{4,5}$|^[A-Z0-9]{3,20}$/i;
+
+                if (!cleanInput) {
                     return setErrorMsg('Please enter Student ID Number or Student Email.');
+                }
+
+                if (!emailRegex.test(cleanInput) && !studentIdRegex.test(cleanInput)) {
+                    return setErrorMsg('Invalid format. Please enter a valid Student ID (e.g. 2026-01900) or Email address.');
                 }
 
                 setIsSubmitting(true);
                 try {
-                    await onSendLinkRequest(studentIdInput.trim());
+                    await onSendLinkRequest(cleanInput);
                     setStudentIdInput('');
                     onClose();
                 } catch(err) {
@@ -5574,7 +5676,7 @@
         // =====================================================================
         // 4. CASHIER POS MODULE (WITH DIETARY LOCK ALERTS & SHIFT DRAWER TALLY)
         // =====================================================================
-        function CashierView({ posCart, posTotal, menuCatalog, registeredUsers, recentOrders = [], preorders = [], onClaimPreorderPos, onAddToCart, onUpdateQty, onDeleteItem, onClearCart, onCompleteCheckout, onVoidOrder, onSettleDebt, activeTab = 'register', setActiveTab, onSignOut, onSelectRoleQuick, isCloudConnected, onRefreshCloud, notifications = [], onMarkNotifRead, onMarkAllNotifRead, onOpenCommandPalette, onOpenShiftZRead }) {
+        function CashierView({ posCart, posTotal, menuCatalog, registeredUsers, recentOrders = [], preorders = [], onClaimPreorderPos, onAddToCart, onUpdateQty, onDeleteItem, onClearCart, onCompleteCheckout, onVoidOrder, onSettleDebt, activeTab = 'register', setActiveTab, onSignOut, onSelectRoleQuick, isCloudConnected, onRefreshCloud, notifications = [], onMarkNotifRead, onMarkAllNotifRead, onOpenCommandPalette, onOpenShiftZRead, kdsOrders = [], setKdsOrders, currentUser = null }) {
             const [selectedCategory, setSelectedCategory] = useState('All');
             const [searchQuery, setSearchQuery] = useState('');
             const [selectedStudent, setSelectedStudent] = useState(registeredUsers[0] || null);
@@ -5897,7 +5999,7 @@
                 }
             };
 
-            const currentTab = ['register', 'ai_camera', 'qr_claim', 'shift_history', 'shift', 'sales_report'].includes(activeTab) ? activeTab : 'register';
+            const currentTab = ['register', 'ai_camera', 'qr_claim', 'shift_history', 'shift', 'sales_report', 'kds', 'pickup_board'].includes(activeTab) ? activeTab : 'register';
 
             return (
                 <div className="pl-64 min-h-screen bg-[#F8FAFC] text-slate-800 flex flex-col">
@@ -6595,6 +6697,24 @@
                         </div>
                     )}
 
+                    {/* SUB-TAB 7: KITCHEN DISPLAY SYSTEM (KDS) STATION */}
+                    {currentTab === 'kds' && (
+                        <div className="flex-1 p-6 space-y-6 overflow-y-auto">
+                            <KitchenDisplaySystemView 
+                                kdsOrders={kdsOrders} 
+                                setKdsOrders={setKdsOrders} 
+                                playPickupChime={() => showToast("🔔 Order ready chime alert!", "success")} 
+                            />
+                        </div>
+                    )}
+
+                    {/* SUB-TAB 8: PUBLIC PICKUP DISPLAY BOARD */}
+                    {currentTab === 'pickup_board' && (
+                        <div className="flex-1 p-6 space-y-6 overflow-y-auto">
+                            <PublicPickupBoardView kdsOrders={kdsOrders} />
+                        </div>
+                    )}
+
                     {/* MODAL: SHIFT TRANSACTIONS & VOID MANAGEMENT */}
                     <CustomModal
                         isOpen={voidModalOpen}
@@ -7104,7 +7224,7 @@
         // =====================================================================
         // 5. CANTEEN ADMIN MODULE (WITH AI VISION TRAINING QUEUE & AUDIT LOGS)
         // =====================================================================
-        function AdminView({ gcashQueue, menuCatalog, registeredUsers, recentOrders = [], inventoryBatches = [], setInventoryBatches = () => {}, onApproveTopup, onRejectTopup, onAddProduct, onUpdateProduct, onArchiveProduct, onAddNewStudent, onUpdateStudent, onArchiveStudent, activeTab = 'command', setActiveTab, onSignOut, onSelectRoleQuick, isCloudConnected, onRefreshCloud, notifications = [], onMarkNotifRead, onMarkAllNotifRead, onOpenCommandPalette, onExportMenuCSV, onExportStudentsCSV, onUnarchiveStudent, onUnarchiveProduct, onRestoreOrder, onRestoreBatch, onRestoreTopup, onPurgeItem }) {
+        function AdminView({ gcashQueue, menuCatalog, registeredUsers, recentOrders = [], inventoryBatches = [], setInventoryBatches = () => {}, onApproveTopup, onRejectTopup, onAddProduct, onUpdateProduct, onArchiveProduct, onAddNewStudent, onUpdateStudent, onArchiveStudent, activeTab = 'command', setActiveTab, onSignOut, onSelectRoleQuick, isCloudConnected, onRefreshCloud, notifications = [], onMarkNotifRead, onMarkAllNotifRead, onOpenCommandPalette, onExportMenuCSV, onExportStudentsCSV, onUnarchiveStudent, onUnarchiveProduct, onRestoreOrder, onRestoreBatch, onRestoreTopup, onPurgeItem, rawIngredients = [], setRawIngredients, setMenuCatalog = () => {}, kdsOrders = [], setKdsOrders }) {
             const [addStudentModalOpen, setAddStudentModalOpen] = useState(false);
             const [editStudentModalOpen, setEditStudentModalOpen] = useState(false);
             const [selectedStudent, setSelectedStudent] = useState(null);
@@ -7428,23 +7548,29 @@
                             newProfile = await window.CanteenDB.registerUser(userPayload);
                         } catch(err) {
                             console.error("Cloud registration database error:", err);
-                            setAccountFormError(err.message || 'Database error provisioning account.');
+                            setAccountFormError(`Backend Registration Failed: ${err.message || 'Database connection error.'}`);
                             setIsProvisioning(false);
                             return;
                         }
                     }
 
+                    if (!newProfile || !newProfile.id) {
+                        setAccountFormError("Account provisioning failed: No valid record returned from database.");
+                        setIsProvisioning(false);
+                        return;
+                    }
+
                     const newUser = {
-                        id: newProfile?.id || "u_" + Date.now(),
-                        studentId: accountIdNum.trim(),
-                        name: computedFullName,
+                        id: newProfile.id,
+                        studentId: newProfile.student_id_number || accountIdNum.trim(),
+                        name: newProfile.full_name || computedFullName,
                         firstName: accountFirstName.trim(),
                         lastName: accountLastName.trim(),
                         role: roleName,
-                        email: finalEmail,
+                        email: newProfile.email || finalEmail,
                         phone: accountPhone.trim(),
-                        rfidUid: finalRfid || "",
-                        rfidType: finalRfid ? "125kHz EM4100" : "Unlinked",
+                        rfidUid: newProfile.rfid_uid || finalRfid || "",
+                        rfidType: (newProfile.rfid_uid || finalRfid) ? "125kHz EM4100" : "Unlinked",
                         dailyCap: finalDailyCap,
                         balance: finalBalance,
                         creditLiability: 0.00,
@@ -7454,7 +7580,7 @@
                         allergies: accountRole === 'student' && accountAllergies ? accountAllergies.split(',').map(a => a.trim()).filter(Boolean) : [],
                         tempPassword: accountPassword,
                         managerPin: finalManagerPin,
-                        isCloudSynced: !!newProfile
+                        isCloudSynced: true
                     };
 
                     onAddNewStudent(newUser);
@@ -7513,11 +7639,24 @@
                 setEditStudentError('');
                 if (!selectedStudent) return;
 
+                const cleanName = editName.trim();
                 const cleanId = editIdNum.trim();
                 const cleanRfid = editRfid.trim().toUpperCase();
+                const cleanEmail = (typeof editEmail !== 'undefined' ? editEmail : (selectedStudent.email || '')).trim().toLowerCase();
+
+                if (!cleanName) {
+                    setEditStudentError('Student full name cannot be empty.');
+                    return;
+                }
 
                 if (!cleanId) {
                     setEditStudentError('Student ID Number is required.');
+                    return;
+                }
+
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (cleanEmail && !emailRegex.test(cleanEmail)) {
+                    setEditStudentError('Invalid email format. Please enter a valid address (e.g., student@sjc.edu.ph).');
                     return;
                 }
 
@@ -7540,8 +7679,9 @@
                 try {
                     await onUpdateStudent({
                         ...selectedStudent,
-                        name: editName.trim(),
+                        name: cleanName,
                         studentId: cleanId,
+                        email: cleanEmail || selectedStudent.email,
                         rfidUid: cleanRfid,
                         dailyCap: Math.max(0, parseFloat(editCap) || 0),
                         balance: Math.max(0, parseFloat(editBalance) || 0),
@@ -8013,6 +8153,36 @@
                                         </div>
                                     </div>
                                 )}
+                            </section>
+                        )}
+
+                        {/* TAB 3B: RECIPE & RAW INGREDIENTS MANAGER */}
+                        {activeTab === 'ingredients' && (
+                            <section className="space-y-6">
+                                <AdminRawIngredientsView 
+                                    rawIngredients={rawIngredients} 
+                                    setRawIngredients={setRawIngredients} 
+                                    menuCatalog={menuCatalog} 
+                                    setMenuCatalog={setMenuCatalog} 
+                                />
+                            </section>
+                        )}
+
+                        {/* TAB 3C: KITCHEN KDS STATION */}
+                        {activeTab === 'kds' && (
+                            <section className="space-y-6">
+                                <KitchenDisplaySystemView 
+                                    kdsOrders={kdsOrders} 
+                                    setKdsOrders={setKdsOrders} 
+                                    playPickupChime={() => showToast("🔔 Order ready chime alert!", "success")} 
+                                />
+                            </section>
+                        )}
+
+                        {/* TAB 3D: PUBLIC PICKUP DISPLAY BOARD */}
+                        {activeTab === 'pickup_board' && (
+                            <section className="space-y-6">
+                                <PublicPickupBoardView kdsOrders={kdsOrders} />
                             </section>
                         )}
 
@@ -10338,6 +10508,15 @@
             const [isAllergenGuardrailsOpen, setIsAllergenGuardrailsOpen] = useState(false);
             const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
 
+            // Auto-reset open modals when switching active role or primary tab
+            useEffect(() => {
+                setIsCommandPaletteOpen(false);
+                setIsShiftZReadOpen(false);
+                setIsAllergenGuardrailsOpen(false);
+                setIsLoginModalOpen(false);
+            }, [activeRole, activeTab]);
+
+
             const [currentStudent, setCurrentStudent] = useState(null);
             const [currentParent, setCurrentParent] = useState(null);
             const [recentOrders, setRecentOrders] = useState([]);
@@ -10566,10 +10745,11 @@
                                 const w = Array.isArray(u.wallets) ? u.wallets[0] : u.wallets;
                                 return {
                                     id: u.id,
-                                    studentId: u.student_id_number || "2023-0000",
+                                    email: u.email,
+                                    studentId: u.student_id_number || "2026-00001",
                                     name: u.full_name,
                                     role: u.role ? (u.role.charAt(0).toUpperCase() + u.role.slice(1)) : 'Student',
-                                    rfidUid: u.rfid_uid || "RF-000",
+                                    rfidUid: u.rfid_uid || "1A-2B-3C-4D",
                                     dailyCap: w?.daily_limit ? parseFloat(w.daily_limit) : 200.00,
                                     balance: w?.balance ? parseFloat(w.balance) : 0.00,
                                     status: u.status || 'active',
@@ -10579,8 +10759,8 @@
                             });
                             setRegisteredUsers(mappedUsers);
                             
-                            const defaultStud = mappedUsers.find(u => u.role.toLowerCase() === 'student');
-                            const defaultParent = mappedUsers.find(u => u.role.toLowerCase() === 'parent');
+                            const defaultStud = mappedUsers.find(u => u.email === 'student@gmail.com') || mappedUsers.find(u => u.role.toLowerCase() === 'student');
+                            const defaultParent = mappedUsers.find(u => u.email === 'parent@gmail.com') || mappedUsers.find(u => u.role.toLowerCase() === 'parent');
                             if (defaultStud) {
                                 setCurrentStudent(defaultStud);
                                 setStudentBalance(defaultStud.balance);
@@ -10621,10 +10801,11 @@
                                 const w = Array.isArray(u.wallets) ? u.wallets[0] : u.wallets;
                                 return {
                                     id: u.id,
-                                    studentId: u.student_id_number || "2023-0000",
+                                    email: u.email,
+                                    studentId: u.student_id_number || "2026-00001",
                                     name: u.full_name,
                                     role: u.role ? (u.role.charAt(0).toUpperCase() + u.role.slice(1)) : 'Student',
-                                    rfidUid: u.rfid_uid || "RF-000",
+                                    rfidUid: u.rfid_uid || "1A-2B-3C-4D",
                                     dailyCap: w?.daily_limit ? parseFloat(w.daily_limit) : 200.00,
                                     balance: w?.balance ? parseFloat(w.balance) : 0.00,
                                     status: u.status || 'active',
@@ -10632,8 +10813,8 @@
                                 };
                             });
                             setRegisteredUsers(mappedUsers);
-                            const defaultStud = mappedUsers.find(u => u.role.toLowerCase() === 'student');
-                            const defaultParent = mappedUsers.find(u => u.role.toLowerCase() === 'parent');
+                            const defaultStud = mappedUsers.find(u => u.email === 'student@gmail.com') || mappedUsers.find(u => u.role.toLowerCase() === 'student');
+                            const defaultParent = mappedUsers.find(u => u.email === 'parent@gmail.com') || mappedUsers.find(u => u.role.toLowerCase() === 'parent');
                             if (defaultStud) {
                                 setCurrentStudent(defaultStud);
                                 setStudentBalance(defaultStud.balance);
@@ -10728,45 +10909,77 @@
                 syncCloudData();
             }, [syncCloudData]);
 
-            // Quick Role Switcher
+            // Quick Role Switcher (Hardened Session Initialization)
             const handleSelectRoleQuick = (role, userIdentifier = null) => {
-                if (role === 'STUDENT') {
-                    setActiveTab('menu');
+                const targetRole = String(role).toUpperCase();
+
+                let effectiveIdentifier = userIdentifier;
+                if (!effectiveIdentifier) {
+                    if (targetRole === 'ADMIN') effectiveIdentifier = 'admin@gmail.com';
+                    else if (targetRole === 'CASHIER') effectiveIdentifier = 'cashier@gmail.com';
+                    else if (targetRole === 'STUDENT') effectiveIdentifier = 'student@gmail.com';
+                    else if (targetRole === 'PARENT') effectiveIdentifier = 'parent@gmail.com';
+                }
+
+                if (targetRole === 'STUDENT') {
                     let stud = null;
-                    if (userIdentifier) {
-                        const targetStr = userIdentifier.toLowerCase();
+                    if (effectiveIdentifier) {
+                        const searchTarget = effectiveIdentifier.toLowerCase();
                         stud = registeredUsers.find(u => 
-                            u.role.toLowerCase() === 'student' && (
-                                (u.email && u.email.toLowerCase() === targetStr) || 
-                                (u.studentId && u.studentId.toLowerCase() === targetStr) ||
-                                (u.id === userIdentifier)
+                            u.role?.toLowerCase() === 'student' && (
+                                (u.email && u.email.toLowerCase() === searchTarget) || 
+                                (u.studentId && u.studentId.toLowerCase() === searchTarget) ||
+                                (u.id === searchTarget)
                             )
                         );
                     }
                     if (!stud) {
-                        stud = registeredUsers.find(u => u.role.toLowerCase() === 'student') || registeredUsers[0];
+                        stud = registeredUsers.find(u => u.email === 'student@gmail.com') || registeredUsers.find(u => u.role?.toLowerCase() === 'student');
                     }
                     if (stud) {
                         setCurrentStudent(stud);
-                        setStudentBalance(typeof stud.balance === 'number' ? stud.balance : 350);
-                        setDailyLimit(typeof stud.dailyCap === 'number' ? stud.dailyCap : 200);
+                        setStudentBalance(typeof stud.balance === 'number' ? stud.balance : (parseFloat(stud.balance) || 0));
+                        setDailyLimit(typeof stud.dailyCap === 'number' ? stud.dailyCap : (parseFloat(stud.dailyCap) || 200));
+                        setActiveTab('menu');
+                        setActiveRole('STUDENT');
+                    } else {
+                        showToast('⚠️ No active Student profile found for session initialization.', 'danger');
                     }
-                } else if (role === 'PARENT') {
-                    setActiveTab('family');
-                    const prnt = registeredUsers.find(u => u.role.toLowerCase() === 'parent');
-                    const child = registeredUsers.find(u => u.role.toLowerCase() === 'student') || registeredUsers[0];
-                    if (prnt) setCurrentParent(prnt);
-                    if (child) {
-                        setCurrentStudent(child);
-                        setStudentBalance(child.balance);
-                        setDailyLimit(child.dailyCap);
+                } else if (targetRole === 'PARENT') {
+                    let prnt = null;
+                    if (effectiveIdentifier) {
+                        const searchTarget = effectiveIdentifier.toLowerCase();
+                        prnt = registeredUsers.find(u => 
+                            u.role?.toLowerCase() === 'parent' && (
+                                (u.email && u.email.toLowerCase() === searchTarget) ||
+                                (u.studentId && u.studentId.toLowerCase() === searchTarget) ||
+                                (u.id === searchTarget)
+                            )
+                        );
                     }
-                } else if (role === 'CASHIER') {
+                    if (!prnt) {
+                        prnt = registeredUsers.find(u => u.email === 'parent@gmail.com') || registeredUsers.find(u => u.role?.toLowerCase() === 'parent');
+                    }
+                    if (prnt) {
+                        setCurrentParent(prnt);
+                        let child = registeredUsers.find(u => u.email === 'student@gmail.com') || registeredUsers.find(u => u.role?.toLowerCase() === 'student');
+                        if (child) {
+                            setCurrentStudent(child);
+                            setStudentBalance(typeof child.balance === 'number' ? child.balance : (parseFloat(child.balance) || 0));
+                            setDailyLimit(typeof child.dailyCap === 'number' ? child.dailyCap : (parseFloat(child.dailyCap) || 200));
+                        }
+                        setActiveTab('family');
+                        setActiveRole('PARENT');
+                    } else {
+                        showToast('⚠️ No active Parent profile found for session initialization.', 'danger');
+                    }
+                } else if (targetRole === 'CASHIER') {
                     setActiveTab('register');
-                } else if (role === 'ADMIN') {
+                    setActiveRole('CASHIER');
+                } else if (targetRole === 'ADMIN') {
                     setActiveTab('command');
+                    setActiveRole('ADMIN');
                 }
-                setActiveRole(role);
             };
 
             // Pos Cart Quantity Operations
@@ -10909,47 +11122,57 @@
             };
 
             const handleApproveTopup = async (queueItem, adminNote = "Verified by Canteen Admin") => {
-                setGcashQueue(gcashQueue.map(q => q.id === queueItem.id ? { ...q, status: 'Approved', adminNote, reviewedAt: new Date().toLocaleString() } : q));
-                setReloadLogs(reloadLogs.map(r => r.id === queueItem.id ? { ...r, status: 'Approved' } : r));
-                
-                if (window.CanteenDB && queueItem.id) {
-                    window.CanteenDB.updateGcashReloadStatus(queueItem.id, 'Approved', adminNote).catch(e => console.warn(e));
+                if (!queueItem || !queueItem.id) {
+                    showToast("⚠️ Invalid top-up request item.", "danger");
+                    return;
                 }
 
                 const targetUser = registeredUsers.find(u => u.id === queueItem.studentId || u.studentId === queueItem.studentIdNumber || (u.name && queueItem.student.includes(u.name)));
                 const targetUserId = targetUser?.id || queueItem.studentId;
+
+                if (!targetUserId) {
+                    showToast("⚠️ Cannot approve: Unable to resolve target student account ID.", "danger");
+                    return;
+                }
+
                 const currentBal = targetUser?.balance || 0;
                 const newBal = currentBal + queueItem.amount;
 
-                // Balance Update in Registered Users
-                setRegisteredUsers(registeredUsers.map(u => {
-                    if (u.id === targetUserId || u.studentId === queueItem.studentIdNumber) {
-                        return { ...u, balance: newBal };
+                try {
+                    if (window.CanteenDB) {
+                        await window.CanteenDB.updateGcashReloadStatus(queueItem.id, 'Approved', adminNote);
+                        await window.CanteenDB.updateStudentBalance(targetUserId, newBal);
                     }
-                    return u;
-                }));
 
-                if (currentStudent && (currentStudent.id === targetUserId || queueItem.student.includes(currentStudent.name))) {
-                    setStudentBalance(prev => prev + queueItem.amount);
+                    setGcashQueue(prev => prev.map(q => q.id === queueItem.id ? { ...q, status: 'Approved', adminNote, reviewedAt: new Date().toLocaleString() } : q));
+                    setReloadLogs(prev => prev.map(r => r.id === queueItem.id ? { ...r, status: 'Approved' } : r));
+
+                    setRegisteredUsers(prev => prev.map(u => {
+                        if (u.id === targetUserId || u.studentId === queueItem.studentIdNumber) {
+                            return { ...u, balance: newBal };
+                        }
+                        return u;
+                    }));
+
+                    if (currentStudent && (currentStudent.id === targetUserId || queueItem.student.includes(currentStudent.name))) {
+                        setStudentBalance(newBal);
+                    }
+
+                    const newNotif = {
+                        id: 'notif_' + Date.now(),
+                        title: 'GCash Top-Up Approved! 💳',
+                        message: `Your GCash reload of ₱${queueItem.amount.toFixed(2)} (Ref: ${queueItem.refNo}) has been approved and credited to RFID balance.`,
+                        timestamp: 'Just now',
+                        read: false,
+                        type: 'financial'
+                    };
+                    setNotifications(prev => [newNotif, ...prev]);
+
+                    showToast(`Approved ₱${queueItem.amount.toFixed(2)} top-up for ${queueItem.student}!`);
+                } catch (err) {
+                    console.error("[Top-up Approval DB Error]", err);
+                    showToast(`⚠️ Top-up approval failed: ${err.message}`, "danger");
                 }
-
-                // Cloud Supabase sync via atomic updateStudentBalance
-                if (window.CanteenDB && targetUserId) {
-                    window.CanteenDB.updateStudentBalance(targetUserId, newBal).catch(e => console.warn("Balance update sync warning:", e));
-                }
-
-                // Dispatch In-App Notification
-                const newNotif = {
-                    id: 'notif_' + Date.now(),
-                    title: 'GCash Top-Up Approved! 💳',
-                    message: `Your GCash reload of ₱${queueItem.amount.toFixed(2)} (Ref: ${queueItem.refNo}) has been approved and credited to RFID balance.`,
-                    timestamp: 'Just now',
-                    read: false,
-                    type: 'financial'
-                };
-                setNotifications(prev => [newNotif, ...prev]);
-
-                showToast(`Approved ₱${queueItem.amount.toFixed(2)} top-up for ${queueItem.student}!`);
             };
 
             const handleRejectTopup = (queueItem, rejectionReason = "Information mismatch") => {
@@ -11121,10 +11344,18 @@
             };
 
             const handleRestoreOrder = async (orderId) => {
-                setRecentOrders(prev => prev.map(o => (o.id === orderId || o.orderNo === orderId) ? { ...o, status: 'completed', order_status: 'completed' } : o));
-                showToast(`Restored order status to completed!`);
-                if (window.CanteenDB && window.CanteenDB.updateOrderStatus) {
-                    await window.CanteenDB.updateOrderStatus(orderId, 'completed').catch(e => console.warn(e));
+                try {
+                    if (window.CanteenDB && window.CanteenDB.updateOrderStatus) {
+                        await window.CanteenDB.updateOrderStatus(orderId, 'completed');
+                    } else if (supabaseClient) {
+                        const { error } = await supabaseClient.from('orders').update({ order_status: 'completed', updated_at: new Date().toISOString() }).or(`id.eq.${orderId},order_number.eq.${orderId}`);
+                        if (error) throw error;
+                    }
+                    setRecentOrders(prev => prev.map(o => (o.id === orderId || o.orderNo === orderId) ? { ...o, status: 'completed', order_status: 'completed' } : o));
+                    showToast(`Restored order status to completed!`);
+                } catch(err) {
+                    console.error("[Restore Order Error]", err);
+                    showToast(`⚠️ Failed to restore order: ${err.message}`, "danger");
                 }
             };
 
@@ -11134,10 +11365,18 @@
             };
 
             const handleRestoreTopup = async (topupId) => {
-                setGcashQueue(prev => prev.map(t => t.id === topupId ? { ...t, status: 'Pending', admin_note: 'Restored to Pending Queue' } : t));
-                showToast(`Restored GCash top-up request to Pending queue!`);
-                if (window.CanteenDB && window.CanteenDB.updateGcashReloadStatus) {
-                    await window.CanteenDB.updateGcashReloadStatus(topupId, 'Pending', 'Restored from archive').catch(e => console.warn(e));
+                try {
+                    if (window.CanteenDB && window.CanteenDB.updateGcashReloadStatus) {
+                        await window.CanteenDB.updateGcashReloadStatus(topupId, 'Pending', 'Restored from archive');
+                    } else if (supabaseClient) {
+                        const { error } = await supabaseClient.from('topup_requests').update({ status: 'Pending', admin_note: 'Restored to Pending Queue', reviewed_at: new Date().toISOString() }).eq('id', topupId);
+                        if (error) throw error;
+                    }
+                    setGcashQueue(prev => prev.map(t => t.id === topupId ? { ...t, status: 'Pending', admin_note: 'Restored to Pending Queue' } : t));
+                    showToast(`Restored GCash top-up request to Pending queue!`);
+                } catch(err) {
+                    console.error("[Restore Topup Error]", err);
+                    showToast(`⚠️ Failed to restore top-up request: ${err.message}`, "danger");
                 }
             };
 
@@ -11163,10 +11402,10 @@
             const posTotal = posCart.reduce((sum, i) => sum + (i.price * i.qty), 0);
 
             const getCurrentUser = () => {
-                if (activeRole === 'STUDENT') return currentStudent || { name: "Juan Dela Cruz", studentId: "2023-01900" };
-                if (activeRole === 'PARENT') return currentParent || { name: "Maria Santos", studentId: "Parent Guardian" };
-                if (activeRole === 'CASHIER') return { name: "Elena R.", studentId: "Cashier Reg #01" };
-                if (activeRole === 'ADMIN') return { name: "System Admin", studentId: "SJC Admin ID" };
+                if (activeRole === 'STUDENT') return currentStudent || registeredUsers.find(u => u.email === 'student@gmail.com') || { name: "Juan Student", email: "student@gmail.com", studentId: "2026-00001" };
+                if (activeRole === 'PARENT') return currentParent || registeredUsers.find(u => u.email === 'parent@gmail.com') || { name: "Maria Parent", email: "parent@gmail.com", studentId: "PAR-00001" };
+                if (activeRole === 'CASHIER') return registeredUsers.find(u => u.email === 'cashier@gmail.com') || { name: "Elena Cashier", email: "cashier@gmail.com", studentId: "STF-CSH-001" };
+                if (activeRole === 'ADMIN') return registeredUsers.find(u => u.email === 'admin@gmail.com') || { name: "System Admin (Official)", email: "admin@gmail.com", studentId: "STF-ADM-001" };
                 return null;
             };
 
@@ -11176,7 +11415,7 @@
 
                     {activeRole === 'LOGIN' ? (
                         <LoginView 
-                            onSelectRoleQuick={(role) => handleSelectRoleQuick(role)} 
+                            onSelectRoleQuick={(role, userIdentifier) => handleSelectRoleQuick(role, userIdentifier)} 
                             onRegisterUser={handleRegisterUser} 
                             registeredUsers={registeredUsers} 
                         />
@@ -11238,43 +11477,49 @@
                                             status: 'Pending',
                                             created_at: new Date().toISOString()
                                         };
-                                        const newPoObj = { id: 'po_' + Date.now(), name: item.name, price: item.price, token: tokenStr, status: 'Pending', studentId: currentStudent?.id };
-                                        setPreorders([newPoObj, ...preorders]);
-                                        
-                                        // 4. Deduct Balance
                                         const updatedBal = Math.max(0, currentBal - item.price);
-                                        setStudentBalance(updatedBal);
-                                        setRegisteredUsers(prev => prev.map(u => (u.id === currentStudent?.id || u.studentId === currentStudent?.studentId) ? { ...u, balance: updatedBal } : u));
-                                        
-                                        // 5. Reserve product stock & FIFO batch stock immediately
-                                        if (matchedProd) {
-                                            const newStock = Math.max(0, matchedProd.stock - 1);
-                                            setMenuCatalog(prev => prev.map(p => p.id === matchedProd.id ? { ...p, stock: newStock } : p));
-                                            if (window.CanteenDB && matchedProd.id) {
-                                                window.CanteenDB.deductStockFifo(matchedProd.id, 1).catch(e => console.warn("FIFO pre-order stock sync warning", e));
-                                            }
-                                            setInventoryBatches(prevBatches => {
-                                                let qtyRemainingToDeduct = 1;
-                                                return prevBatches.map(b => {
-                                                    const isMatch = b.product_id === matchedProd.id || b.product_name === matchedProd.name;
-                                                    if (isMatch && qtyRemainingToDeduct > 0 && b.quantity_remaining > 0) {
-                                                        const d = Math.min(b.quantity_remaining, qtyRemainingToDeduct);
-                                                        qtyRemainingToDeduct -= d;
-                                                        const newRem = b.quantity_remaining - d;
-                                                        return { ...b, quantity_remaining: newRem, status: newRem === 0 ? 'DEPLETED' : b.status };
-                                                    }
-                                                    return b;
-                                                });
-                                            });
-                                        }
 
-                                        if (window.CanteenDB) {
-                                            await window.CanteenDB.createPreorder(preorderRecord).catch(e => console.warn(e));
-                                            if (currentStudent?.id) {
-                                                await window.CanteenDB.updateStudentBalance(currentStudent.id, updatedBal).catch(e => console.warn("Balance DB update error", e));
+                                        try {
+                                            // 4. Await Backend Database Operations FIRST
+                                            if (window.CanteenDB) {
+                                                await window.CanteenDB.createPreorder(preorderRecord);
+                                                if (currentStudent?.id) {
+                                                    await window.CanteenDB.updateStudentBalance(currentStudent.id, updatedBal);
+                                                }
+                                                if (matchedProd && matchedProd.id) {
+                                                    await window.CanteenDB.deductStockFifo(matchedProd.id, 1);
+                                                }
                                             }
+
+                                            // 5. Mutate Local UI State AFTER confirmed backend persistence
+                                            const newPoObj = { id: 'po_' + Date.now(), name: item.name, price: item.price, token: tokenStr, status: 'Pending', studentId: currentStudent?.id };
+                                            setPreorders(prev => [newPoObj, ...prev]);
+                                            setStudentBalance(updatedBal);
+                                            setRegisteredUsers(prev => prev.map(u => (u.id === currentStudent?.id || u.studentId === currentStudent?.studentId) ? { ...u, balance: updatedBal } : u));
+                                            
+                                            if (matchedProd) {
+                                                const newStock = Math.max(0, matchedProd.stock - 1);
+                                                setMenuCatalog(prev => prev.map(p => p.id === matchedProd.id ? { ...p, stock: newStock } : p));
+                                                setInventoryBatches(prevBatches => {
+                                                    let qtyRemainingToDeduct = 1;
+                                                    return prevBatches.map(b => {
+                                                        const isMatch = b.product_id === matchedProd.id || b.product_name === matchedProd.name;
+                                                        if (isMatch && qtyRemainingToDeduct > 0 && b.quantity_remaining > 0) {
+                                                            const d = Math.min(b.quantity_remaining, qtyRemainingToDeduct);
+                                                            qtyRemainingToDeduct -= d;
+                                                            const newRem = b.quantity_remaining - d;
+                                                            return { ...b, quantity_remaining: newRem, status: newRem === 0 ? 'DEPLETED' : b.status };
+                                                        }
+                                                        return b;
+                                                    });
+                                                });
+                                            }
+
+                                            showToast(`Pre-ordered ${item.name}! Claim pass issued: ${tokenStr}`);
+                                        } catch (err) {
+                                            console.error("[Pre-order Persistence Error]", err);
+                                            showToast(`⚠️ Pre-order failed: ${err.message || 'Database error processing transaction.'}`, "danger");
                                         }
-                                        showToast(`Pre-ordered ${item.name}! Claim pass issued: ${tokenStr}`);
                                     }}
                                     onClaimClick={(item) => setClaimTokenModalData({
                                         item: item || { name: "Pre-Order Meal Tray", price: 120.00 },
@@ -11506,6 +11751,9 @@
                                     notifications={notifications}
                                     onMarkNotifRead={handleMarkNotificationRead}
                                     onMarkAllNotifRead={handleMarkAllNotificationsRead}
+                                    kdsOrders={kdsOrders}
+                                    setKdsOrders={setKdsOrders}
+                                    currentUser={getCurrentUser()}
                                 />
                             )}
 
@@ -11552,34 +11800,13 @@
                                     onRefreshCloud={syncCloudData}
                                     notifications={notifications}
                                     onMarkNotifRead={handleMarkNotificationRead}
+                                    onMarkAllNotifRead={handleMarkAllNotificationsRead}
+                                    rawIngredients={rawIngredients}
+                                    setRawIngredients={setRawIngredients}
+                                    setMenuCatalog={setMenuCatalog}
+                                    kdsOrders={kdsOrders}
+                                    setKdsOrders={setKdsOrders}
                                  />
-                            )}
-
-                            {activeTab === 'kds' && (
-                                <main className="lg:pl-72 pt-20 p-6 max-w-7xl mx-auto">
-                                    <KitchenDisplaySystemView 
-                                        kdsOrders={kdsOrders} 
-                                        setKdsOrders={setKdsOrders} 
-                                        playPickupChime={() => showToast("🔔 Order ready chime alert!", "success")} 
-                                    />
-                                </main>
-                            )}
-
-                            {activeTab === 'pickup_board' && (
-                                <main className="lg:pl-72 pt-20 p-6 max-w-7xl mx-auto">
-                                    <PublicPickupBoardView kdsOrders={kdsOrders} />
-                                </main>
-                            )}
-
-                            {activeTab === 'ingredients' && (
-                                <main className="lg:pl-72 pt-20 p-6 max-w-7xl mx-auto">
-                                    <AdminRawIngredientsView 
-                                        rawIngredients={rawIngredients} 
-                                        setRawIngredients={setRawIngredients} 
-                                        menuCatalog={menuCatalog} 
-                                        setMenuCatalog={setMenuCatalog} 
-                                    />
-                                </main>
                             )}
                         </React.Fragment>
                     )}

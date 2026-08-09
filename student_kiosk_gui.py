@@ -505,8 +505,10 @@ class CameraThread(threading.Thread):
         self.running = True
         self.is_connected = False
         self.manual_enabled = True
+        self.last_retry_time = 0
 
         self._init_camera()
+
 
     def _init_camera(self):
         """Scans hardware indices [0, 1, 2] to acquire live video stream."""
@@ -680,6 +682,12 @@ class CameraThread(threading.Thread):
                         self.is_connected = False
                         time.sleep(0.1)
                 else:
+                    # Periodic Camera Re-Probe Auto-Recovery (Every 10 Seconds)
+                    now_ts = time.time()
+                    if self.manual_enabled and (now_ts - self.last_retry_time > 10.0):
+                        self.last_retry_time = now_ts
+                        self._init_camera()
+
                     # Synthetic Fallback Frame Stream
                     synth_angle = (synth_angle + 4) % 360
                     frame_rgb, detections = self._generate_synthetic_frame(synth_angle)
@@ -689,6 +697,7 @@ class CameraThread(threading.Thread):
                     with self.lock:
                         self.current_frame = frame_rgb
                         self.latest_detections = detections
+
             except Exception as e:
                 print(f"[CAMERA THREAD] Frame read error: {e}")
                 time.sleep(0.1)

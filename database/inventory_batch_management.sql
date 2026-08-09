@@ -73,6 +73,8 @@ CREATE TABLE IF NOT EXISTS public.inventory_logs (
 
 CREATE INDEX IF NOT EXISTS idx_inv_logs_product ON public.inventory_logs(product_id);
 CREATE INDEX IF NOT EXISTS idx_inv_logs_created ON public.inventory_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_inv_logs_performed_by ON public.inventory_logs(performed_by);
+
 
 -- ------------------------------------------------------------------------------
 -- 4. FUNCTION: SYNC PRODUCT AGGREGATE STOCK QUANTITY FROM ACTIVE BATCHES
