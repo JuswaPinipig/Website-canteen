@@ -1,0 +1,20 @@
+# NovaLunch Edge Node & AI Vision Engine Requirements
+# Install via: pip install -r requirements.txt
+
+# PyTorch Deep Learning & YOLO Object Detection
+torch>=2.0.0
+torchvision>=0.15.0
+ultralytics>=8.3.0
+
+# Computer Vision & Camera Watchdog
+opencv-python>=4.8.0
+Pillow>=10.0.0
+
+# Edge Kiosk GUI Framework
+PyQt5>=5.15.0
+
+# Database & Telemetry Sync
+pyserial>=3.5
+polars>=1.0.0
+requests>=2.31.0
+python-dotenv>=1.0.0

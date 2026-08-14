@@ -1,0 +1,82 @@
+{
+  "students": [
+    {
+      "full_name": "Juan Dela Cruz",
+      "email": "juan.student@sjc.edu.ph",
+      "password": "Student123!",
+      "role": "student",
+      "student_id_number": "2023-01900",
+      "rfid_uid": "9A-4F-21-C8",
+      "balance": 280.0,
+      "daily_limit": 200.0
+    },
+    {
+      "full_name": "Sophia Dela Cruz",
+      "email": "sophia.student@sjc.edu.ph",
+      "password": "Student123!",
+      "role": "student",
+      "student_id_number": "2023-01988",
+      "rfid_uid": "7B-3E-11-F4",
+      "balance": 420.0,
+      "daily_limit": 250.0
+    },
+    {
+      "full_name": "Mark Anthony Santos",
+      "email": "mark.student@sjc.edu.ph",
+      "password": "Student123!",
+      "role": "student",
+      "student_id_number": "2023-02104",
+      "rfid_uid": "5C-2A-88-D1",
+      "balance": 85.0,
+      "daily_limit": 150.0
+    },
+    {
+      "full_name": "Beatriz Ramos",
+      "email": "beatriz.student@sjc.edu.ph",
+      "password": "Student123!",
+      "role": "student",
+      "student_id_number": "2023-03011",
+      "rfid_uid": "3D-11-99-B0",
+      "balance": 120.0,
+      "daily_limit": 200.0
+    }
+  ],
+  "parents": [
+    {
+      "full_name": "Maria Santos Dela Cruz",
+      "email": "parent.maria@sjc.edu.ph",
+      "password": "Parent123!",
+      "role": "parent",
+      "linked_students": [
+        "juan.student@sjc.edu.ph",
+        "sophia.student@sjc.edu.ph"
+      ]
+    },
+    {
+      "full_name": "Carlos Dela Cruz",
+      "email": "parent.carlos@sjc.edu.ph",
+      "password": "Parent123!",
+      "role": "parent",
+      "linked_students": [
+        "juan.student@sjc.edu.ph"
+      ]
+    }
+  ],
+  "cashiers": [
+    {
+      "full_name": "Elena Rostata (POS #01)",
+      "email": "cashier.pos@sjc.edu.ph",
+      "password": "Cashier123!",
+      "role": "cashier",
+      "terminal": "POS Terminal #01"
+    }
+  ],
+  "admins": [
+    {
+      "full_name": "System Administrator",
+      "email": "admin.system@sjc.edu.ph",
+      "password": "Admin123!",
+      "role": "admin"
+    }
+  ]
+}
