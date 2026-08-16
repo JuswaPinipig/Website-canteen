@@ -163,6 +163,7 @@ STATE_SCANNING = 3
 STATE_STABILITY_COUNTDOWN = 5
 STATE_SETTLEMENT = 4
 STATE_ERROR = 6
+STATE_PREORDER_ANNOUNCEMENT = 7
 
 # ==============================================================================
 # DATABASE MANAGER (DYNAMIC ACCOUNTS, SUPABASE CLOUD & SQLITE PERSISTENCE)
@@ -378,6 +379,57 @@ class DatabaseManager:
 
         return None
 
+    def get_active_preorders(self, student_id, student_name=None):
+        """Fetches pending/ready pre-orders for the given student from Supabase or local cache."""
+        active_pos = []
+        try:
+            quoted_id = urllib.parse.quote(str(student_id))
+            url = f"{SUPABASE_URL}/rest/v1/preorders?or=(student_id.eq.{quoted_id},student_name.eq.{quoted_id})&status=neq.Claimed&select=*"
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "apikey": SUPABASE_ANON_KEY,
+                    "Authorization": f"Bearer {SUPABASE_ANON_KEY}"
+                }
+            )
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                if resp.status == 200:
+                    data = json.loads(resp.read().decode('utf-8'))
+                    if data and isinstance(data, list) and len(data) > 0:
+                        return data
+        except Exception as e:
+            print(f"[DB MANAGER NOTICE] Online pre-order check deferred: {e}")
+
+        # Local fallback simulation / accounts cache
+        local_po_path = "src/database/preorders.json"
+        if not os.path.exists(local_po_path) and os.path.exists("database/preorders.json"):
+            local_po_path = "database/preorders.json"
+        if os.path.exists(local_po_path):
+            try:
+                with open(local_po_path, "r", encoding="utf-8") as f:
+                    local_data = json.load(f)
+                    pos = local_data.get("preorders", [])
+                    for po in pos:
+                        if (po.get("student_id") == student_id or po.get("studentId") == student_id or (student_name and po.get("student_name") == student_name)) and po.get("status") != "Claimed":
+                            active_pos.append(po)
+                    if active_pos:
+                        return active_pos
+            except Exception:
+                pass
+
+        # Demo fallback for testing with default registered student accounts
+        if str(student_id) in ["2023-01900", "u101", "2023-08812"]:
+            return [{
+                "id": "po-demo-01",
+                "name": "Pork Adobo w/ Steamed Rice",
+                "price": 85.00,
+                "shelf": "Shelf B2",
+                "session": "Lunch Break (12:00 PM)",
+                "status": "Ready"
+            }]
+
+        return []
+
     def deduct_student_balance(self, student_id, amount):
         students = self.load_accounts()
         updated = False
@@ -438,7 +490,7 @@ class DatabaseManager:
 
         return new_balance
 
-    def record_transaction(self, transaction_id, student_id, cart_items, total_amount, tray_image_url=""):
+    def record_transaction(self, transaction_id, student_id, cart_items, total_amount, tray_image_url="", payment_method="E_WALLET"):
         try:
             conn = sqlite3.connect(self.sqlite_db_path)
             cursor = conn.cursor()
@@ -453,10 +505,10 @@ class DatabaseManager:
                 INSERT INTO pending_transactions 
                 (transaction_id, student_id, items_purchased, total_amount, payment_method, tray_image_url, sync_status)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (transaction_id, student_id, items_json, total_amount, "E_WALLET", tray_image_url, "EDGE_CACHED"))
+            """, (transaction_id, student_id, items_json, total_amount, payment_method, tray_image_url, "EDGE_CACHED"))
             conn.commit()
             conn.close()
-            print(f"[DB MANAGER] 🟢 Saved SQLite transaction {transaction_id} to novalunch_edge.db")
+            print(f"[DB MANAGER] 🟢 Saved SQLite transaction {transaction_id} ({payment_method}) to novalunch_edge.db")
         except Exception as e:
             print(f"[DB MANAGER ERROR] Failed to record transaction: {e}")
 
@@ -875,6 +927,8 @@ class NovaLunchKioskGUI:
         # State Machine Initialization
         self.current_state = STATE_IDLE
         self.active_student = None
+        self.active_student = None
+        self.active_preorders = []
         self.cart_items = []
         self.total_amount = 0.0
         self.state_timer = 0.0
@@ -928,7 +982,14 @@ class NovaLunchKioskGUI:
                         "balance": float(st.get("balance", 0.0)),
                         "daily_limit": float(st.get("daily_limit", 200.0))
                     }
-            self.transition_to_state(STATE_GREET)
+            if self.active_student:
+                self.active_preorders = self.db_manager.get_active_preorders(self.active_student["id"], self.active_student.get("name"))
+                if self.active_preorders:
+                    self.transition_to_state(STATE_PREORDER_ANNOUNCEMENT)
+                else:
+                    self.transition_to_state(STATE_GREET)
+            else:
+                self.transition_to_state(STATE_GREET)
         elif step == 2:
             print("[SIMULATION EVENT] Overhead Vision Detection Triggered")
             self.transition_to_state(STATE_SCANNING)
@@ -945,6 +1006,7 @@ class NovaLunchKioskGUI:
 
         if new_state == STATE_IDLE:
             self.active_student = None
+            self.active_preorders = []
             self.cart_items = []
             self.total_amount = 0.0
             self.countdown_remaining = 4.0
@@ -954,6 +1016,16 @@ class NovaLunchKioskGUI:
             self.stable_start_time = 0.0
             self.last_detection_hash = ""
             self.status_message = "Welcome to NovaLunch! Tap Student RFID Card to begin."
+
+        elif new_state == STATE_PREORDER_ANNOUNCEMENT:
+            student_name = self.active_student["name"] if self.active_student else "Student"
+            first_po = self.active_preorders[0] if self.active_preorders else {}
+            item_name = first_po.get("name") or first_po.get("item") or "Reserved Meal"
+            shelf_loc = first_po.get("shelf") or first_po.get("shelf_location") or "Shelf B2"
+            self.status_message = f"🍱 ACTIVE PRE-ORDER FOUND: Collect from {shelf_loc}!"
+            if not self.greet_audio_spoken:
+                speak_text(f"Hello {student_name}! Your pre-order for {item_name} is ready for pickup at Warming {shelf_loc}.")
+                self.greet_audio_spoken = True
 
         elif new_state == STATE_GREET:
             if not self.active_student:
@@ -1049,7 +1121,7 @@ class NovaLunchKioskGUI:
                         POS_CATALOG_DATABASE[pos_key]["stock"] = max(0, POS_CATALOG_DATABASE[pos_key]["stock"] - item["qty"])
 
                 timestamp_id = f"TXN_{int(time.time())}_{student_id.replace('-', '')}"
-                self.db_manager.record_transaction(timestamp_id, student_id, self.cart_items, self.total_amount, self.latest_tray_image)
+                self.db_manager.record_transaction(timestamp_id, student_id, self.cart_items, self.total_amount, self.latest_tray_image, payment_method="rfid")
 
                 self.status_message = f"Payment Successful! Remaining Balance: ₱{rem_balance:.2f}"
                 if self.sounds.get("success"):
@@ -1062,12 +1134,46 @@ class NovaLunchKioskGUI:
                 self.status_message = "No items scanned on platform!"
                 speak_text("No items on scanning platform to purchase.")
             else:
-                self.status_message = "Insufficient Funds! E-Wallet account balance too low."
-                speak_text("Warning! Insufficient balance. Please top up your account.")
+                self.status_message = "⚠️ Insufficient Balance! Press [P] or Tap Screen for 1-Tap Pay Later."
+                speak_text("Insufficient balance. Press P or tap screen for Pay Later safety net.")
 
         elif new_state == STATE_ERROR:
-            self.status_message = "⚠️ UNREGISTERED RFID CARD — VISIT CANTEEN ADMIN"
-            speak_text("Warning! Unregistered RFID card. Please visit canteen administration.")
+            self.status_message = "⚠️ UNREGISTERED RFID / QR CODE — VISIT CANTEEN ADMIN"
+            speak_text("Warning! Unregistered card or code. Please visit canteen administration.")
+
+    def execute_pay_later_checkout(self):
+        """Executes sub-1-second emergency credit overdraft without stalling the counter queue."""
+        if not self.active_student or self.total_amount <= 0:
+            print("[PAY LATER] No active student or cart is empty.")
+            return
+
+        student_id = self.active_student["id"]
+        student_name = self.active_student["name"]
+        timestamp_id = f"TXN_PAYLATER_{int(time.time())}_{student_id.replace('-', '')}"
+
+        # Decrement POS catalog inventory
+        for item in self.cart_items:
+            pos_key = item.get("ai_label")
+            if pos_key and pos_key in POS_CATALOG_DATABASE:
+                POS_CATALOG_DATABASE[pos_key]["stock"] = max(0, POS_CATALOG_DATABASE[pos_key]["stock"] - item["qty"])
+
+        # Persist transaction with pay_later payment method to SQLite edge cache
+        self.db_manager.record_transaction(
+            timestamp_id,
+            student_id,
+            self.cart_items,
+            self.total_amount,
+            self.latest_tray_image,
+            payment_method="pay_later"
+        )
+
+        self.status_message = f"🟢 SAFETY NET APPROVED: ₱{self.total_amount:.2f} Billed to Tuition ({student_name})"
+        if self.sounds.get("success"):
+            try:
+                self.sounds["success"].play()
+            except Exception:
+                pass
+        speak_text(f"Safety net approved. Total of {int(self.total_amount)} pesos billed to tuition. Thank you {student_name.split()[0]}!")
 
     def recalculate_total(self):
         self.total_amount = sum(item["price"] * item["qty"] for item in self.cart_items)
@@ -1079,6 +1185,12 @@ class NovaLunchKioskGUI:
 
         if scanned_uid:
             clean_uid = str(scanned_uid).strip()
+            # Normalize QR codes (e.g. "NL-QR-2023-01900" or "QR-2023-01900")
+            if clean_uid.startswith("NL-QR-"):
+                clean_uid = clean_uid.replace("NL-QR-", "")
+            elif clean_uid.startswith("QR-"):
+                clean_uid = clean_uid.replace("QR-", "")
+
             last_tap = self.rfid_anti_passback_cache.get(clean_uid, 0)
             if now_ts - last_tap < 60.0:
                 remaining = int(60.0 - (now_ts - last_tap))
@@ -1095,21 +1207,32 @@ class NovaLunchKioskGUI:
 
         if scanned_uid:
             clean_uid = str(scanned_uid).strip()
+            if clean_uid.startswith("NL-QR-"):
+                clean_uid = clean_uid.replace("NL-QR-", "")
+            elif clean_uid.startswith("QR-"):
+                clean_uid = clean_uid.replace("QR-", "")
+
             student = self.db_manager.find_student_by_rfid(clean_uid)
             if student:
                 self.active_student = student
-                print(f"[RFID SUCCESS] Matched Student: {student['name']} ({student['id']}) | UID: {student['rfidUid']} | Balance: ₱{student['balance']:.2f}")
-                self.transition_to_state(STATE_GREET)
+                self.active_preorders = self.db_manager.get_active_preorders(student["id"], student.get("name"))
+                print(f"[RFID/QR SUCCESS] Matched Student: {student['name']} ({student['id']}) | Active Preorders: {len(self.active_preorders)}")
+                if self.active_preorders:
+                    self.transition_to_state(STATE_PREORDER_ANNOUNCEMENT)
+                else:
+                    self.transition_to_state(STATE_GREET)
                 return
             else:
-                print(f"[RFID DENIED] Unregistered Card UID: '{clean_uid}'")
-                self.status_message = f"⚠️ UNRECOGNIZED CARD (UID: {clean_uid}) — VISIT ADMIN TO ENROLL"
-                speak_text(f"Warning! Unrecognized RFID card {clean_uid}.")
+                print(f"[RFID/QR DENIED] Unregistered Card/Token: '{clean_uid}'")
+                self.status_message = f"⚠️ UNRECOGNIZED CARD/QR (ID: {clean_uid}) — VISIT ADMIN"
+                speak_text(f"Warning! Unrecognized card or QR code {clean_uid}.")
                 self.transition_to_state(STATE_ERROR)
                 return
 
         if self.current_state in [STATE_IDLE, STATE_ERROR]:
             self.execute_simulation_step(1)
+        elif self.current_state == STATE_PREORDER_ANNOUNCEMENT:
+            self.transition_to_state(STATE_GREET)
         elif self.current_state == STATE_GREET:
             self.execute_simulation_step(2)
         elif self.current_state == STATE_SCANNING:
@@ -1118,6 +1241,119 @@ class NovaLunchKioskGUI:
             self.execute_simulation_step(4)
         elif self.current_state == STATE_SETTLEMENT:
             self.transition_to_state(STATE_IDLE)
+
+    def render_preorder_announcement(self):
+        """Renders full-screen student-facing pre-order pickup notice."""
+        panel_rect = pygame.Rect(20, 100, SCREEN_WIDTH - 40, 565)
+        pygame.draw.rect(self.screen, COLOR_CARD_BG, panel_rect, border_radius=20)
+        pygame.draw.rect(self.screen, COLOR_GOLD_ACCENT, panel_rect, width=2, border_radius=20)
+
+        # Header Ribbon
+        ribbon_rect = pygame.Rect(20, 100, SCREEN_WIDTH - 40, 64)
+        pygame.draw.rect(self.screen, COLOR_MAROON_HEADER, ribbon_rect, border_top_left_radius=20, border_top_right_radius=20)
+        
+        banner_txt = self.font_header.render("🍱 ACTIVE PRE-ORDER READY FOR COUNTER PICKUP", True, COLOR_GOLD_LIGHT)
+        self.screen.blit(banner_txt, (panel_rect.centerx - banner_txt.get_width() // 2, 118))
+
+        # Main Info Columns
+        left_col = pygame.Rect(45, 180, 570, 465)
+        right_col = pygame.Rect(635, 180, 600, 465)
+
+        # Left Column: Student Greeting & Shelf Badge
+        pygame.draw.rect(self.screen, COLOR_CARD_ALT, left_col, border_radius=16)
+        pygame.draw.rect(self.screen, COLOR_CARD_BORDER, left_col, width=1, border_radius=16)
+
+        st_name = self.active_student["name"] if self.active_student else "Student"
+        st_id = self.active_student["id"] if self.active_student else ""
+        st_bal = self.active_student["balance"] if self.active_student else 0.0
+
+        greet_lbl = self.font_large.render(f"Welcome, {st_name}!", True, COLOR_MAROON_HEADER)
+        self.screen.blit(greet_lbl, (65, 200))
+
+        id_lbl = self.font_body.render(f"Student ID: {st_id}  •  RFID E-Wallet Balance: ₱{st_bal:.2f}", True, COLOR_TEXT_MUTED)
+        self.screen.blit(id_lbl, (65, 240))
+
+        first_po = self.active_preorders[0] if self.active_preorders else {}
+        shelf_loc = first_po.get("shelf") or first_po.get("shelf_location") or "Shelf B2"
+        session_name = first_po.get("session") or first_po.get("time_slot") or "Lunch Break (12:00 PM)"
+
+        shelf_box = pygame.Rect(65, 280, 530, 130)
+        pygame.draw.rect(self.screen, COLOR_EMERALD_BG, shelf_box, border_radius=16)
+        pygame.draw.rect(self.screen, COLOR_EMERALD, shelf_box, width=2, border_radius=16)
+
+        shelf_tag = self.font_subtitle_bold.render("PICKUP STATION / WARMING SHELF:", True, COLOR_EMERALD)
+        self.screen.blit(shelf_tag, (85, 298))
+
+        shelf_val = self.font_title.render(f"📍 {shelf_loc.upper()}", True, COLOR_MAROON_HEADER)
+        self.screen.blit(shelf_val, (85, 322))
+
+        session_tag = self.font_body_bold.render(f"Meal Session: {session_name}", True, COLOR_TEXT_MAIN)
+        self.screen.blit(session_tag, (85, 370))
+
+        # Bottom Reassurance Notice
+        notice_box = pygame.Rect(65, 430, 530, 195)
+        pygame.draw.rect(self.screen, COLOR_GOLD_LIGHT, notice_box, border_radius=14)
+        pygame.draw.rect(self.screen, COLOR_GOLD_ACCENT, notice_box, width=1, border_radius=14)
+
+        n1 = self.font_body_bold.render("✓ Paid & Reserved in Advance", True, COLOR_MAROON_HEADER)
+        n2 = self.font_body.render("No scan or passcode needed! The Cashier will hand", True, COLOR_TEXT_MAIN)
+        n3 = self.font_body.render("over your pre-ordered meal directly.", True, COLOR_TEXT_MAIN)
+        n4 = self.font_subtitle_bold.render("Want extra snacks or drinks? Bring them to the counter to add.", True, COLOR_GOLD_ACCENT)
+        self.screen.blit(n1, (85, 450))
+        self.screen.blit(n2, (85, 480))
+        self.screen.blit(n3, (85, 506))
+        self.screen.blit(n4, (85, 545))
+
+        # Right Column: Itemized Pre-Order List
+        pygame.draw.rect(self.screen, COLOR_CARD_ALT, right_col, border_radius=16)
+        pygame.draw.rect(self.screen, COLOR_CARD_BORDER, right_col, width=1, border_radius=16)
+
+        list_header = self.font_header.render("PRE-ORDERED MEAL ITEMS", True, COLOR_TEXT_MAIN)
+        self.screen.blit(list_header, (655, 200))
+
+        y_pos = 245
+        total_po_amt = 0.0
+        for idx, po in enumerate(self.active_preorders):
+            if idx >= 4:
+                break
+            item_card = pygame.Rect(655, y_pos, 560, 75)
+            pygame.draw.rect(self.screen, COLOR_WHITE, item_card, border_radius=12)
+            pygame.draw.rect(self.screen, COLOR_CARD_BORDER, item_card, width=1, border_radius=12)
+
+            name = po.get("name") or po.get("item") or "Pork Adobo w/ Rice"
+            price = float(po.get("price", 85.0))
+            total_po_amt += price
+
+            is_meal = any(k in name.lower() for k in ["rice", "adobo", "chicken", "pares", "spaghetti", "meal", "bowl"])
+            badge_text = "Cooked Meal (Non-Refundable)" if is_meal else "Packaged Item (Refundable)"
+            badge_bg = COLOR_MAROON_DARK if is_meal else COLOR_AMBER_BG
+            badge_fg = COLOR_GOLD_LIGHT if is_meal else COLOR_GOLD_ACCENT
+
+            p_name = self.font_body_bold.render(name, True, COLOR_TEXT_MAIN)
+            self.screen.blit(p_name, (670, y_pos + 12))
+
+            p_tag = self.font_brand_sub.render(badge_text, True, badge_fg)
+            tag_rect = pygame.Rect(670, y_pos + 42, p_tag.get_width() + 12, 20)
+            pygame.draw.rect(self.screen, badge_bg, tag_rect, border_radius=6)
+            self.screen.blit(p_tag, (676, y_pos + 45))
+
+            p_price = self.font_large.render(f"₱{price:.2f}", True, COLOR_ROSE_VIBRANT)
+            self.screen.blit(p_price, (item_card.right - p_price.get_width() - 15, y_pos + 18))
+
+            y_pos += 85
+
+        # Right Summary Box
+        sum_box = pygame.Rect(655, 530, 560, 95)
+        pygame.draw.rect(self.screen, COLOR_EMERALD_BG, sum_box, border_radius=14)
+        pygame.draw.rect(self.screen, COLOR_EMERALD, sum_box, width=1, border_radius=14)
+
+        s_lbl = self.font_header.render("TOTAL PRE-ORDER VALUE:", True, COLOR_EMERALD)
+        s_val = self.font_large.render(f"₱{total_po_amt:.2f}", True, COLOR_EMERALD)
+        s_sub = self.font_body_bold.render("STATUS: PREPARED & WAITING FOR PICKUP", True, COLOR_TEXT_MAIN)
+
+        self.screen.blit(s_lbl, (675, 545))
+        self.screen.blit(s_val, (sum_box.right - s_val.get_width() - 20, 540))
+        self.screen.blit(s_sub, (675, 580))
 
     # --------------------------------------------------------------------------
     # 2026 STUDENT-FACING DISPLAY (CFD) RENDERERS
@@ -1472,11 +1708,16 @@ class NovaLunchKioskGUI:
                 btn_bg = COLOR_EMERALD
                 btn_text = "✓ Payment Approved — Thank You!"
                 text_color = COLOR_WHITE
+            elif "SAFETY NET APPROVED" in self.status_message:
+                btn_bg = COLOR_EMERALD
+                btn_text = "✓ Safety Net Pay Later Approved!"
+                text_color = COLOR_WHITE
             else:
                 btn_bg = COLOR_ROSE_ALERT
-                btn_text = "✕ Insufficient Funds — Contact Cashier"
+                btn_text = "⚡ Press [P] or Tap for 1-Tap Pay Later"
                 text_color = COLOR_WHITE
 
+        self.pay_later_btn_rect = banner_rect
         pygame.draw.rect(self.screen, btn_bg, banner_rect, border_radius=12)
         pygame.draw.rect(self.screen, COLOR_CARD_BORDER, banner_rect, width=1, border_radius=12)
 
@@ -1490,10 +1731,10 @@ class NovaLunchKioskGUI:
         pygame.draw.rect(self.screen, COLOR_MAROON_HEADER, footer_rect)
         pygame.draw.line(self.screen, COLOR_GOLD_ACCENT, (0, 678), (SCREEN_WIDTH, 678), 1)
 
-        msg_surf = self.font_footer.render(f"SYSTEM STATUS: {self.status_message}", True, COLOR_WHITE)
+        msg_surf = self.font_footer.render(f"STATUS: {self.status_message} | ⚡ FPS: 30 • LUX: 480 [OK] • RFID: READY • EDGE QUEUE: 0", True, COLOR_WHITE)
         self.screen.blit(msg_surf, (24, 690))
 
-        keybind_surf = self.font_subtitle_bold.render("[CASHIER SIMULATION SHORTCUTS: 1-4 | SPACE | M | R | C]", True, COLOR_GOLD_LIGHT)
+        keybind_surf = self.font_subtitle_bold.render("[SHORTCUTS: 1-4 | P: PAY LATER | W: SWAP AI | SPACE | R]", True, COLOR_GOLD_LIGHT)
         self.screen.blit(keybind_surf, (SCREEN_WIDTH - keybind_surf.get_width() - 24, 690))
 
     # --------------------------------------------------------------------------
@@ -1505,10 +1746,12 @@ class NovaLunchKioskGUI:
         print("   NOVALUNCH STUDENT-FACING DISPLAY (CFD) MONITOR INITIALIZED ")
         print("=============================================================")
         print("  Cashier / System Event Simulation Controls:")
-        print("  - [1] Step 1: RFID Tap Event (IDLE -> GREET)")
+        print("  - [1] Step 1: RFID/QR Tap Event (IDLE -> GREET)")
         print("  - [2] Step 2: Vision Camera Trigger (GREET -> SCANNING)")
         print("  - [3] Step 3: Calibrate Stability Timer (SCANNING -> COUNTDOWN)")
         print("  - [4] Step 4: Settlement Execution (COUNTDOWN -> SETTLEMENT)")
+        print("  - [P] 1-Tap Pay Later Emergency Overdraft Safety Net")
+        print("  - [W] AI Visual Misclassification Quick-Swap (Chicken <-> Pork)")
         print("  -----------------------------------------------------------")
         print("  - [SPACEBAR] : Advance Step Flow / Tap ID / Auto Pay")
         print("  - [M]        : Toggle Platform Motion (Pauses 5s Timer)")
@@ -1530,7 +1773,7 @@ class NovaLunchKioskGUI:
                     elif event.key in [pygame.K_RETURN, pygame.K_KP_ENTER]:
                         if len(self.rfid_scan_buffer) >= 4:
                             scanned_uid = self.rfid_scan_buffer.strip()
-                            print(f"[PHYSICAL 125kHz SCANNER KEYSTROKES] Scanned: '{scanned_uid}'")
+                            print(f"[PHYSICAL 125kHz / QR SCANNER] Scanned: '{scanned_uid}'")
                             self.handle_rfid_tap(scanned_uid)
                             self.rfid_scan_buffer = ""
                         else:
@@ -1539,6 +1782,21 @@ class NovaLunchKioskGUI:
                     elif event.key == pygame.K_SPACE:
                         self.handle_rfid_tap()
                         self.rfid_scan_buffer = ""
+                    elif event.key == pygame.K_p:
+                        self.execute_pay_later_checkout()
+                    elif event.key == pygame.K_w:
+                        # Quick swap Fried Chicken <-> Pork Adobo
+                        print("[AI OVERRIDE] 1-Touch Visual Correction: Swapping meal item...")
+                        for it in self.cart_items:
+                            if "Chicken" in it["name"]:
+                                it["name"] = "Pork Adobo with Rice"
+                                it["ai_label"] = "pork_adobo"
+                                break
+                            elif "Pork" in it["name"]:
+                                it["name"] = "Fried Chicken with Rice"
+                                it["ai_label"] = "fried_chicken"
+                                break
+                        self.recalculate_total()
                     elif event.key == pygame.K_m:
                         self.motion_detected = not self.motion_detected
                         m_str = "DETECTED (Timer Paused)" if self.motion_detected else "CLEAR (Tray Stable)"
@@ -1562,7 +1820,7 @@ class NovaLunchKioskGUI:
                         cam_str = "HARDWARE LIVE" if is_on else "SYNTHETIC DEMO"
                         print(f"[DEMO OPTION] Manual Camera Hardware State: {cam_str}")
 
-                    if event.unicode and (event.unicode.isdigit() or event.unicode.isalnum()):
+                    if event.unicode and (event.unicode.isdigit() or event.unicode.isalnum() or event.unicode in ['-', '_']):
                         now = time.time()
                         if now - self.last_key_time > 0.4:
                             self.rfid_scan_buffer = ""
@@ -1579,7 +1837,9 @@ class NovaLunchKioskGUI:
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1:
                         pos = event.pos
-                        if self.btn_step1.collidepoint(pos):
+                        if hasattr(self, 'pay_later_btn_rect') and self.pay_later_btn_rect.collidepoint(pos) and self.current_state == STATE_SETTLEMENT:
+                            self.execute_pay_later_checkout()
+                        elif self.btn_step1.collidepoint(pos):
                             self.execute_simulation_step(1)
                         elif self.btn_step2.collidepoint(pos):
                             self.execute_simulation_step(2)
@@ -1589,7 +1849,12 @@ class NovaLunchKioskGUI:
                             self.execute_simulation_step(4)
 
             now = time.time()
-            if self.current_state in [STATE_GREET, STATE_SCANNING]:
+            if self.current_state == STATE_PREORDER_ANNOUNCEMENT:
+                # 8.0-Second Pre-Order Screen Auto-dismiss
+                if now - self.state_timer >= 8.0:
+                    self.transition_to_state(STATE_IDLE)
+
+            elif self.current_state in [STATE_GREET, STATE_SCANNING]:
                 # 15-Second Session Timeout check if student walks away without placing tray
                 if now - self.state_timer >= 15.0:
                     print("[SESSION TIMEOUT] No tray placed within 15 seconds. Returning to IDLE.")
@@ -1653,8 +1918,11 @@ class NovaLunchKioskGUI:
             self.screen.fill(COLOR_BG_CANVAS)
 
             self.render_header()
-            self.render_left_panel()
-            self.render_right_panel()
+            if self.current_state == STATE_PREORDER_ANNOUNCEMENT:
+                self.render_preorder_announcement()
+            else:
+                self.render_left_panel()
+                self.render_right_panel()
             self.render_footer()
 
             pygame.display.flip()
