@@ -5,7 +5,7 @@
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { 
-    getDatabase, ref, set, get, update, push, onValue, query, orderByChild, equalTo 
+    getDatabase, ref, set, get, update, push, onValue, query, orderByChild, equalTo, runTransaction
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 import { 
     getStorage, ref as storageRef, uploadBytes, getDownloadURL 
@@ -79,14 +79,24 @@ export async function getStudentByRfid(rfidTag) {
 }
 
 export async function updateStudentBalance(studentId, newBalance, newSpentToday = null, newPayLater = null) {
-    const updates = { credit_balance: newBalance };
-    if (newSpentToday !== null) updates.daily_spent_today = newSpentToday;
-    if (newPayLater !== null) updates.pay_later_balance = newPayLater;
-
+    const studentRef = ref(db, `students/std_${studentId.replace('-', '_')}`);
     try {
-        await update(ref(db, `students/std_${studentId.replace('-', '_')}`), updates);
+        await runTransaction(studentRef, (currentData) => {
+            if (currentData) {
+                currentData.credit_balance = newBalance;
+                if (newSpentToday !== null) currentData.daily_spent_today = newSpentToday;
+                if (newPayLater !== null) currentData.pay_later_balance = newPayLater;
+                return currentData;
+            }
+            return {
+                student_id: studentId,
+                credit_balance: newBalance,
+                daily_spent_today: newSpentToday || 0,
+                pay_later_balance: newPayLater || 0
+            };
+        });
     } catch (e) {
-        console.warn("Firebase update pending connection. Updated in local store.", e);
+        console.warn("Firebase transaction update pending connection. Updated in local store.", e);
     }
 
     if (localStore.students[studentId]) {
@@ -209,18 +219,28 @@ export async function approveGCashTopup(topupId, adminId) {
         topup.status = "APPROVED";
         topup.verified_by = adminId;
 
-        // Credit student account
+        // Atomic transaction credit for student account in Firebase RTDB
+        const studentKey = `std_${topup.student_id.replace('-', '_')}`;
+        const balRef = ref(db, `students/${studentKey}/credit_balance`);
+        try {
+            await runTransaction(balRef, (currentVal) => {
+                return (parseFloat(currentVal) || 0) + topup.amount;
+            });
+        } catch (e) {
+            console.warn("Firebase RTDB balance transaction warning:", e);
+        }
+
         const student = localStore.students[topup.student_id];
         if (student) {
             student.credit_balance += topup.amount;
-            await updateStudentBalance(student.student_id, student.credit_balance);
         }
     }
 
     try {
         await update(ref(db, `gcash_topups/${topupId}`), {
             status: "APPROVED",
-            verified_by: adminId
+            verified_by: adminId,
+            reviewed_at: new Date().toISOString()
         });
     } catch (e) {
         console.warn("Local update topup approval", e);

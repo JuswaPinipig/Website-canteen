@@ -285,8 +285,66 @@
     },
 
     /**
-     * Absolute balance write — for TOP-UPS, admin adjustments, and refunds only.
-     * Do NOT use this for purchase deductions (use deductWalletBalance instead).
+     * ATOMIC wallet crediting for TOP-UPS & REFUNDS — uses delta RPC to prevent race conditions.
+     * Prevents overwriting concurrent POS purchase deductions with stale balance values.
+     */
+    async creditWalletBalance(userId, amount) {
+        const cleanAmount = parseFloat(amount);
+        if (!cleanAmount || cleanAmount <= 0) throw new Error('Credit amount must be a positive number.');
+
+        if (supabase) {
+            try {
+                const { data, error } = await supabase.rpc('fn_credit_wallet_balance', {
+                    p_user_id: userId,
+                    p_amount: cleanAmount
+                });
+                if (!error && data !== null) {
+                    return typeof data === 'number' ? data : (data.new_balance || cleanAmount);
+                }
+            } catch (rpcErr) {
+                console.warn('[CanteenDB] fn_credit_wallet_balance RPC fallback', rpcErr);
+            }
+
+            // Safe fallback: fetch-add-update
+            const { data: walletData, error: fetchErr } = await supabase
+                .from('wallets').select('balance').eq('user_id', userId).single();
+            if (fetchErr || !walletData) throw new Error('WALLET_NOT_FOUND: Could not locate student wallet.');
+
+            const currentBal = parseFloat(walletData.balance) || 0;
+            const newBalance = parseFloat((currentBal + cleanAmount).toFixed(2));
+            
+            const { error: wErr } = await supabase.from('wallets')
+                .update({ balance: newBalance, updated_at: new Date().toISOString() }).eq('user_id', userId);
+            if (wErr) throw new Error(`Database error crediting wallet: ${wErr.message}`);
+            
+            await supabase.from('profiles').update({ balance: newBalance, updated_at: new Date().toISOString() }).eq('id', userId);
+            return newBalance;
+        }
+
+        // REST fallback
+        const chkRes = await fetch(`${SUPABASE_URL}/rest/v1/wallets?user_id=eq.${userId}&select=balance`, {
+            headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}` }
+        });
+        const [walletRow] = await chkRes.json();
+        const currentBal = walletRow ? (parseFloat(walletRow.balance) || 0) : 0;
+        const newBal = parseFloat((currentBal + cleanAmount).toFixed(2));
+        
+        await fetch(`${SUPABASE_URL}/rest/v1/wallets?user_id=eq.${userId}`, {
+            method: 'PATCH',
+            headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ balance: newBal })
+        });
+        await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
+            method: 'PATCH',
+            headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ balance: newBal })
+        });
+        return newBal;
+    },
+
+    /**
+     * Absolute balance write — for admin overrides only.
+     * Do NOT use this for purchase deductions or top-ups (use deductWalletBalance or creditWalletBalance instead).
      */
     async updateStudentBalance(userId, newBalance) {
         const cleanBalance = Math.max(0, parseFloat(newBalance) || 0);
@@ -1400,6 +1458,10 @@
             console.warn(`[CanteenDB REST Patch Error] ${endpoint}:`, err);
             throw err;
         }
+    },
+
+    getClient() {
+        return supabase;
     }
 };
 

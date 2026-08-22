@@ -267,23 +267,79 @@ document.addEventListener('DOMContentLoaded', () => {
         if (spentEl) spentEl.textContent = `₱${state.currentStudent.daily_spent_today.toFixed(2)} / ₱${state.currentStudent.daily_spend_limit.toFixed(2)}`;
     }
 
-    // 9. AI Vision Camera Trigger (FR-05 & Python Backend fetch)
+    // 9. AI Vision Camera Trigger & Real-Time Python Kiosk Sync (FR-05)
+    let isKioskLive = false;
     const triggerAiScan = async () => {
         try {
             const res = await fetch('http://localhost:8085/api/scan_tray');
             const data = await res.json();
-            if (data.status === 'SUCCESS') {
+            if (data.status === 'SUCCESS' && data.cart) {
                 state.aiTrayItems = data.cart;
+                if (data.student) {
+                    state.currentStudent = {
+                        student_id: data.student.id,
+                        full_name: data.student.name,
+                        grade_level: 11,
+                        rfid_tag_hash: data.student.rfidUid || "9A-4F-21-C8",
+                        credit_balance: data.student.balance || 200.00,
+                        daily_spent_today: 0.00,
+                        daily_spend_limit: data.student.daily_limit || 200.00,
+                        pay_later_allowance: true,
+                        pay_later_balance: 0.00
+                    };
+                    updateStudentUI();
+                }
             }
         } catch (e) {
             console.warn("Using default simulated AI tray items", e);
             state.aiTrayItems = [
-                { id: 'a1111111-1111-1111-1111-111111111111', name: 'Classic Cheeseburger', price: 75.00, confidence: 0.96 },
-                { id: 'a4444444-4444-4444-4444-444444444444', name: 'Mineral Water (500ml)', price: 20.00, confidence: 0.98 }
+                { id: 'a1111111-1111-1111-1111-111111111111', name: 'Buttercream Crackers', price: 35.00, confidence: 0.98 },
+                { id: 'a4444444-4444-4444-4444-444444444444', name: 'Mineral Water (500ml)', price: 20.00, confidence: 0.96 }
             ];
         }
         if (aiModal) aiModal.classList.add('active');
     };
+
+    // Real-Time EventSource Listener to Python Kiosk
+    function initKioskRealtimeSync() {
+        try {
+            const es = new EventSource('http://localhost:8085/api/kiosk/events');
+            es.addEventListener('kiosk_update', (e) => {
+                try {
+                    const data = JSON.parse(e.data);
+                    isKioskLive = true;
+                    if (data.cart && data.cart.length > 0) {
+                        state.aiTrayItems = data.cart;
+                    }
+                    if (data.student) {
+                        state.currentStudent = {
+                            student_id: data.student.id,
+                            full_name: data.student.name,
+                            grade_level: 11,
+                            rfid_tag_hash: data.student.rfidUid || "9A-4F-21-C8",
+                            credit_balance: data.student.balance || 200.00,
+                            daily_spent_today: 0.00,
+                            daily_spend_limit: data.student.daily_limit || 200.00,
+                            pay_later_allowance: true,
+                            pay_later_balance: 0.00
+                        };
+                        updateStudentUI();
+                    }
+                } catch (err) {
+                    console.warn('[POS KIOSK SYNC] Parse error:', err);
+                }
+            });
+            es.onerror = () => {
+                isKioskLive = false;
+            };
+            window.addEventListener('beforeunload', () => {
+                try { es.close(); } catch (e) { }
+            });
+        } catch (err) {
+            console.log('[POS KIOSK SYNC] EventSource unavailable, using manual trigger');
+        }
+    }
+    initKioskRealtimeSync();
 
     if (loadAiBtn) loadAiBtn.addEventListener('click', triggerAiScan);
     if (loadAiBtn2) loadAiBtn2.addEventListener('click', triggerAiScan);
@@ -334,14 +390,24 @@ document.addEventListener('DOMContentLoaded', () => {
                     alert(`Pay Later credit mode is not approved for ${state.currentStudent.full_name}. Select RFID or Cash.`);
                     return;
                 }
+                const currentPayLaterCount = state.currentStudent.pay_later_count || 0;
+                if (currentPayLaterCount >= 5) {
+                    alert(`🚫 Pay Later Limit Reached (5/5 Transactions Used)!\n\n${state.currentStudent.full_name} has already utilized all 5 allowed emergency Pay Later transactions. Existing debt must be settled before new credit can be issued.`);
+                    return;
+                }
                 state.currentStudent.pay_later_balance += grandTotal;
+                state.currentStudent.pay_later_count = currentPayLaterCount + 1;
                 await updateStudentBalance(
                     state.currentStudent.student_id, 
                     state.currentStudent.credit_balance, 
                     state.currentStudent.daily_spent_today, 
                     state.currentStudent.pay_later_balance
                 );
-                alert(`🤝 Transaction tagged under Pay Later allowance for ${state.currentStudent.full_name}. Outstanding credit: ₱${state.currentStudent.pay_later_balance.toFixed(2)}`);
+                alert(`🤝 Transaction tagged under Pay Later allowance for ${state.currentStudent.full_name} (${state.currentStudent.pay_later_count}/5 used). Outstanding credit: ₱${state.currentStudent.pay_later_balance.toFixed(2)}`);
+            } else if (state.selectedPayment === 'salary_deduction') {
+                payMethodEnum = "SALARY_DEDUCTION";
+                state.currentStudent.salary_deduction_balance = (state.currentStudent.salary_deduction_balance || 0) + grandTotal;
+                alert(`💼 Transaction charged to Faculty/Staff Salary Deduction for ${state.currentStudent.full_name}. Accumulated: ₱${state.currentStudent.salary_deduction_balance.toFixed(2)}`);
             } else {
                 payMethodEnum = "CASH_BACKUP";
             }
@@ -364,7 +430,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const payMethodLabels = {
                 RFID_CREDIT: '💳 RFID Wallet Credit',
                 CASH_BACKUP: '💵 Cash Backup',
-                PAY_LATER: '🤝 Pay Later Credit Mode (Financial Aid)'
+                PAY_LATER: '🤝 Pay Later Credit Mode (Financial Aid)',
+                SALARY_DEDUCTION: '💼 Faculty / Staff Salary Deduction'
             };
 
             let itemsHtml = state.cart.map(i => `
@@ -382,7 +449,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
 
                 <div style="font-size:12px; margin-bottom:10px;">
-                    <strong>Student:</strong> ${state.currentStudent.full_name} (${state.currentStudent.student_id})<br>
+                    <strong>Customer:</strong> ${state.currentStudent.full_name} (${state.currentStudent.student_id})<br>
                     <strong>Payment Mode:</strong> ${payMethodLabels[payMethod]}
                 </div>
 
@@ -391,6 +458,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div style="border-top:2px solid var(--primary); padding-top:8px; display:flex; justify-content:space-between; font-size:16px; font-weight:800; color:var(--primary);">
                     <span>Total Paid:</span>
                     <span>₱${total.toFixed(2)}</span>
+                </div>
+
+                <div style="margin-top:12px; padding-top:8px; border-top:1px dashed #ccc; text-align:center; font-size:10px; color:#666;">
+                    <strong>🔒 Policy Notice:</strong> Cooked lunch meals are strictly non-refundable once served.<br>
+                    Thank you for dining at NovaLunch!
                 </div>
             `;
         }
