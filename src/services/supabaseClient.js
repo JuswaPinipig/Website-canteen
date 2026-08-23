@@ -13,6 +13,46 @@
      * Canteen API Service Layer
      */
     const CanteenDB = {
+    // -------------------------------------------------------------------------
+    // LOCALSTORAGE PERSISTENCE & OFFLINE CACHE UTILITIES
+    // -------------------------------------------------------------------------
+    saveLocal(key, value) {
+        try {
+            if (typeof window !== 'undefined' && window.localStorage) {
+                window.localStorage.setItem(key, JSON.stringify(value));
+            }
+        } catch(e) {
+            console.warn("[CanteenDB LocalStorage Save Warning]", e);
+        }
+    },
+
+    loadLocal(key, defaultValue = null) {
+        try {
+            if (typeof window !== 'undefined' && window.localStorage) {
+                const item = window.localStorage.getItem(key);
+                if (item !== null && item !== undefined && item !== "undefined") {
+                    return JSON.parse(item);
+                }
+            }
+        } catch(e) {
+            console.warn("[CanteenDB LocalStorage Load Warning]", e);
+        }
+        return defaultValue;
+    },
+
+    removeLocal(key) {
+        try {
+            if (typeof window !== 'undefined' && window.localStorage) {
+                window.localStorage.removeItem(key);
+            }
+        } catch(e) {}
+    },
+
+    isUUID(str) {
+        if (!str || typeof str !== 'string') return false;
+        return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str.trim());
+    },
+
     Validators: {
         isValidEmail(email) {
             if (!email || typeof email !== 'string') return false;
@@ -43,10 +83,24 @@
     },
 
     async getProducts() {
-        if (!supabase) return await this._fetchREST('products?select=*,category:menu_categories(name)&is_available=eq.true&order=name.asc');
-        const { data, error } = await supabase.from('products').select('*, category:menu_categories(name)').eq('is_available', true).order('name', { ascending: true });
-        if (error) throw error;
-        return data;
+        const cached = this.loadLocal('novalunch_products_catalog', null);
+        let cloudProducts = [];
+        try {
+            if (!supabase) {
+                cloudProducts = await this._fetchREST('products?select=*,category:menu_categories(name)&is_available=eq.true&order=name.asc');
+            } else {
+                const { data, error } = await supabase.from('products').select('*, category:menu_categories(name)').order('name', { ascending: true });
+                if (!error && data) cloudProducts = data;
+            }
+        } catch(e) {
+            console.warn("Products cloud fetch fallback to cache:", e);
+        }
+
+        if (cloudProducts && cloudProducts.length > 0) {
+            this.saveLocal('novalunch_products_catalog', cloudProducts);
+            return cloudProducts;
+        }
+        return cached || [];
     },
 
     async getProductByAILabel(label) {
@@ -57,35 +111,110 @@
     },
 
     async updateProductAiLabel(productId, aiLabel) {
-        if (supabase) {
+        if (supabase && this.isUUID(productId)) {
             const { data, error } = await supabase.from('products').update({ ai_label: aiLabel }).eq('id', productId).select();
-            if (error) throw error; // FIX: propagate instead of swallowing
+            if (error) throw error;
             return data;
         }
     },
 
     async createProduct(productPayload) {
-        if (supabase) {
-            const { data, error } = await supabase.from('products').insert([productPayload]).select().single();
-            if (error) throw error;
-            return data;
-        } else {
-            const res = await this._postREST('products', productPayload);
-            return res[0];
+        // Sanitize and map UI fields to valid PostgreSQL products schema
+        const cleanPayload = {
+            name: productPayload.name || 'Menu Item',
+            price: parseFloat(productPayload.price) || 0.0,
+            cost_price: parseFloat(productPayload.cost_price || productPayload.costPrice) || 0.0,
+            stock_quantity: productPayload.stock_quantity !== undefined ? parseInt(productPayload.stock_quantity) : (productPayload.stock !== undefined ? parseInt(productPayload.stock) : 50),
+            is_available: productPayload.is_available !== undefined ? Boolean(productPayload.is_available) : (productPayload.available !== undefined ? Boolean(productPayload.available) : true),
+            image_url: productPayload.image_url || productPayload.img || null,
+            category: productPayload.category || 'Meals & Mains',
+            ai_label: productPayload.ai_label || productPayload.aiLabel || null,
+            barcode: productPayload.barcode || null,
+            description: productPayload.description || null,
+            calories: parseInt(productPayload.calories) || 0,
+            protein: productPayload.protein || '0g',
+            allergens: Array.isArray(productPayload.allergens) ? productPayload.allergens : [],
+            status: productPayload.status || 'active',
+            updated_at: new Date().toISOString()
+        };
+
+        if (productPayload.id && this.isUUID(productPayload.id)) {
+            cleanPayload.id = productPayload.id;
         }
+
+        let createdProduct = null;
+        if (supabase) {
+            try {
+                const { data, error } = await supabase.from('products').insert([cleanPayload]).select().single();
+                if (!error && data) createdProduct = data;
+                else console.warn("Supabase createProduct notice:", error);
+            } catch(e) {
+                console.warn("Supabase createProduct exception:", e);
+            }
+        }
+
+        if (!createdProduct) {
+            try {
+                const res = await this._postREST('products', cleanPayload);
+                if (res && res[0]) createdProduct = res[0];
+            } catch(e) {
+                // Generate a client UUID for offline resilience
+                createdProduct = {
+                    id: cleanPayload.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'prod_' + Date.now()),
+                    ...cleanPayload,
+                    created_at: new Date().toISOString()
+                };
+            }
+        }
+
+        // Update local cache
+        const currentProducts = this.loadLocal('novalunch_products_catalog', []);
+        this.saveLocal('novalunch_products_catalog', [createdProduct, ...currentProducts.filter(p => p.id !== createdProduct.id)]);
+
+        return createdProduct;
     },
 
     async updateProduct(productId, updatePayload) {
-        if (supabase) {
-            const { data, error } = await supabase.from('products').update(updatePayload).eq('id', productId).select();
-            if (error) {
-                console.warn("Error updating product:", error);
-                throw error;
+        const cleanPayload = {};
+        if (updatePayload.name !== undefined) cleanPayload.name = updatePayload.name;
+        if (updatePayload.price !== undefined) cleanPayload.price = parseFloat(updatePayload.price) || 0;
+        if (updatePayload.cost_price !== undefined || updatePayload.costPrice !== undefined) cleanPayload.cost_price = parseFloat(updatePayload.cost_price || updatePayload.costPrice) || 0;
+        if (updatePayload.stock_quantity !== undefined) cleanPayload.stock_quantity = parseInt(updatePayload.stock_quantity);
+        else if (updatePayload.stock !== undefined) cleanPayload.stock_quantity = parseInt(updatePayload.stock);
+        if (updatePayload.is_available !== undefined) cleanPayload.is_available = Boolean(updatePayload.is_available);
+        else if (updatePayload.available !== undefined) cleanPayload.is_available = Boolean(updatePayload.available);
+        if (updatePayload.image_url !== undefined) cleanPayload.image_url = updatePayload.image_url;
+        else if (updatePayload.img !== undefined) cleanPayload.image_url = updatePayload.img;
+        if (updatePayload.category !== undefined) cleanPayload.category = updatePayload.category;
+        if (updatePayload.ai_label !== undefined) cleanPayload.ai_label = updatePayload.ai_label;
+        else if (updatePayload.aiLabel !== undefined) cleanPayload.ai_label = updatePayload.aiLabel;
+        if (updatePayload.calories !== undefined) cleanPayload.calories = parseInt(updatePayload.calories) || 0;
+        if (updatePayload.protein !== undefined) cleanPayload.protein = updatePayload.protein;
+        if (updatePayload.allergens !== undefined) cleanPayload.allergens = Array.isArray(updatePayload.allergens) ? updatePayload.allergens : [];
+        if (updatePayload.status !== undefined) cleanPayload.status = updatePayload.status;
+        cleanPayload.updated_at = new Date().toISOString();
+
+        // Always update local cache
+        const currentProducts = this.loadLocal('novalunch_products_catalog', []);
+        const updatedLocal = currentProducts.map(p => p.id === productId ? { ...p, ...cleanPayload } : p);
+        this.saveLocal('novalunch_products_catalog', updatedLocal);
+
+        if (this.isUUID(productId)) {
+            if (supabase) {
+                try {
+                    const { data, error } = await supabase.from('products').update(cleanPayload).eq('id', productId).select();
+                    if (error) console.warn("Supabase updateProduct warning:", error);
+                    return data;
+                } catch(e) {
+                    console.warn("Supabase updateProduct exception:", e);
+                }
+            } else {
+                try {
+                    return await this._patchREST(`products?id=eq.${productId}`, cleanPayload);
+                } catch(e) {}
             }
-            return data;
-        } else {
-            return await this._patchREST(`products?id=eq.${productId}`, updatePayload);
         }
+        return [cleanPayload];
     },
 
     // -------------------------------------------------------------------------
@@ -556,142 +685,270 @@
             throw new Error("Invalid phone number format. Please provide a valid mobile number.");
         }
 
-        const { initial_balance, daily_limit, first_name, last_name, password, tempPassword, ...profileFields } = payload;
+        const fullName = payload.full_name || `${payload.first_name || payload.firstName || ''} ${payload.last_name || payload.lastName || ''}`.trim() || 'NovaLunch User';
+        const role = (payload.role || 'student').toLowerCase();
+        const studentId = payload.student_id_number || payload.studentId || (role === 'student' ? `2026-${Math.floor(10000 + Math.random() * 90000)}` : null);
 
-        if (!profileFields.full_name && (first_name || last_name)) {
-            profileFields.full_name = `${first_name || ''} ${last_name || ''}`.trim();
+        const VALID_PROFILE_COLUMNS = new Set([
+            'id', 'full_name', 'email', 'role', 'student_id_number', 'rfid_uid', 'pin_code',
+            'avatar_url', 'status', 'daily_calories_spent', 'max_meal_calories',
+            'first_name', 'last_name', 'employee_id', 'weekly_limit', 'monthly_allowance',
+            'credit_liability', 'credit_limit', 'pay_later_count', 'pay_later_pre_authorized',
+            'max_daily_calories', 'allergen_mode', 'allergies', 'restricted_categories',
+            'manager_pin', 'accumulated_salary_deduction', 'updated_at'
+        ]);
+
+        const profileFields = {
+            full_name: fullName,
+            email: payload.email || `${(role || 'user')}_${Date.now()}@sjc.edu.ph`,
+            role: role,
+            student_id_number: studentId,
+            rfid_uid: payload.rfid_uid || payload.rfidUid || null,
+            pin_code: payload.pin_code || payload.pinCode || '1234',
+            status: payload.status || 'active',
+            allergies: Array.isArray(payload.allergies) ? payload.allergies : (Array.isArray(payload.allergen_restrictions) ? payload.allergen_restrictions : []),
+            max_daily_calories: parseInt(payload.max_daily_calories || payload.maxDailyCalories) || 1800,
+            allergen_mode: payload.allergen_mode || payload.allergenMode || 'SOFT_WARN',
+            credit_limit: parseFloat(payload.credit_limit || payload.creditLimit || payload.pay_later_allowance) || 500.0,
+            credit_liability: parseFloat(payload.credit_liability || payload.creditLiability) || 0.0,
+            pay_later_pre_authorized: payload.pay_later_pre_authorized !== undefined ? Boolean(payload.pay_later_pre_authorized) : true,
+            updated_at: new Date().toISOString()
+        };
+
+        if (payload.id && this.isUUID(payload.id)) {
+            profileFields.id = payload.id;
         }
 
-        const authPass = password || tempPassword || 'SJC#2026!';
-
-        // Create Supabase Auth account if online
-        if (supabase && profileFields.email) {
-            try {
-                const { data: authData, error: authError } = await supabase.auth.signUp({
-                    email: profileFields.email,
-                    password: authPass,
-                    options: {
-                        data: {
-                            full_name: profileFields.full_name,
-                            role: profileFields.role || 'student'
-                        }
-                    }
-                });
-                if (authError) {
-                    console.warn("Supabase Auth signUp note:", authError.message);
-                } else if (authData?.user?.id) {
-                    profileFields.id = authData.user.id;
-                }
-            } catch(aErr) {
-                console.warn("Supabase Auth sign up exception:", aErr);
-            }
+        // Clean to only columns present in PostgreSQL
+        const sanitizedFields = {};
+        for (const [k, v] of Object.entries(profileFields)) {
+            if (VALID_PROFILE_COLUMNS.has(k)) sanitizedFields[k] = v;
         }
 
-        let profile;
+        let profile = null;
         if (supabase) {
-            const { data, error } = await supabase.from('profiles').insert([profileFields]).select().single();
-            if (error) {
-                console.error("Supabase profile registration error:", error);
-                throw new Error(error.message || `Database error creating account for ${profileFields.email}`);
+            try {
+                const { data, error } = await supabase.from('profiles').insert([sanitizedFields]).select().single();
+                if (!error && data) profile = data;
+                else console.warn("Supabase profile registration notice:", error);
+            } catch(e) {
+                console.warn("Supabase profile registration exception:", e);
             }
-            profile = data;
-        } else {
-            const res = await this._postREST('profiles', profileFields);
-            profile = res[0];
+        }
+
+        if (!profile) {
+            try {
+                const res = await this._postREST('profiles', sanitizedFields);
+                if (res && res[0]) profile = res[0];
+            } catch(e) {
+                profile = {
+                    id: sanitizedFields.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'u_' + Date.now()),
+                    ...sanitizedFields,
+                    created_at: new Date().toISOString()
+                };
+            }
         }
 
         // Initialize wallet for students automatically
-        // Read system-configurable defaults from canteen_settings instead of hardcoding
-        if ((payload.role?.toLowerCase() === 'student') && profile && profile.id) {
-            let systemDefaultDailyLimit = 200.00;
-            try {
-                const settings = await this.getSystemSettings();
-                const dailySetting = settings.find(s => s.key === 'daily_spending_default');
-                if (dailySetting?.value?.amount) {
-                    systemDefaultDailyLimit = parseFloat(dailySetting.value.amount) || 200.00;
-                }
-            } catch (e) {
-                console.warn("Could not load system default daily limit, using schema default:", e);
-            }
+        const initBal = typeof payload.balance === 'number' ? payload.balance : (parseFloat(payload.initial_balance || payload.balance) || 0.00);
+        const initLimit = typeof payload.dailyCap === 'number' ? payload.dailyCap : (parseFloat(payload.daily_limit || payload.dailyCap) || 200.00);
 
+        if (profile && profile.id) {
             const walletPayload = {
                 user_id: profile.id,
-                balance: typeof initial_balance === 'number' ? initial_balance : (parseFloat(initial_balance) || 0.00),
-                daily_limit: typeof daily_limit === 'number' ? daily_limit : (parseFloat(daily_limit) || systemDefaultDailyLimit),
-                daily_spent: 0.00
+                balance: initBal,
+                daily_limit: initLimit,
+                daily_spent: 0.00,
+                credit_liability: 0.00,
+                updated_at: new Date().toISOString()
             };
-            if (supabase) {
-                await supabase.from('wallets').insert([walletPayload]).catch(wErr => console.warn("Wallet init warning:", wErr));
-            } else {
-                await this._postREST('wallets', walletPayload).catch(wErr => console.warn("REST Wallet init warning:", wErr));
+            if (this.isUUID(profile.id)) {
+                if (supabase) {
+                    await supabase.from('wallets').insert([walletPayload]).catch(wErr => console.warn("Wallet init warning:", wErr));
+                } else {
+                    await this._postREST('wallets', walletPayload).catch(wErr => console.warn("REST Wallet init warning:", wErr));
+                }
             }
+            profile.wallets = [walletPayload];
         }
 
-        // Emit Welcome Notification
-        await this.createNotification({
-            user_id: profile.id,
-            title: "Welcome to NovaLunch!",
-            message: `Your ${(payload.role || 'user').toUpperCase()} account has been created successfully.`,
-            type: "account_created"
-        });
+        // Update local cache
+        const localUserObj = {
+            id: profile.id,
+            email: profile.email,
+            studentId: profile.student_id_number || studentId || "2026-00001",
+            name: profile.full_name,
+            role: role.charAt(0).toUpperCase() + role.slice(1),
+            rfidUid: profile.rfid_uid || "1A-2B-3C-4D",
+            dailyCap: initLimit,
+            balance: initBal,
+            status: profile.status || 'active',
+            allergies: profile.allergies || [],
+            pinCode: profile.pin_code || '1234',
+            creditLiability: profile.credit_liability || 0,
+            creditLimit: profile.credit_limit || 500,
+            maxDailyCalories: profile.max_daily_calories || 1800,
+            allergenMode: profile.allergen_mode || 'SOFT_WARN',
+            managerPin: profile.manager_pin || '1234'
+        };
 
-        return profile;
+        const currentUsers = this.loadLocal('novalunch_registered_users', []);
+        this.saveLocal('novalunch_registered_users', [localUserObj, ...currentUsers.filter(u => u.id !== localUserObj.id)]);
+
+        return localUserObj;
+    },
+
+    async createUser(payload) {
+        return await this.registerUser(payload);
     },
 
     async getAllUsers() {
-        if (!supabase) {
-            try {
-                return await this._fetchREST('profiles?select=*,wallets(*)&order=created_at.desc');
-            } catch (e) { return []; }
+        const cached = this.loadLocal('novalunch_registered_users', null);
+        let cloudProfiles = [];
+        try {
+            if (!supabase) {
+                cloudProfiles = await this._fetchREST('profiles?select=*,wallets(*)&order=created_at.desc');
+            } else {
+                const { data, error } = await supabase.from('profiles').select('*, wallets(*)').order('created_at', { ascending: false });
+                if (!error && data) cloudProfiles = data;
+            }
+        } catch(e) {
+            console.warn("getAllUsers cloud fetch fallback to cache:", e);
         }
-        const { data, error } = await supabase.from('profiles').select('*, wallets(*)').order('created_at', { ascending: false });
-        if (error) return [];
-        return data || [];
+
+        if (cloudProfiles && cloudProfiles.length > 0) {
+            const mapped = cloudProfiles.map(u => {
+                const w = Array.isArray(u.wallets) ? u.wallets[0] : u.wallets;
+                return {
+                    id: u.id,
+                    email: u.email,
+                    studentId: u.student_id_number || "2026-00001",
+                    name: u.full_name,
+                    role: u.role ? (u.role.charAt(0).toUpperCase() + u.role.slice(1)) : 'Student',
+                    rfidUid: u.rfid_uid || "1A-2B-3C-4D",
+                    dailyCap: w?.daily_limit ? parseFloat(w.daily_limit) : (u.daily_limit ? parseFloat(u.daily_limit) : 200.00),
+                    balance: w?.balance ? parseFloat(w.balance) : (u.balance ? parseFloat(u.balance) : 0.00),
+                    status: u.status || 'active',
+                    allergies: u.allergies || [],
+                    pinCode: u.pin_code || '1234',
+                    creditLiability: u.credit_liability || 0,
+                    creditLimit: u.credit_limit || 500,
+                    maxDailyCalories: u.max_daily_calories || 1800,
+                    allergenMode: u.allergen_mode || 'SOFT_WARN',
+                    managerPin: u.manager_pin || '1234'
+                };
+            });
+            this.saveLocal('novalunch_registered_users', mapped);
+            return mapped;
+        }
+        return cached || [];
     },
 
     async updateUser(userId, updatePayload) {
-        // Separate profile fields from wallet fields
-        const { balance, daily_limit, credit_liability, dailyCap, creditLimit, first_name, last_name, firstName, lastName, ...profileFields } = updatePayload;
-        
-        let updatedProfile = null;
-        if (supabase) {
-            const { data, error } = await supabase.from('profiles').update(profileFields).eq('id', userId).select().single();
-            if (error) {
-                console.error("Supabase profile update error:", error);
-                throw new Error(error.message || `Database error updating profile`);
+        // Sanitize field mappings to match profiles schema
+        const VALID_PROFILE_COLUMNS = new Set([
+            'full_name', 'email', 'role', 'student_id_number', 'rfid_uid', 'pin_code',
+            'avatar_url', 'status', 'daily_calories_spent', 'max_meal_calories',
+            'first_name', 'last_name', 'employee_id', 'weekly_limit', 'monthly_allowance',
+            'credit_liability', 'credit_limit', 'pay_later_count', 'pay_later_pre_authorized',
+            'max_daily_calories', 'allergen_mode', 'allergies', 'restricted_categories',
+            'manager_pin', 'accumulated_salary_deduction', 'updated_at'
+        ]);
+
+        const profileFields = {};
+        if (updatePayload.name !== undefined) profileFields.full_name = updatePayload.name;
+        if (updatePayload.full_name !== undefined) profileFields.full_name = updatePayload.full_name;
+        if (updatePayload.studentId !== undefined) profileFields.student_id_number = updatePayload.studentId;
+        if (updatePayload.student_id_number !== undefined) profileFields.student_id_number = updatePayload.student_id_number;
+        if (updatePayload.email !== undefined) profileFields.email = updatePayload.email;
+        if (updatePayload.role !== undefined) profileFields.role = String(updatePayload.role).toLowerCase();
+        if (updatePayload.rfidUid !== undefined) profileFields.rfid_uid = updatePayload.rfidUid;
+        if (updatePayload.rfid_uid !== undefined) profileFields.rfid_uid = updatePayload.rfid_uid;
+        if (updatePayload.pinCode !== undefined) profileFields.pin_code = updatePayload.pinCode;
+        if (updatePayload.pin_code !== undefined) profileFields.pin_code = updatePayload.pin_code;
+        if (updatePayload.managerPin !== undefined) profileFields.manager_pin = updatePayload.managerPin;
+        if (updatePayload.status !== undefined) profileFields.status = updatePayload.status;
+        if (updatePayload.allergies !== undefined) profileFields.allergies = Array.isArray(updatePayload.allergies) ? updatePayload.allergies : [];
+        if (updatePayload.allergen_restrictions !== undefined) profileFields.allergies = Array.isArray(updatePayload.allergen_restrictions) ? updatePayload.allergen_restrictions : [];
+        if (updatePayload.creditLimit !== undefined) profileFields.credit_limit = parseFloat(updatePayload.creditLimit) || 500;
+        if (updatePayload.credit_limit !== undefined) profileFields.credit_limit = parseFloat(updatePayload.credit_limit) || 500;
+        if (updatePayload.pay_later_allowance !== undefined) profileFields.credit_limit = parseFloat(updatePayload.pay_later_allowance) || 500;
+        if (updatePayload.creditLiability !== undefined) profileFields.credit_liability = parseFloat(updatePayload.creditLiability) || 0;
+        if (updatePayload.credit_liability !== undefined) profileFields.credit_liability = parseFloat(updatePayload.credit_liability) || 0;
+        if (updatePayload.maxDailyCalories !== undefined) profileFields.max_daily_calories = parseInt(updatePayload.maxDailyCalories) || 1800;
+        if (updatePayload.max_daily_calories !== undefined) profileFields.max_daily_calories = parseInt(updatePayload.max_daily_calories) || 1800;
+        if (updatePayload.allergenMode !== undefined) profileFields.allergen_mode = updatePayload.allergenMode;
+        if (updatePayload.allergen_mode !== undefined) profileFields.allergen_mode = updatePayload.allergen_mode;
+        profileFields.updated_at = new Date().toISOString();
+
+        // 1. Update local cache immediately
+        const currentUsers = this.loadLocal('novalunch_registered_users', []);
+        const updatedLocal = currentUsers.map(u => {
+            if (u.id === userId || u.studentId === userId) {
+                return {
+                    ...u,
+                    ...updatePayload,
+                    ...(profileFields.full_name ? { name: profileFields.full_name } : {}),
+                    ...(profileFields.student_id_number ? { studentId: profileFields.student_id_number } : {}),
+                    ...(profileFields.credit_limit ? { creditLimit: profileFields.credit_limit } : {}),
+                    ...(profileFields.allergies ? { allergies: profileFields.allergies } : {}),
+                    ...(profileFields.pin_code ? { pinCode: profileFields.pin_code } : {})
+                };
             }
-            updatedProfile = data;
-        } else {
-            const res = await this._patchREST(`profiles?id=eq.${userId}`, profileFields);
-            updatedProfile = res[0];
+            return u;
+        });
+        this.saveLocal('novalunch_registered_users', updatedLocal);
+
+        // 2. Only pass valid columns to Supabase if valid UUID
+        const sanitizedFields = {};
+        for (const [k, v] of Object.entries(profileFields)) {
+            if (VALID_PROFILE_COLUMNS.has(k)) sanitizedFields[k] = v;
         }
 
-        // Update Wallet fields if balance, daily_limit, or credit_liability is provided
-        const cleanBalance = balance !== undefined ? (parseFloat(balance) || 0.0) : undefined;
-        const cleanDailyCap = daily_limit !== undefined ? (parseFloat(daily_limit) || 200.0) : (dailyCap !== undefined ? (parseFloat(dailyCap) || 200.0) : undefined);
-        const cleanLiability = credit_liability !== undefined ? (parseFloat(credit_liability) || 0.0) : undefined;
-
-        const walletPatch = {};
-        if (cleanBalance !== undefined) walletPatch.balance = cleanBalance;
-        if (cleanDailyCap !== undefined) walletPatch.daily_limit = cleanDailyCap;
-        if (cleanLiability !== undefined) walletPatch.credit_liability = cleanLiability;
-
-        if (Object.keys(walletPatch).length > 0) {
-            walletPatch.updated_at = new Date().toISOString();
+        let updatedProfile = null;
+        if (this.isUUID(userId)) {
             if (supabase) {
-                await supabase.from('wallets').update(walletPatch).eq('user_id', userId).catch(e => console.warn("Wallet update error:", e));
+                try {
+                    const { data, error } = await supabase.from('profiles').update(sanitizedFields).eq('id', userId).select().single();
+                    if (!error && data) updatedProfile = data;
+                    else console.warn("Supabase profile update warning:", error);
+                } catch(e) {
+                    console.warn("Supabase profile update exception:", e);
+                }
             } else {
                 try {
-                    await fetch(`${SUPABASE_URL}/rest/v1/wallets?user_id=eq.${userId}`, {
-                        method: 'PATCH',
-                        headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json" },
-                        body: JSON.stringify(walletPatch)
-                    });
-                } catch (e) {}
+                    const res = await this._patchREST(`profiles?id=eq.${userId}`, sanitizedFields);
+                    if (res && res[0]) updatedProfile = res[0];
+                } catch(e) {}
+            }
+
+            // Update Wallet fields if balance, daily_limit, or credit_liability is provided
+            const cleanBalance = updatePayload.balance !== undefined ? (parseFloat(updatePayload.balance) || 0.0) : undefined;
+            const cleanDailyCap = updatePayload.daily_limit !== undefined ? (parseFloat(updatePayload.daily_limit) || 200.0) : (updatePayload.dailyCap !== undefined ? (parseFloat(updatePayload.dailyCap) || 200.0) : undefined);
+            const cleanLiability = updatePayload.credit_liability !== undefined ? (parseFloat(updatePayload.credit_liability) || 0.0) : (updatePayload.creditLiability !== undefined ? (parseFloat(updatePayload.creditLiability) || 0.0) : undefined);
+
+            const walletPatch = {};
+            if (cleanBalance !== undefined) walletPatch.balance = cleanBalance;
+            if (cleanDailyCap !== undefined) walletPatch.daily_limit = cleanDailyCap;
+            if (cleanLiability !== undefined) walletPatch.credit_liability = cleanLiability;
+
+            if (Object.keys(walletPatch).length > 0) {
+                walletPatch.updated_at = new Date().toISOString();
+                if (supabase) {
+                    await supabase.from('wallets').update(walletPatch).eq('user_id', userId).catch(e => console.warn("Wallet update error:", e));
+                } else {
+                    try {
+                        await fetch(`${SUPABASE_URL}/rest/v1/wallets?user_id=eq.${userId}`, {
+                            method: 'PATCH',
+                            headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json" },
+                            body: JSON.stringify(walletPatch)
+                        });
+                    } catch (e) {}
+                }
             }
         }
 
-        return updatedProfile;
+        return updatedProfile || sanitizedFields;
     },
 
     async archiveUser(userId) {
@@ -1077,68 +1334,184 @@
     // SYSTEM SETTINGS & GOVERNANCE CONFIGURATION
     // -------------------------------------------------------------------------
     async getSystemSettings() {
-        if (!supabase) {
-            try { return await this._fetchREST('canteen_settings?select=*'); } catch(e) { return []; }
+        let cloudSettings = [];
+        if (supabase) {
+            try {
+                const { data, error } = await supabase.from('canteen_settings').select('*');
+                if (!error && data) cloudSettings = data;
+            } catch(e) {
+                console.warn("getSystemSettings cloud fetch fallback:", e);
+            }
+        } else {
+            try {
+                cloudSettings = await this._fetchREST('canteen_settings?select=*');
+            } catch(e) {}
         }
-        const { data, error } = await supabase.from('canteen_settings').select('*');
-        if (error) return [];
-        return data || [];
+
+        const cachedSettings = this.loadLocal('novalunch_canteen_settings', {});
+        const settingsMap = {};
+        if (cloudSettings && Array.isArray(cloudSettings)) {
+            cloudSettings.forEach(s => { if (s && s.key) settingsMap[s.key] = s; });
+        }
+        if (cachedSettings && typeof cachedSettings === 'object') {
+            Object.values(cachedSettings).forEach(s => {
+                if (s && s.key) {
+                    if (!settingsMap[s.key] || new Date(s.updated_at || 0) >= new Date(settingsMap[s.key].updated_at || 0)) {
+                        settingsMap[s.key] = s;
+                    }
+                }
+            });
+        }
+        const result = Object.values(settingsMap);
+        if (result.length > 0) {
+            const cacheToSave = {};
+            result.forEach(s => { cacheToSave[s.key] = s; });
+            this.saveLocal('novalunch_canteen_settings', cacheToSave);
+        }
+        return result;
     },
 
     async updateSystemSetting(key, value, description = '') {
         const payload = { key, value, description, updated_at: new Date().toISOString() };
+        
+        // 1. Save to local storage
+        const cachedSettings = this.loadLocal('novalunch_canteen_settings', {});
+        cachedSettings[key] = payload;
+        this.saveLocal('novalunch_canteen_settings', cachedSettings);
+
+        // 2. Save to Supabase
         if (supabase) {
-            const { data, error } = await supabase.from('canteen_settings').upsert([payload]).select();
-            if (error) console.warn("Error updating system setting:", error);
-            return data;
+            try {
+                const { data, error } = await supabase.from('canteen_settings').upsert([payload]).select();
+                if (error) console.warn("Error updating system setting in Supabase:", error);
+                return data;
+            } catch(e) {
+                console.warn("Exception updating system setting:", e);
+            }
         } else {
-            return await this._postREST('canteen_settings', payload);
+            try {
+                return await this._postREST('canteen_settings', payload);
+            } catch(e) {}
         }
+        return [payload];
     },
 
     // -------------------------------------------------------------------------
     // PRE-ORDER SLOTS MANAGEMENT
     // -------------------------------------------------------------------------
     async getPreorderSlots() {
+        const cached = this.loadLocal('novalunch_preorder_slots', null);
+        let cloudSlots = [];
         if (!supabase) {
-            try { return await this._fetchREST('preorder_slots?select=*&order=start_time.asc'); } catch(e) { return []; }
+            try { cloudSlots = await this._fetchREST('preorder_slots?select=*&order=start_time.asc'); } catch(e) {}
+        } else {
+            try {
+                const { data, error } = await supabase.from('preorder_slots').select('*').order('start_time', { ascending: true });
+                if (!error && data) cloudSlots = data;
+            } catch(e) {}
         }
-        const { data, error } = await supabase.from('preorder_slots').select('*').order('start_time', { ascending: true });
-        if (error) return [];
-        return data || [];
+        if (cloudSlots && cloudSlots.length > 0) {
+            this.saveLocal('novalunch_preorder_slots', cloudSlots);
+            return cloudSlots;
+        }
+        return cached || [];
     },
 
     async savePreorderSlot(slotPayload) {
+        const currentSlots = this.loadLocal('novalunch_preorder_slots', []);
+        const updatedSlots = [slotPayload, ...currentSlots.filter(s => s.id !== slotPayload.id)];
+        this.saveLocal('novalunch_preorder_slots', updatedSlots);
+
         if (supabase) {
-            const { data, error } = await supabase.from('preorder_slots').upsert([slotPayload]).select();
-            if (error) throw error;
-            return data;
-        } else {
-            return await this._postREST('preorder_slots', slotPayload);
+            try {
+                const { data, error } = await supabase.from('preorder_slots').upsert([slotPayload]).select();
+                if (!error && data) return data;
+            } catch(e) {}
         }
+        return [slotPayload];
     },
 
     // -------------------------------------------------------------------------
     // HARDWARE TOPOLOGY & TERMINAL MAPPINGS
     // -------------------------------------------------------------------------
     async getHardwareMappings() {
+        const cached = this.loadLocal('novalunch_hardware_mappings', null);
+        let cloudData = [];
         if (!supabase) {
-            try { return await this._fetchREST('hardware_mappings?select=*'); } catch(e) { return []; }
+            try { cloudData = await this._fetchREST('hardware_mappings?select=*'); } catch(e) {}
+        } else {
+            try {
+                const { data, error } = await supabase.from('hardware_mappings').select('*');
+                if (!error && data) cloudData = data;
+            } catch(e) {}
         }
-        const { data, error } = await supabase.from('hardware_mappings').select('*');
-        if (error) return [];
-        return data || [];
+
+        if (cached && Array.isArray(cached) && cached.length > 0) {
+            if (cloudData && cloudData.length > 0) {
+                const merged = cached.map(c => {
+                    const foundCloud = cloudData.find(d => d.terminal_id === c.terminal_id);
+                    return foundCloud ? { ...c, ...foundCloud, camera_device_index: c.camera_device_index, rfid_reader_port: c.rfid_reader_port } : c;
+                });
+                return merged;
+            }
+            return cached;
+        }
+
+        if (cloudData && cloudData.length > 0) {
+            const mapped = cloudData.map(d => ({
+                terminal_id: d.terminal_id,
+                pos_register_name: d.location_name || d.pos_register_name || 'POS Counter',
+                assigned_station: d.location_name || 'Main Hall',
+                camera_device_index: 0,
+                rfid_reader_port: 'COM3',
+                is_online: d.status !== 'offline'
+            }));
+            this.saveLocal('novalunch_hardware_mappings', mapped);
+            return mapped;
+        }
+
+        const defaults = [
+            { terminal_id: 'POS-TERM-01', pos_register_name: 'Main Canteen Register 1', camera_device_index: 0, rfid_reader_port: 'COM3', assigned_station: 'Hot Kitchen', is_online: true },
+            { terminal_id: 'POS-TERM-02', pos_register_name: 'Express Beverage Bar 2', camera_device_index: 1, rfid_reader_port: 'COM4', assigned_station: 'Cold Prep', is_online: true },
+            { terminal_id: 'AI-KIOSK-MAIN', pos_register_name: 'Self-Service Vision Kiosk 1', camera_device_index: 0, rfid_reader_port: 'COM5', assigned_station: 'Main Hall', is_online: true }
+        ];
+        this.saveLocal('novalunch_hardware_mappings', defaults);
+        return defaults;
     },
 
     async updateHardwareMapping(terminalId, payload) {
-        const fullPayload = { terminal_id: terminalId, ...payload, updated_at: new Date().toISOString() };
-        if (supabase) {
-            const { data, error } = await supabase.from('hardware_mappings').upsert([fullPayload]).select();
-            if (error) throw error;
-            return data;
+        // 1. Always update local storage cache immediately
+        const currentMappings = this.loadLocal('novalunch_hardware_mappings', [
+            { terminal_id: 'POS-TERM-01', pos_register_name: 'Main Canteen Register 1', camera_device_index: 0, rfid_reader_port: 'COM3', assigned_station: 'Hot Kitchen', is_online: true },
+            { terminal_id: 'POS-TERM-02', pos_register_name: 'Express Beverage Bar 2', camera_device_index: 1, rfid_reader_port: 'COM4', assigned_station: 'Cold Prep', is_online: true },
+            { terminal_id: 'AI-KIOSK-MAIN', pos_register_name: 'Self-Service Vision Kiosk 1', camera_device_index: 0, rfid_reader_port: 'COM5', assigned_station: 'Main Hall', is_online: true }
+        ]);
+
+        const idx = currentMappings.findIndex(m => m.terminal_id === terminalId);
+        if (idx >= 0) {
+            currentMappings[idx] = { ...currentMappings[idx], ...payload, updated_at: new Date().toISOString() };
         } else {
-            return await this._postREST('hardware_mappings', fullPayload);
+            currentMappings.push({ terminal_id: terminalId, ...payload, updated_at: new Date().toISOString() });
         }
+        this.saveLocal('novalunch_hardware_mappings', currentMappings);
+
+        // 2. Only send matching columns to Supabase to prevent PGRST204 column errors
+        const VALID_HARDWARE_COLUMNS = new Set([
+            'terminal_id', 'camera_id', 'pos_register_id', 'location_name', 'status', 'updated_at'
+        ]);
+        const dbPayload = { terminal_id: terminalId, updated_at: new Date().toISOString() };
+        if (payload.status) dbPayload.status = payload.status;
+        if (payload.pos_register_name) dbPayload.location_name = payload.pos_register_name;
+        if (payload.location_name) dbPayload.location_name = payload.location_name;
+
+        if (supabase) {
+            try {
+                await supabase.from('hardware_mappings').upsert([dbPayload]);
+            } catch(e) {
+                console.warn("Hardware mapping cloud update note:", e);
+            }
+        }
+        return currentMappings;
     },
 
     // -------------------------------------------------------------------------

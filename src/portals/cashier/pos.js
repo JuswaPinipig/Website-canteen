@@ -9,8 +9,8 @@
  * - Cashier Verification Controls (manual override, key-in deletion, qty +/-)
  */
 
-import { 
-    getStudentByRfid, updateStudentBalance, recordTransaction, localStore, claimPreOrder 
+import {
+    getStudentByRfid, updateStudentBalance, recordTransaction, localStore, claimPreOrder
 } from './firebase-config.js';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -379,8 +379,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 state.currentStudent.credit_balance -= grandTotal;
                 state.currentStudent.daily_spent_today += grandTotal;
                 await updateStudentBalance(
-                    state.currentStudent.student_id, 
-                    state.currentStudent.credit_balance, 
+                    state.currentStudent.student_id,
+                    state.currentStudent.credit_balance,
                     state.currentStudent.daily_spent_today
                 );
                 updateStudentUI();
@@ -404,9 +404,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 state.currentStudent.pay_later_balance = newDebt;
                 state.currentStudent.pay_later_count = currentPayLaterCount + 1;
                 await updateStudentBalance(
-                    state.currentStudent.student_id, 
-                    state.currentStudent.credit_balance, 
-                    state.currentStudent.daily_spent_today, 
+                    state.currentStudent.student_id,
+                    state.currentStudent.credit_balance,
+                    state.currentStudent.daily_spent_today,
                     state.currentStudent.pay_later_balance
                 );
                 alert(`🤝 Transaction tagged under Pay Later allowance for ${state.currentStudent.full_name} (${state.currentStudent.pay_later_count}/5 used). Outstanding credit: ₱${state.currentStudent.pay_later_balance.toFixed(2)}`);

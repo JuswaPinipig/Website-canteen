@@ -18,6 +18,7 @@ import subprocess
 import threading
 import urllib.request
 import urllib.parse
+from socketserver import ThreadingMixIn
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import numpy as np
 import cv2
@@ -638,6 +639,31 @@ class CameraThread(threading.Thread):
         with self.lock:
             return self.current_frame.copy() if self.current_frame is not None else None
 
+    def get_jpeg_frame(self, draw_boxes=False):
+        with self.lock:
+            if self.current_frame is None:
+                return None
+            frame = self.current_frame.copy()
+            detections = list(self.latest_detections)
+
+        # Convert RGB to BGR for OpenCV JPEG encoding
+        bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+
+        if draw_boxes:
+            for item in detections:
+                bx, by, bw, bh = item.get("bbox", [100, 100, 150, 150])
+                cv2.rectangle(bgr, (bx, by), (bx + bw, by + bh), (0, 215, 255), 2)
+                lbl = f"{item['name']} (₱{item['price']:.2f})"
+                cv2.putText(bgr, lbl, (bx, max(20, by - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 215, 255), 2)
+
+        ret, jpeg = cv2.imencode('.jpg', bgr, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        if ret:
+            return jpeg.tobytes()
+        return None
+
+    def get_annotated_jpeg_frame(self):
+        return self.get_jpeg_frame(draw_boxes=True)
+
     def get_latest_detections(self):
         with self.lock:
             return list(self.latest_detections)
@@ -711,17 +737,44 @@ def broadcast_kiosk_event(event_type, payload):
             if d in _SSE_CLIENTS:
                 _SSE_CLIENTS.remove(d)
 
+class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
 class KioskHTTPRequestHandler(BaseHTTPRequestHandler):
     def _send_cors_headers(self, status=200, content_type="application/json"):
         self.send_response(status)
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, HEAD")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
         self.send_header("Content-Type", content_type)
 
     def do_OPTIONS(self):
         self._send_cors_headers(200)
         self.end_headers()
+
+    def do_HEAD(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+
+        if path in ["/api/kiosk/status", "/api/scan_tray"]:
+            self._send_cors_headers(200, "application/json")
+            self.end_headers()
+        elif path in ["/api/camera/frame.jpg", "/api/camera/frame_clean.jpg", "/api/camera/frame_annotated.jpg"]:
+            self._send_cors_headers(200, "image/jpeg")
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
+            self.end_headers()
+        elif path == "/api/camera/stream":
+            self.send_response(200)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
+            self.end_headers()
+        else:
+            self._send_cors_headers(200, "application/json")
+            self.end_headers()
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
@@ -742,6 +795,63 @@ class KioskHTTPRequestHandler(BaseHTTPRequestHandler):
                     "timestamp": time.time()
                 }
             self.wfile.write(json.dumps(state_data).encode('utf-8'))
+
+        elif path in ["/api/camera/frame.jpg", "/api/camera/frame_clean.jpg"]:
+            if _GLOBAL_KIOSK_REF is not None and hasattr(_GLOBAL_KIOSK_REF, 'camera_thread') and _GLOBAL_KIOSK_REF.camera_thread:
+                jpeg_bytes = _GLOBAL_KIOSK_REF.camera_thread.get_jpeg_frame(draw_boxes=False)
+                if jpeg_bytes:
+                    self._send_cors_headers(200, "image/jpeg")
+                    self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
+                    self.send_header("Pragma", "no-cache")
+                    self.send_header("Expires", "0")
+                    self.send_header("Content-Length", str(len(jpeg_bytes)))
+                    self.end_headers()
+                    self.wfile.write(jpeg_bytes)
+                    return
+            self._send_cors_headers(404, "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "Camera frame unavailable"}).encode('utf-8'))
+
+        elif path == "/api/camera/frame_annotated.jpg":
+            if _GLOBAL_KIOSK_REF is not None and hasattr(_GLOBAL_KIOSK_REF, 'camera_thread') and _GLOBAL_KIOSK_REF.camera_thread:
+                jpeg_bytes = _GLOBAL_KIOSK_REF.camera_thread.get_annotated_jpeg_frame()
+                if jpeg_bytes:
+                    self._send_cors_headers(200, "image/jpeg")
+                    self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
+                    self.send_header("Pragma", "no-cache")
+                    self.send_header("Expires", "0")
+                    self.send_header("Content-Length", str(len(jpeg_bytes)))
+                    self.end_headers()
+                    self.wfile.write(jpeg_bytes)
+                    return
+            self._send_cors_headers(404, "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "Camera frame unavailable"}).encode('utf-8'))
+
+        elif path == "/api/camera/stream":
+            query = urllib.parse.parse_qs(parsed.query)
+            draw_annotated = query.get("annotated", ["0"])[0].lower() in ["1", "true", "yes"]
+            self.send_response(200)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            try:
+                while True:
+                    if _GLOBAL_KIOSK_REF is not None and hasattr(_GLOBAL_KIOSK_REF, 'camera_thread') and _GLOBAL_KIOSK_REF.camera_thread:
+                        jpeg_bytes = _GLOBAL_KIOSK_REF.camera_thread.get_jpeg_frame(draw_boxes=draw_annotated)
+                        if jpeg_bytes:
+                            self.wfile.write(b"--frame\r\n")
+                            self.wfile.write(b"Content-Type: image/jpeg\r\n")
+                            self.wfile.write(f"Content-Length: {len(jpeg_bytes)}\r\n\r\n".encode('utf-8'))
+                            self.wfile.write(jpeg_bytes)
+                            self.wfile.write(b"\r\n")
+                            self.wfile.flush()
+                    time.sleep(0.033)
+            except Exception:
+                pass
 
         elif path == "/api/kiosk/events":
             # Server-Sent Events (SSE) Real-Time stream
@@ -815,8 +925,8 @@ class KioskHTTPRequestHandler(BaseHTTPRequestHandler):
         return
 
 def start_kiosk_api_server(port=HTTP_PORT):
-    server = HTTPServer(("0.0.0.0", port), KioskHTTPRequestHandler)
-    print(f"[KIOSK API SERVER] 🟢 Live Real-Time Bridge listening on http://127.0.0.1:{port}")
+    server = ThreadedHTTPServer(("0.0.0.0", port), KioskHTTPRequestHandler)
+    print(f"[KIOSK API SERVER] 🟢 Live Real-Time Multi-Threaded Bridge listening on http://127.0.0.1:{port}")
     server.serve_forever()
 
 # ==============================================================================
@@ -906,17 +1016,29 @@ class NovaLunchKioskGUI:
 
     def get_live_kiosk_data(self):
         """Returns JSON-serializable snapshot of live kiosk state for Cashier POS."""
+        detections = []
+        ai_engine = "YOLOv8 Engine"
+        fps = 60
+        if hasattr(self, 'camera_thread') and self.camera_thread:
+            detections = self.camera_thread.get_latest_detections()
+            ai_engine, fps, _ = self.camera_thread.get_ai_status()
+
+        is_active_session = self.current_state != STATE_IDLE and self.active_student is not None
         return {
             "status": "SUCCESS",
             "kiosk_state": STATE_NAMES.get(self.current_state, "UNKNOWN"),
             "current_state_id": self.current_state,
-            "student": self.active_student,
-            "cart": list(self.cart_items),
-            "total_amount": round(self.total_amount, 2),
-            "items_count": sum(i.get("qty", 1) for i in self.cart_items),
-            "countdown_remaining": round(self.countdown_remaining, 1),
+            "student": self.active_student if is_active_session else None,
+            "cart": list(self.cart_items) if is_active_session else [],
+            "detections": detections if is_active_session else [],
+            "ai_engine": ai_engine,
+            "camera_online": True,
+            "fps": fps,
+            "total_amount": round(self.total_amount, 2) if is_active_session else 0.0,
+            "items_count": sum(i.get("qty", 1) for i in self.cart_items) if is_active_session else 0,
+            "countdown_remaining": round(self.countdown_remaining, 1) if is_active_session else 0.0,
             "status_message": self.status_message,
-            "preorders_count": len(self.active_preorders),
+            "preorders_count": len(self.active_preorders) if is_active_session else 0,
             "timestamp": time.time()
         }
 
@@ -1243,21 +1365,30 @@ class NovaLunchKioskGUI:
                 surface = pygame.surfarray.make_surface(resized.swapaxes(0, 1))
                 self.screen.blit(surface, (34, 150))
 
-                # Draw Reticles
-                detections = self.camera_thread.get_latest_detections() or self.cart_items
-                for item in detections:
-                    bx, by, bw, bh = item.get("bbox", [100, 100, 150, 150])
-                    scale_x, scale_y = 682.0 / 640.0, 410.0 / 480.0
-                    rx, ry = 34 + int(bx * scale_x), 150 + int(by * scale_y)
-                    rw, rh = max(40, int(bw * scale_x)), max(30, int(bh * scale_y))
+                # Draw Reticles only when active (NOT in STATE_IDLE standby)
+                if self.current_state != STATE_IDLE and self.active_student:
+                    detections = self.camera_thread.get_latest_detections() or self.cart_items
+                    for item in detections:
+                        bx, by, bw, bh = item.get("bbox", [100, 100, 150, 150])
+                        scale_x, scale_y = 682.0 / 640.0, 410.0 / 480.0
+                        rx, ry = 34 + int(bx * scale_x), 150 + int(by * scale_y)
+                        rw, rh = max(40, int(bw * scale_x)), max(30, int(bh * scale_y))
 
-                    pygame.draw.rect(self.screen, COLOR_ROSE_VIBRANT, (rx, ry, rw, rh), width=2, border_radius=6)
-                    conf_pct = int(item.get('conf', 0.95) * 100)
-                    tag_str = f" {item['name']} ({conf_pct}%) • ₱{item['price']:.2f} "
-                    tag_surf = self.font_subtitle_bold.render(tag_str, True, COLOR_WHITE)
-                    tag_bg = pygame.Rect(rx, ry - 22, tag_surf.get_width() + 4, 22)
-                    pygame.draw.rect(self.screen, COLOR_MAROON_DARK, tag_bg, border_radius=4)
-                    self.screen.blit(tag_surf, (rx + 2, ry - 20))
+                        pygame.draw.rect(self.screen, COLOR_ROSE_VIBRANT, (rx, ry, rw, rh), width=2, border_radius=6)
+                        conf_pct = int(item.get('conf', 0.95) * 100)
+                        tag_str = f" {item['name']} ({conf_pct}%) • ₱{item['price']:.2f} "
+                        tag_surf = self.font_subtitle_bold.render(tag_str, True, COLOR_WHITE)
+                        tag_bg = pygame.Rect(rx, ry - 22, tag_surf.get_width() + 4, 22)
+                        pygame.draw.rect(self.screen, COLOR_MAROON_DARK, tag_bg, border_radius=4)
+                        self.screen.blit(tag_surf, (rx + 2, ry - 20))
+                else:
+                    # In Standby mode, show clean camera feed with a sleek standby badge overlay
+                    standby_badge = self.font_subtitle_bold.render("STANDBY MODE • TAP STUDENT RFID CARD TO BEGIN SCANNING", True, COLOR_GOLD_LIGHT)
+                    sbg_w = standby_badge.get_width() + 28
+                    sbg_rect = pygame.Rect(video_area.centerx - sbg_w // 2, video_area.bottom - 44, sbg_w, 32)
+                    pygame.draw.rect(self.screen, COLOR_MAROON_DARK, sbg_rect, border_radius=16)
+                    pygame.draw.rect(self.screen, COLOR_GOLD_ACCENT, sbg_rect, width=1, border_radius=16)
+                    self.screen.blit(standby_badge, (sbg_rect.x + 14, sbg_rect.y + 7))
             except Exception:
                 pygame.draw.rect(self.screen, COLOR_CARD_ALT, video_area, border_radius=12)
         else:
@@ -1467,10 +1598,10 @@ class NovaLunchKioskGUI:
         self.screen.blit(self.font_brand_sub.render("PRICE", True, COLOR_TEXT_MUTED), (1165, 168))
         pygame.draw.line(self.screen, COLOR_CARD_BORDER, (775, 188), (1235, 188), 1)
 
-        if not self.cart_items:
-            empty = self.font_body.render("No items detected on platform.", True, COLOR_TEXT_MUTED)
+        if self.current_state == STATE_IDLE or not self.cart_items:
+            empty = self.font_body.render("Standby Mode: Tap Student RFID Card", True, COLOR_TEXT_MUTED)
             self.screen.blit(empty, (750 + (510 - empty.get_width()) // 2, 280))
-            hint = self.font_subtitle.render("Place food items on counter platform to scan.", True, COLOR_TEXT_MUTED)
+            hint = self.font_subtitle.render("Place food items on counter after card is tapped.", True, COLOR_TEXT_MUTED)
             self.screen.blit(hint, (750 + (510 - hint.get_width()) // 2, 308))
         else:
             for idx, item in enumerate(self.cart_items[:6]):
@@ -1654,14 +1785,10 @@ class NovaLunchKioskGUI:
             # Auto-transitions & Live Scanned Food Summary Sync
             now = time.time()
             if self.current_state == STATE_IDLE:
-                live_items = self.camera_thread.get_latest_detections()
-                if live_items:
-                    self.cart_items = aggregate_detections(live_items)
-                    self.recalculate_total()
-                else:
-                    if self.cart_items:
-                        self.cart_items = []
-                        self.recalculate_total()
+                # Standby Mode: Do NOT scan food items or update cart until student taps card
+                if self.cart_items:
+                    self.cart_items = []
+                    self.total_amount = 0.0
 
             elif self.current_state == STATE_PREORDER_ANNOUNCEMENT and (now - self.state_timer >= 8.0):
                 self.transition_to_state(STATE_IDLE)
