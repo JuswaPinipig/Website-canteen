@@ -79,8 +79,16 @@ STATE_NAMES = {
 
 # Catalog Database
 POS_CATALOG_DATABASE = {
-    "buttercream_crackers": {"name": "Buttercream Crackers", "category": "SNACK", "price": 35.00, "stock": 50},
-    "Buttercream Crackers": {"name": "Buttercream Crackers", "category": "SNACK", "price": 35.00, "stock": 50},
+    "Buttercream_Biscuits": {"name": "Buttercream Biscuits", "category": "SNACKS & BAKERY", "price": 35.00, "stock": 50},
+    "buttercream_biscuits": {"name": "Buttercream Biscuits", "category": "SNACKS & BAKERY", "price": 35.00, "stock": 50},
+    "Buttercream Biscuits": {"name": "Buttercream Biscuits", "category": "SNACKS & BAKERY", "price": 35.00, "stock": 50},
+    "buttercream_crackers": {"name": "Buttercream Biscuits", "category": "SNACKS & BAKERY", "price": 35.00, "stock": 50},
+    "Buttercream Crackers": {"name": "Buttercream Biscuits", "category": "SNACKS & BAKERY", "price": 35.00, "stock": 50},
+    "Jack_And_Jill_Magic_Chips": {"name": "Jack & Jill Magic Chips", "category": "SNACKS & BAKERY", "price": 25.00, "stock": 50},
+    "jack_and_jill_magic_chips": {"name": "Jack & Jill Magic Chips", "category": "SNACKS & BAKERY", "price": 25.00, "stock": 50},
+    "Jack & Jill Magic Chips": {"name": "Jack & Jill Magic Chips", "category": "SNACKS & BAKERY", "price": 25.00, "stock": 50},
+    "Magic_Chips": {"name": "Jack & Jill Magic Chips", "category": "SNACKS & BAKERY", "price": 25.00, "stock": 50},
+    "magic_chips": {"name": "Jack & Jill Magic Chips", "category": "SNACKS & BAKERY", "price": 25.00, "stock": 50},
     "adobo": {"name": "Pork Adobo Meal", "category": "MEAL", "price": 100.00, "stock": 45},
     "pork_adobo": {"name": "Pork Adobo Meal", "category": "MEAL", "price": 100.00, "stock": 45},
     "steamed_rice": {"name": "Steamed Rice", "category": "RICE", "price": 15.00, "stock": 120},
@@ -91,6 +99,39 @@ POS_CATALOG_DATABASE = {
     "sandwich": {"name": "Ham & Cheese Sandwich", "category": "SNACK", "price": 45.00, "stock": 40},
     "apple": {"name": "Fresh Red Apple", "category": "HEALTHY", "price": 25.00, "stock": 40}
 }
+
+def lookup_pos_item(raw_label):
+    if not raw_label:
+        return {"name": "Tray Item", "category": "ITEM", "price": 35.00, "stock": 50}
+    s = str(raw_label).strip()
+    if s in POS_CATALOG_DATABASE:
+        return POS_CATALOG_DATABASE[s]
+    s_low = s.lower()
+    if s_low in POS_CATALOG_DATABASE:
+        return POS_CATALOG_DATABASE[s_low]
+    s_norm = s.replace("_", " ").strip()
+    if s_norm in POS_CATALOG_DATABASE:
+        return POS_CATALOG_DATABASE[s_norm]
+    s_snake = s_low.replace(" ", "_").replace("-", "_")
+    if s_snake in POS_CATALOG_DATABASE:
+        return POS_CATALOG_DATABASE[s_snake]
+    for k, v in POS_CATALOG_DATABASE.items():
+        if k.lower() in s_low or s_low in k.lower():
+            return v
+    clean = s.replace("_", " ").title()
+    return {"name": clean, "category": "ITEM", "price": 35.00, "stock": 50}
+
+def aggregate_detections(detections_list):
+    if not detections_list:
+        return []
+    aggregated = {}
+    for it in detections_list:
+        name = it.get("name", "Item")
+        if name in aggregated:
+            aggregated[name]["qty"] += it.get("qty", 1)
+        else:
+            aggregated[name] = dict(it)
+    return list(aggregated.values())
 
 # ==============================================================================
 # DATABASE & CLOUD DUAL-SYNC MANAGER
@@ -451,24 +492,24 @@ class CameraThread(threading.Thread):
         sweep_y = int(80 + (320 * (math.sin(math.radians(angle_deg)) + 1.0) / 2.0))
         cv2.line(canvas, (105, sweep_y), (535, sweep_y), (212, 182, 6), 2)
 
-        # Simulated item 1: Crackers
+        # Simulated item 1: Buttercream Biscuits (novalunch_yolo.pt class 0)
         cv2.rectangle(canvas, (150, 130), (320, 270), (14, 14, 74), -1)
         cv2.rectangle(canvas, (150, 130), (320, 270), (74, 24, 201), 2)
-        cv2.putText(canvas, "Buttercream Crackers", (160, 160), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
+        cv2.putText(canvas, "Buttercream Biscuits", (160, 160), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
         cv2.putText(canvas, "P35.00", (160, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (199, 243, 254), 1)
 
-        # Simulated item 2: Mineral Water
+        # Simulated item 2: Jack & Jill Magic Chips (novalunch_yolo.pt class 1)
         cv2.rectangle(canvas, (360, 150), (480, 360), (74, 14, 23), -1)
         cv2.rectangle(canvas, (360, 150), (480, 360), (217, 119, 6), 2)
-        cv2.putText(canvas, "Mineral Water", (370, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
-        cv2.putText(canvas, "500ml - P20.00", (370, 200), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (254, 243, 199), 1)
+        cv2.putText(canvas, "Magic Chips", (370, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
+        cv2.putText(canvas, "P25.00", (370, 200), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (254, 243, 199), 1)
 
         detections = [
             {
                 "id": "item-01",
-                "ai_label": "buttercream_crackers",
-                "name": "Buttercream Crackers",
-                "category": "SNACK",
+                "ai_label": "Buttercream_Biscuits",
+                "name": "Buttercream Biscuits",
+                "category": "SNACKS & BAKERY",
                 "qty": 1,
                 "price": 35.00,
                 "stock": 50,
@@ -477,12 +518,12 @@ class CameraThread(threading.Thread):
             },
             {
                 "id": "item-02",
-                "ai_label": "water_bottle",
-                "name": "Mineral Water 500ml",
-                "category": "BEVERAGE",
+                "ai_label": "Jack_And_Jill_Magic_Chips",
+                "name": "Jack & Jill Magic Chips",
+                "category": "SNACKS & BAKERY",
                 "qty": 1,
-                "price": 20.00,
-                "stock": 150,
+                "price": 25.00,
+                "stock": 50,
                 "bbox": [360, 150, 120, 210],
                 "conf": 0.96
             }
@@ -501,33 +542,62 @@ class CameraThread(threading.Thread):
                         detections = []
                         model = get_yolo_model()
                         if model is not None:
-                            self.ai_engine_name = "YOLOv8 Engine"
+                            self.ai_engine_name = "YOLO11-OBB Vision"
                             try:
-                                results = model(frame, conf=0.45, verbose=False)
+                                results = model(frame, conf=0.30, verbose=False)
                                 for r in results:
-                                    for box in r.boxes:
-                                        cls_id = int(box.cls[0])
-                                        cls_name = model.names.get(cls_id, f"Class {cls_id}")
-                                        conf = float(box.conf[0])
-                                        x1, y1, x2, y2 = map(int, box.xyxy[0])
-                                        pos_info = POS_CATALOG_DATABASE.get(cls_name) or POS_CATALOG_DATABASE.get(cls_name.lower(), {})
-                                        detections.append({
-                                            "id": f"yolo-{cls_id}",
-                                            "ai_label": cls_name,
-                                            "name": pos_info.get("name", cls_name),
-                                            "category": pos_info.get("category", "ITEM"),
-                                            "qty": 1,
-                                            "price": pos_info.get("price", 35.00),
-                                            "stock": pos_info.get("stock", 50),
-                                            "bbox": [x1, y1, max(20, x2 - x1), max(20, y2 - y1)],
-                                            "conf": conf
-                                        })
-                            except Exception:
+                                    # 1. Check for OBB (Oriented Bounding Box) predictions (novalunch_yolo.pt is yolo11n-obb)
+                                    obb_data = getattr(r, 'obb', None)
+                                    if obb_data is not None and len(obb_data) > 0:
+                                        for idx in range(len(obb_data)):
+                                            cls_id = int(obb_data.cls[idx])
+                                            cls_name = model.names.get(cls_id, f"Class {cls_id}")
+                                            conf = float(obb_data.conf[idx])
+                                            coords = obb_data.xyxy[idx].tolist() if hasattr(obb_data.xyxy[idx], 'tolist') else list(obb_data.xyxy[idx])
+                                            x1, y1, x2, y2 = map(int, coords)
+                                            bw = max(20, x2 - x1)
+                                            bh = max(20, y2 - y1)
+                                            pos_info = lookup_pos_item(cls_name)
+                                            detections.append({
+                                                "id": f"yolo-obb-{cls_id}-{idx}",
+                                                "ai_label": cls_name,
+                                                "name": pos_info.get("name", cls_name),
+                                                "category": pos_info.get("category", "SNACKS & BAKERY"),
+                                                "qty": 1,
+                                                "price": float(pos_info.get("price", 35.00)),
+                                                "stock": int(pos_info.get("stock", 50)),
+                                                "bbox": [x1, y1, bw, bh],
+                                                "conf": conf
+                                            })
+
+                                    # 2. Check for standard 2D axis-aligned bounding boxes
+                                    elif getattr(r, 'boxes', None) is not None and len(r.boxes) > 0:
+                                        for idx, box in enumerate(r.boxes):
+                                            cls_id = int(box.cls[0])
+                                            cls_name = model.names.get(cls_id, f"Class {cls_id}")
+                                            conf = float(box.conf[0])
+                                            coords = box.xyxy[0].tolist() if hasattr(box.xyxy[0], 'tolist') else list(box.xyxy[0])
+                                            x1, y1, x2, y2 = map(int, coords)
+                                            bw = max(20, x2 - x1)
+                                            bh = max(20, y2 - y1)
+                                            pos_info = lookup_pos_item(cls_name)
+                                            detections.append({
+                                                "id": f"yolo-box-{cls_id}-{idx}",
+                                                "ai_label": cls_name,
+                                                "name": pos_info.get("name", cls_name),
+                                                "category": pos_info.get("category", "ITEM"),
+                                                "qty": 1,
+                                                "price": float(pos_info.get("price", 35.00)),
+                                                "stock": int(pos_info.get("stock", 50)),
+                                                "bbox": [x1, y1, bw, bh],
+                                                "conf": conf
+                                            })
+                            except Exception as e:
                                 pass
 
-                        if not detections:
+                        # Optional fallback when no YOLO model is loaded at all
+                        if model is None and not detections:
                             self.ai_engine_name = "Native Vision"
-                            # Fast contour detection fallback
                             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                             _, thresh = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
                             contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -536,14 +606,14 @@ class CameraThread(threading.Thread):
                                 x, y, bw, bh = cv2.boundingRect(c)
                                 detections.append({
                                     "id": f"contour-{i}",
-                                    "ai_label": "buttercream_crackers",
-                                    "name": "Buttercream Crackers",
-                                    "category": "SNACK",
+                                    "ai_label": "tray_item",
+                                    "name": f"Scanned Item #{i+1}",
+                                    "category": "ITEM",
                                     "qty": 1,
                                     "price": 35.00,
                                     "stock": 50,
                                     "bbox": [x, y, bw, bh],
-                                    "conf": 0.95
+                                    "conf": 0.80
                                 })
 
                         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -828,11 +898,11 @@ class NovaLunchKioskGUI:
         api_thread = threading.Thread(target=start_kiosk_api_server, args=(HTTP_PORT,), daemon=True)
         api_thread.start()
 
-        # Step Simulator Buttons
-        self.btn_step1 = pygame.Rect(20, 585, 165, 42)
-        self.btn_step2 = pygame.Rect(198, 585, 165, 42)
-        self.btn_step3 = pygame.Rect(376, 585, 165, 42)
-        self.btn_step4 = pygame.Rect(554, 585, 176, 42)
+        # Step Simulator / Guided Progress Bar Rects
+        self.btn_step1 = pygame.Rect(34, 578, 163, 46)
+        self.btn_step2 = pygame.Rect(207, 578, 163, 46)
+        self.btn_step3 = pygame.Rect(380, 578, 163, 46)
+        self.btn_step4 = pygame.Rect(553, 578, 163, 46)
 
     def get_live_kiosk_data(self):
         """Returns JSON-serializable snapshot of live kiosk state for Cashier POS."""
@@ -945,7 +1015,7 @@ class NovaLunchKioskGUI:
         elif new_state == STATE_SCANNING:
             live_items = self.camera_thread.get_latest_detections()
             if live_items:
-                self.cart_items = live_items
+                self.cart_items = aggregate_detections(live_items)
                 self.recalculate_total()
                 self.status_message = f"AI Detected {len(self.cart_items)} item(s). Calibrating stability..."
             else:
@@ -1040,14 +1110,15 @@ class NovaLunchKioskGUI:
         tx_id = f"TXN_PAYLATER_{int(time.time())}_{student_id.replace('-', '')}"
 
         self.active_student["pay_later_count"] = current_pay_later_count + 1
+        self.active_student["pay_later_balance"] = self.active_student.get("pay_later_balance", 0.0) + self.total_amount
         self.db_manager.record_transaction(tx_id, student_id, self.cart_items, self.total_amount, self.latest_tray_image, payment_method="pay_later")
-        self.status_message = f"🟢 SAFETY NET APPROVED: ₱{self.total_amount:.2f} Billed to Tuition ({st_name}) [{self.active_student['pay_later_count']}/5]"
+        self.status_message = f"🟢 SAFETY NET APPROVED: ₱{self.total_amount:.2f} Charged to Pay Later ({st_name}) [{self.active_student['pay_later_count']}/5]"
         if self.sounds.get("success"):
             try:
                 self.sounds["success"].play()
             except Exception:
                 pass
-        speak_text(f"Safety net approved. Billed to tuition. Thank you {st_name.split()[0]}!")
+        speak_text(f"Safety net approved. Charged to pay later. Thank you {st_name.split()[0]}!")
         self.notify_pos_update()
 
     def handle_rfid_tap(self, scanned_uid=None):
@@ -1235,19 +1306,149 @@ class NovaLunchKioskGUI:
         self.screen.blit(t2, (banner.centerx - t2.get_width() // 2, banner.y + 48))
 
     def render_toolbar(self):
-        mouse_pos = pygame.mouse.get_pos()
-        btns = [
-            (self.btn_step1, "Step 1: Tap ID", "💳"),
-            (self.btn_step2, "Step 2: AI Scan", "🍱"),
-            (self.btn_step3, "Step 3: 4s Timer", "⏳"),
-            (self.btn_step4, "Step 4: Pay", "✓")
+        """Renders an interactive, guided 4-step progress bar for students with real-time state guidance."""
+        # 1. Evaluate Progress Status for each step
+        # Step 1: Tap ID
+        if self.active_student is not None or self.current_state in [
+            STATE_GREET, STATE_PREORDER_ANNOUNCEMENT, STATE_SCANNING,
+            STATE_STABILITY_COUNTDOWN, STATE_SETTLEMENT
+        ]:
+            s1_state = "DONE"
+            s1_sub = "ID Verified"
+        elif self.current_state == STATE_IDLE:
+            s1_state = "ACTIVE"
+            s1_sub = "Tap Card"
+        else:
+            s1_state = "PENDING"
+            s1_sub = "Waiting"
+
+        # Step 2: AI Scan
+        if self.current_state in [STATE_STABILITY_COUNTDOWN, STATE_SETTLEMENT] or (
+            self.current_state in [STATE_GREET, STATE_SCANNING] and len(self.cart_items) > 0 and self.stable_start_time > 0
+        ):
+            s2_state = "DONE"
+            cnt = sum(i.get("qty", 1) for i in self.cart_items)
+            s2_sub = f"{cnt} Item{'s' if cnt != 1 else ''} Scanned"
+        elif self.current_state in [STATE_GREET, STATE_SCANNING] or (
+            self.current_state == STATE_IDLE and len(self.cart_items) > 0
+        ):
+            s2_state = "ACTIVE"
+            cnt = sum(i.get("qty", 1) for i in self.cart_items)
+            s2_sub = f"Detecting ({cnt})" if cnt > 0 else "Scanning Tray..."
+        else:
+            s2_state = "PENDING"
+            s2_sub = "Waiting"
+
+        # Step 3: 4s Timer / Tray Stability
+        if self.current_state == STATE_SETTLEMENT:
+            s3_state = "DONE"
+            s3_sub = "Tray Stable"
+        elif self.current_state == STATE_STABILITY_COUNTDOWN:
+            s3_state = "ACTIVE"
+            if self.motion_detected:
+                s3_sub = "Motion Alert!"
+            else:
+                s3_sub = f"{self.countdown_remaining:.1f}s Left"
+        else:
+            s3_state = "PENDING"
+            s3_sub = "Waiting"
+
+        # Step 4: Pay / Settlement
+        if self.current_state == STATE_SETTLEMENT:
+            s4_state = "DONE"
+            s4_sub = f"Paid ₱{self.total_amount:.0f}"
+        elif self.current_state == STATE_STABILITY_COUNTDOWN and self.countdown_remaining <= 0.8:
+            s4_state = "ACTIVE"
+            s4_sub = "Authorizing..."
+        else:
+            s4_state = "PENDING"
+            s4_sub = "Auto-Deduct"
+
+        steps_info = [
+            (self.btn_step1, "Step 1: Tap ID", s1_state, s1_sub, 1),
+            (self.btn_step2, "Step 2: AI Scan", s2_state, s2_sub, 2),
+            (self.btn_step3, "Step 3: 4s Timer", s3_state, s3_sub, 3),
+            (self.btn_step4, "Step 4: Pay", s4_state, s4_sub, 4),
         ]
-        for rect, label, icon in btns:
+
+        # Draw connecting background progress track
+        track_y = 578 + 23
+        pygame.draw.line(self.screen, COLOR_CARD_BORDER, (50, track_y), (700, track_y), 4)
+
+        # Highlight completed segments on connecting line
+        for i in range(len(steps_info) - 1):
+            curr_rect, _, curr_state, _, _ = steps_info[i]
+            next_rect, _, _, _, _ = steps_info[i + 1]
+            if curr_state == "DONE":
+                pygame.draw.line(self.screen, COLOR_EMERALD, (curr_rect.centerx, track_y), (next_rect.centerx, track_y), 4)
+
+        mouse_pos = pygame.mouse.get_pos()
+
+        # Render each step card
+        for rect, label, state, subtext, num in steps_info:
             is_hover = rect.collidepoint(mouse_pos)
-            bg = COLOR_ROSE_VIBRANT if is_hover else COLOR_MAROON_HEADER
-            pygame.draw.rect(self.screen, bg, rect, border_radius=8)
-            surf = self.font_subtitle_bold.render(f"{icon} {label}", True, COLOR_WHITE)
-            self.screen.blit(surf, (rect.centerx - surf.get_width() // 2, rect.centery - surf.get_height() // 2))
+
+            if state == "DONE":
+                # Emerald Green Done Card
+                bg_color = COLOR_EMERALD
+                border_color = (5, 150, 105)
+                title_color = COLOR_WHITE
+                sub_color = (209, 250, 229)
+                badge_bg = COLOR_WHITE
+                badge_fg = COLOR_EMERALD
+            elif state == "ACTIVE":
+                # Vibrant Crimson/Rose Highlighted Card
+                bg_color = (225, 29, 72) if (num == 3 and self.motion_detected) else COLOR_ROSE_VIBRANT
+                border_color = COLOR_GOLD_ACCENT if is_hover else COLOR_MAROON_DARK
+                title_color = COLOR_WHITE
+                sub_color = COLOR_GOLD_LIGHT
+                badge_bg = COLOR_WHITE
+                badge_fg = COLOR_ROSE_VIBRANT
+            else:
+                # Grey Pending Card
+                bg_color = (241, 245, 249)
+                border_color = COLOR_CARD_BORDER if not is_hover else COLOR_TEXT_MUTED
+                title_color = COLOR_TEXT_MUTED
+                sub_color = (148, 163, 184)
+                badge_bg = (203, 213, 225)
+                badge_fg = COLOR_WHITE
+
+            # Draw card container
+            pygame.draw.rect(self.screen, bg_color, rect, border_radius=10)
+            pygame.draw.rect(
+                self.screen,
+                border_color,
+                rect,
+                width=2 if (state == "ACTIVE" or is_hover) else 1,
+                border_radius=10
+            )
+
+            # Circular Indicator Badge
+            badge_cx = rect.x + 18
+            badge_cy = rect.centery
+            badge_radius = 11
+            pygame.draw.circle(self.screen, badge_bg, (badge_cx, badge_cy), badge_radius)
+
+            if state == "DONE":
+                # Crisp Vector Checkmark
+                chk_pts = [
+                    (badge_cx - 4, badge_cy),
+                    (badge_cx - 1, badge_cy + 3),
+                    (badge_cx + 4, badge_cy - 4)
+                ]
+                pygame.draw.lines(self.screen, badge_fg, False, chk_pts, width=2)
+            else:
+                # Step Number
+                num_surf = self.font_brand_sub.render(str(num), True, badge_fg)
+                self.screen.blit(num_surf, (badge_cx - num_surf.get_width() // 2, badge_cy - num_surf.get_height() // 2))
+
+            # Step Title & Subtitle
+            text_x = rect.x + 34
+            title_surf = self.font_subtitle_bold.render(label, True, title_color)
+            sub_surf = self.font_brand_sub.render(subtext, True, sub_color)
+
+            self.screen.blit(title_surf, (text_x, rect.y + 6))
+            self.screen.blit(sub_surf, (text_x, rect.y + 24))
 
     def render_right_panel(self):
         panel_rect = pygame.Rect(750, 100, 510, 545)
@@ -1450,29 +1651,40 @@ class NovaLunchKioskGUI:
                     elif self.btn_step4.collidepoint(pos):
                         self.execute_simulation_step(4)
 
-            # Auto-transitions
+            # Auto-transitions & Live Scanned Food Summary Sync
             now = time.time()
-            if self.current_state == STATE_PREORDER_ANNOUNCEMENT and (now - self.state_timer >= 8.0):
+            if self.current_state == STATE_IDLE:
+                live_items = self.camera_thread.get_latest_detections()
+                if live_items:
+                    self.cart_items = aggregate_detections(live_items)
+                    self.recalculate_total()
+                else:
+                    if self.cart_items:
+                        self.cart_items = []
+                        self.recalculate_total()
+
+            elif self.current_state == STATE_PREORDER_ANNOUNCEMENT and (now - self.state_timer >= 8.0):
                 self.transition_to_state(STATE_IDLE)
 
             elif self.current_state in [STATE_GREET, STATE_SCANNING]:
-                if now - self.state_timer >= 15.0:
+                if now - self.state_timer >= 20.0:
                     self.transition_to_state(STATE_IDLE)
                 else:
                     live_items = self.camera_thread.get_latest_detections()
                     if live_items:
-                        curr_hash = "-".join(sorted([item["name"] for item in live_items]))
+                        agg_items = aggregate_detections(live_items)
+                        curr_hash = "-".join(sorted([f"{item['name']}:{item.get('qty', 1)}" for item in agg_items]))
                         if curr_hash == self.last_detection_hash:
                             if self.stable_start_time == 0.0:
                                 self.stable_start_time = now
                             elif now - self.stable_start_time >= 1.2:
-                                self.cart_items = live_items
+                                self.cart_items = agg_items
                                 self.recalculate_total()
                                 self.transition_to_state(STATE_STABILITY_COUNTDOWN)
                         else:
                             self.last_detection_hash = curr_hash
                             self.stable_start_time = now
-                            self.cart_items = live_items
+                            self.cart_items = agg_items
                             self.recalculate_total()
 
             elif self.current_state == STATE_STABILITY_COUNTDOWN:

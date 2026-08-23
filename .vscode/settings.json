@@ -1,4 +1,13 @@
 {
   "python.defaultInterpreterPath": "/usr/bin/python3",
-  "python.analysis.extraPaths": ["./"]
+  "python.analysis.extraPaths": [
+    "./"
+  ],
+  "python-envs.pythonProjects": [
+    {
+      "path": "src/hardware/student_kiosk_gui.py",
+      "envManager": "ms-python.python:venv",
+      "packageManager": "ms-python.python:pip"
+    }
+  ]
 }

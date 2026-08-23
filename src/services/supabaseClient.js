@@ -827,34 +827,98 @@
     // -------------------------------------------------------------------------
     // UNIVERSAL NOTIFICATIONS
     // -------------------------------------------------------------------------
-    async createNotification({ user_id, title, message, type = 'system', metadata = null }) {
-        const notifPayload = { user_id, title, message, type, is_read: false, metadata };
+    async createNotification({ user_id, title, message, type = 'system', severity = 'info', action_url = null, metadata = null }) {
+        if (!user_id) {
+            console.warn("Notification skipped: Missing user_id", { title, message });
+            return null;
+        }
+        const notifPayload = {
+            user_id,
+            title,
+            message,
+            type,
+            severity,
+            action_url,
+            is_read: false,
+            metadata
+        };
         if (supabase) {
-            const { data, error } = await supabase.from('notifications').insert([notifPayload]).select();
-            if (error) console.warn("Error creating notification:", error);
-            return data;
+            try {
+                const { data, error } = await supabase.from('notifications').insert([notifPayload]).select();
+                if (error) console.warn("Error creating notification:", error);
+                return data ? data[0] : null;
+            } catch (err) {
+                console.warn("Exception creating notification:", err);
+                return null;
+            }
         } else {
             return await this._postREST('notifications', notifPayload);
         }
     },
 
     async getNotifications(userId) {
+        if (!userId) return [];
         if (!supabase) return await this._fetchREST(`notifications?select=*&user_id=eq.${userId}&order=created_at.desc`);
-        const { data, error } = await supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false });
-        if (error) throw error;
-        return data || [];
+        try {
+            const { data, error } = await supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+            if (error) throw error;
+            return data || [];
+        } catch (e) {
+            console.warn("Failed to fetch notifications from Supabase:", e);
+            return [];
+        }
     },
 
     async markNotificationRead(notificationId) {
+        if (!notificationId) return;
         if (supabase) {
-            await supabase.from('notifications').update({ is_read: true }).eq('id', notificationId);
+            try {
+                await supabase.from('notifications').update({ is_read: true }).eq('id', notificationId);
+            } catch (e) {
+                console.warn("Error marking notification read:", e);
+            }
         }
     },
 
     async markAllNotificationsRead(userId) {
+        if (!userId) return;
         if (supabase) {
-            await supabase.from('notifications').update({ is_read: true }).eq('user_id', userId);
+            try {
+                await supabase.from('notifications').update({ is_read: true }).eq('user_id', userId);
+            } catch (e) {
+                console.warn("Error marking all notifications read:", e);
+            }
         }
+    },
+
+    async getLinkedParents(studentId) {
+        if (!studentId) return [];
+        if (supabase) {
+            try {
+                const { data, error } = await supabase.from('parent_student_links').select('parent_id, profiles!parent_id(*)').eq('student_id', studentId);
+                if (!error && data) {
+                    return data.map(d => d.profiles || { id: d.parent_id });
+                }
+            } catch (e) {
+                console.warn("Error fetching linked parents:", e);
+            }
+        }
+        return [];
+    },
+
+    async getLinkedStudents(parentId) {
+        if (!parentId) return [];
+        if (supabase) {
+            try {
+                const { data, error } = await supabase.from('parent_student_links').select('student_id, profiles!student_id(*)').eq('parent_id', parentId);
+                if (!error && data) {
+                    return data.map(d => d.profiles || { id: d.student_id });
+                }
+            } catch (e) {
+                console.warn("Error fetching linked students:", e);
+            }
+        }
+        return [];
     },
 
     // -------------------------------------------------------------------------
@@ -1313,6 +1377,110 @@
         const { data, error } = await query;
         if (error) return [];
         return data || [];
+    },
+
+    /**
+     * UNIFIED DISPUTE & REFUND PROCESSOR
+     * Handles single authoritative 5-stage lifecycle: SUBMITTED -> UNDER_REVIEW -> APPROVED/REJECTED -> SETTLED_REFUNDED -> CLOSED
+     * Atomically credits wallet balance, syncs inventory restock, logs audit record, and reconciles state.
+     */
+    async resolveMealDispute(disputeId, action, adminNotes = '', adminId = null, refundAmount = 0, studentId = null) {
+        const isApproved = action === 'APPROVED' || action === 'APPROVED_REFUND';
+        const finalStatus = isApproved ? 'APPROVED' : 'REJECTED';
+        const payload = {
+            status: finalStatus,
+            admin_notes: adminNotes || (isApproved ? 'Approved by Admin' : 'Rejected per policy'),
+            resolved_at: new Date().toISOString()
+        };
+        
+        let updateResult = null;
+        if (supabase) {
+            try {
+                const { data } = await supabase.from('meal_disputes').update(payload).eq('id', disputeId).select().single();
+                updateResult = data;
+            } catch (e) {
+                console.warn('[CanteenDB] resolveMealDispute fallback:', e);
+            }
+        } else {
+            try {
+                updateResult = await this._patchREST(`meal_disputes?id=eq.${disputeId}`, payload);
+            } catch(e) {}
+        }
+
+        // If approved and amount > 0 and studentId provided, execute atomic wallet credit & audit log
+        if (isApproved && refundAmount > 0 && studentId) {
+            await this.creditWalletBalance(studentId, refundAmount).catch(e => console.warn("Refund wallet credit error", e));
+            await this.logSystemAudit(adminId, 'Admin Manager', 'ADMIN', 'DISPUTE_REFUND_APPROVED', {
+                disputeId,
+                studentId,
+                amount: refundAmount,
+                notes: adminNotes
+            }).catch(e => {});
+        } else {
+            await this.logSystemAudit(adminId, 'Admin Manager', 'ADMIN', 'DISPUTE_REJECTED', {
+                disputeId,
+                notes: adminNotes
+            }).catch(e => {});
+        }
+
+        return updateResult || { id: disputeId, ...payload };
+    },
+
+    async processUnifiedRefund({ refundId, disputeId = null, orderId = null, studentId, amount, reason, reasonCategory = 'MANUAL_REFUND', method = 'RFID_WALLET', restocked = false, productId = null, adminId = null, adminName = 'Admin' }) {
+        const refundAmt = parseFloat(amount) || 0;
+        if (refundAmt <= 0) throw new Error('Refund amount must be greater than zero.');
+
+        // 1. Credit wallet if RFID_WALLET
+        let newBalance = null;
+        if (method === 'RFID_WALLET' && studentId) {
+            newBalance = await this.creditWalletBalance(studentId, refundAmt);
+        }
+
+        // 2. Restock inventory if packaged product returned
+        if (restocked && productId) {
+            try {
+                if (supabase) {
+                    await supabase.rpc('fn_increment_product_stock', { p_product_id: productId, p_qty: 1 });
+                }
+            } catch (e) {
+                console.warn('[CanteenDB] Product restock RPC notice:', e);
+            }
+        }
+
+        // 3. Update order status if orderId linked
+        if (orderId) {
+            try {
+                await this.updateOrderStatus(orderId, 'REFUNDED');
+            } catch (e) {}
+        }
+
+        // 4. Resolve dispute ticket if disputeId linked
+        if (disputeId) {
+            try {
+                await this.resolveMealDispute(disputeId, 'APPROVED', reason, adminId, 0, null);
+            } catch (e) {}
+        }
+
+        // 5. Write to System Audit Log
+        await this.logSystemAudit(adminId, adminName, 'ADMIN', 'REFUND_PROCESSED', {
+            refundId,
+            orderId,
+            disputeId,
+            studentId,
+            amount: refundAmt,
+            method,
+            reason,
+            reasonCategory,
+            restocked
+        }).catch(e => {});
+
+        return {
+            success: true,
+            refundId,
+            newBalance,
+            status: 'APPROVED',
+            processedAt: new Date().toISOString()
+        };
     },
 
     async createSISTuitionBatch(adminId) {

@@ -127,10 +127,21 @@ CREATE TABLE IF NOT EXISTS public.notification_preferences (
 ALTER TABLE public.notification_preferences ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Notification prefs: owner only" ON public.notification_preferences;
-CREATE POLICY "Notification prefs: owner only"
-    ON public.notification_preferences FOR ALL
-    TO authenticated
     USING (user_id = auth.uid());
+
+-- ------------------------------------------------------------------------------
+-- 4B. EXPAND UNIVERSAL NOTIFICATIONS TABLE (All dynamic process event types)
+-- ------------------------------------------------------------------------------
+ALTER TABLE public.notifications
+    DROP CONSTRAINT IF EXISTS notifications_type_check;
+
+ALTER TABLE public.notifications
+    ADD COLUMN IF NOT EXISTS severity TEXT DEFAULT 'info',
+    ADD COLUMN IF NOT EXISTS action_url TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON public.notifications(user_id, is_read);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON public.notifications(user_id, created_at DESC);
+
 
 -- ------------------------------------------------------------------------------
 -- 5. Track daily calorie consumption on profiles

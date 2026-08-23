@@ -293,8 +293,8 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) {
             console.warn("Using default simulated AI tray items", e);
             state.aiTrayItems = [
-                { id: 'a1111111-1111-1111-1111-111111111111', name: 'Buttercream Crackers', price: 35.00, confidence: 0.98 },
-                { id: 'a4444444-4444-4444-4444-444444444444', name: 'Mineral Water (500ml)', price: 20.00, confidence: 0.96 }
+                { id: 'a1111111-1111-1111-1111-111111111111', name: 'Buttercream Biscuits', price: 35.00, confidence: 0.98 },
+                { id: 'a4444444-4444-4444-4444-444444444444', name: 'Jack & Jill Magic Chips', price: 25.00, confidence: 0.96 }
             ];
         }
         if (aiModal) aiModal.classList.add('active');
@@ -395,7 +395,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     alert(`🚫 Pay Later Limit Reached (5/5 Transactions Used)!\n\n${state.currentStudent.full_name} has already utilized all 5 allowed emergency Pay Later transactions. Existing debt must be settled before new credit can be issued.`);
                     return;
                 }
-                state.currentStudent.pay_later_balance += grandTotal;
+                const currentDebt = state.currentStudent.pay_later_balance || 0.0;
+                const newDebt = currentDebt + grandTotal;
+                if (newDebt > 1000.00) {
+                    const proceed = confirm(`⚠️ PAY LATER NOTICE: Cumulative Pay Later balance for ${state.currentStudent.full_name} will reach ₱${newDebt.toFixed(2)}, which exceeds the standard ₱1,000.00 threshold (${currentPayLaterCount + 1}/5 used).\n\nIs it okay to proceed with this Pay Later transaction?`);
+                    if (!proceed) return;
+                }
+                state.currentStudent.pay_later_balance = newDebt;
                 state.currentStudent.pay_later_count = currentPayLaterCount + 1;
                 await updateStudentBalance(
                     state.currentStudent.student_id, 
