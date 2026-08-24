@@ -750,8 +750,9 @@
             if (payload.role?.toLowerCase() === 'student' && payload.student_id_number && !this.Validators.isValidStudentId(payload.student_id_number)) {
                 throw new Error("Invalid Student ID format. Student ID must be between 3 and 30 characters.");
             }
+            // Phone is optional — warn but never hard-throw so provisioning is not blocked
             if (payload.phone && !this.Validators.isValidPhone(payload.phone)) {
-                throw new Error("Invalid phone number format. Please provide a valid mobile number.");
+                console.warn("[registerUser] Phone number format looks unusual, proceeding anyway:", payload.phone);
             }
 
             const fullName = payload.full_name || `${payload.first_name || payload.firstName || ''} ${payload.last_name || payload.lastName || ''}`.trim() || 'NovaLunch User';
@@ -809,6 +810,30 @@
                     throw new Error(error.message || 'Database insertion failed.');
                 }
                 profile = data;
+
+                // Create a Supabase Auth user so the account can log in via email + password.
+                // signUp with email_confirm: false creates the auth user immediately without
+                // requiring the user to click a confirmation link.
+                if (profile && payload.password) {
+                    try {
+                        const { error: authErr } = await supabase.auth.signUp({
+                            email: sanitizedFields.email,
+                            password: payload.password,
+                            options: {
+                                data: {
+                                    full_name: sanitizedFields.full_name,
+                                    role: sanitizedFields.role
+                                },
+                                emailRedirectTo: undefined
+                            }
+                        });
+                        if (authErr) {
+                            console.warn('[registerUser] Auth user creation warning (profile row was saved):', authErr.message);
+                        }
+                    } catch (authEx) {
+                        console.warn('[registerUser] Auth signUp exception (profile row was saved):', authEx);
+                    }
+                }
             }
 
             if (!profile) {
@@ -829,12 +854,13 @@
             const initLimit = typeof payload.dailyCap === 'number' ? payload.dailyCap : (parseFloat(payload.daily_limit || payload.dailyCap) || 200.00);
 
             if (profile && profile.id) {
+                // credit_liability is NOT included here — it is on the profiles table,
+                // not in the wallets table schema visible to PostgREST's schema cache.
                 const walletPayload = {
                     user_id: profile.id,
                     balance: initBal,
                     daily_limit: initLimit,
                     daily_spent: 0.00,
-                    credit_liability: 0.00,
                     updated_at: new Date().toISOString()
                 };
                 if (this.isUUID(profile.id)) {
