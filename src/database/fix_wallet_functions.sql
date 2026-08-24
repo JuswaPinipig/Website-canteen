@@ -224,33 +224,31 @@ DECLARE
     v_new_liability NUMERIC(10,2);
 BEGIN
     -- 1. Upsert into public.wallets
-    INSERT INTO public.wallets (user_id, balance, daily_limit, credit_liability, updated_at)
+    INSERT INTO public.wallets (user_id, balance, daily_limit, updated_at)
     VALUES (
         p_user_id,
         COALESCE(p_balance, 0.00),
         COALESCE(p_daily_limit, 200.00),
-        COALESCE(p_credit_liability, 0.00),
         NOW()
     )
     ON CONFLICT (user_id) DO UPDATE
     SET balance          = COALESCE(p_balance, public.wallets.balance),
         daily_limit      = COALESCE(p_daily_limit, public.wallets.daily_limit),
-        credit_liability = COALESCE(p_credit_liability, public.wallets.credit_liability),
         updated_at       = NOW()
-    RETURNING balance, daily_limit, credit_liability
-    INTO v_new_bal, v_new_limit, v_new_liability;
+    RETURNING balance, daily_limit
+    INTO v_new_bal, v_new_limit;
 
-    -- 2. Synchronize profiles mirror columns
-    BEGIN
-        UPDATE public.profiles
-        SET balance          = COALESCE(p_balance, balance),
-            daily_limit      = COALESCE(p_daily_limit, daily_limit),
-            credit_liability = COALESCE(p_credit_liability, credit_liability),
-            updated_at       = NOW()
-        WHERE id = p_user_id;
-    EXCEPTION WHEN OTHERS THEN
-        NULL;
-    END;
+    -- 2. Synchronize profiles columns if needed
+    IF p_credit_liability IS NOT NULL THEN
+        BEGIN
+            UPDATE public.profiles
+            SET credit_liability = p_credit_liability,
+                updated_at       = NOW()
+            WHERE id = p_user_id;
+        EXCEPTION WHEN OTHERS THEN
+            NULL;
+        END;
+    END IF;
 
     -- 3. Log transaction if wallet_transactions exists and balance changed
     IF p_balance IS NOT NULL THEN
