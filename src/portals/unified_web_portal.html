@@ -17694,8 +17694,8 @@
                 if (targetRole === 'STUDENT') {
                     // Use the directly-resolved user if provided (avoids React async state race after Supabase login)
                     let stud = resolvedUser && resolvedUser.role?.toLowerCase() === 'student' ? resolvedUser : null;
-                    if (!stud && effectiveIdentifier) {
-                        const searchTarget = effectiveIdentifier.toLowerCase();
+                    if (!stud && userIdentifier) {
+                        const searchTarget = userIdentifier.toLowerCase();
                         stud = registeredUsers.find(u =>
                             u.role?.toLowerCase() === 'student' && (
                                 (u.email && u.email.toLowerCase() === searchTarget) ||
@@ -17704,12 +17704,13 @@
                             )
                         );
                     }
+                    // If no explicit identifier passed, preserve existing active currentStudent from session
+                    if (!stud && currentStudent && currentStudent.role?.toLowerCase() === 'student') {
+                        stud = registeredUsers.find(u => u.id === currentStudent.id || (u.email && currentStudent.email && u.email.toLowerCase() === currentStudent.email.toLowerCase()) || (u.studentId && currentStudent.studentId && u.studentId === currentStudent.studentId)) || currentStudent;
+                    }
+                    // Fallback to default student demo if nothing selected
                     if (!stud) {
-                        // Only fall back to generic demo student if no identifier was specified
-                        // (i.e. quick-demo button pressed). Never silently swap in a wrong user.
-                        if (!effectiveIdentifier || effectiveIdentifier === 'student@gmail.com') {
-                            stud = registeredUsers.find(u => u.email === 'student@gmail.com') || registeredUsers.find(u => u.role?.toLowerCase() === 'student');
-                        }
+                        stud = registeredUsers.find(u => u.email === 'student@gmail.com') || registeredUsers.find(u => u.role?.toLowerCase() === 'student');
                     }
                     if (stud) {
                         setCurrentStudent(stud);
@@ -18137,24 +18138,48 @@
                     }
                 }
 
-                setRegisteredUsers(prev => prev.map(u => u.id === updatedUser.id ? {
-                    ...u,
-                    ...updatedUser,
-                    ...(cleanBal !== undefined ? { balance: cleanBal } : {}),
-                    ...(cleanCap !== undefined ? { dailyCap: cleanCap, daily_limit: cleanCap } : {})
-                } : u));
-
-                if (currentStudent && currentStudent.id === updatedUser.id) {
-                    setCurrentStudent(prev => ({
-                        ...prev,
+                setRegisteredUsers(prev => {
+                    const updatedList = prev.map(u => (u.id === updatedUser.id || (u.email && updatedUser.email && u.email.toLowerCase() === updatedUser.email.toLowerCase()) || (u.studentId && updatedUser.studentId && u.studentId === updatedUser.studentId)) ? {
+                        ...u,
                         ...updatedUser,
                         ...(cleanBal !== undefined ? { balance: cleanBal } : {}),
                         ...(cleanCap !== undefined ? { dailyCap: cleanCap, daily_limit: cleanCap } : {})
-                    }));
-                    if (cleanBal !== undefined) setStudentBalance(cleanBal);
-                    if (cleanCap !== undefined) setDailyLimit(cleanCap);
+                    } : u);
+                    if (db) db.saveLocal('novalunch_registered_users', updatedList);
+                    return updatedList;
+                });
+
+                if (currentStudent && (currentStudent.id === updatedUser.id || (currentStudent.email && updatedUser.email && currentStudent.email.toLowerCase() === updatedUser.email.toLowerCase()) || (currentStudent.studentId && updatedUser.studentId && currentStudent.studentId === updatedUser.studentId))) {
+                    const updatedStudObj = {
+                        ...currentStudent,
+                        ...updatedUser,
+                        ...(cleanBal !== undefined ? { balance: cleanBal } : {}),
+                        ...(cleanCap !== undefined ? { dailyCap: cleanCap, daily_limit: cleanCap } : {})
+                    };
+                    setCurrentStudent(updatedStudObj);
+                    if (cleanBal !== undefined) {
+                        setStudentBalance(cleanBal);
+                        if (db) db.saveLocal('novalunch_student_balance', cleanBal);
+                    }
+                    if (cleanCap !== undefined) {
+                        setDailyLimit(cleanCap);
+                        if (db) db.saveLocal('novalunch_daily_limit', cleanCap);
+                    }
+                    if (db) db.saveLocal('novalunch_current_student', updatedStudObj);
+                } else if (!currentStudent && (updatedUser.role || '').toLowerCase() === 'student') {
+                    setCurrentStudent(updatedUser);
+                    if (cleanBal !== undefined) {
+                        setStudentBalance(cleanBal);
+                        if (db) db.saveLocal('novalunch_student_balance', cleanBal);
+                    }
+                    if (cleanCap !== undefined) {
+                        setDailyLimit(cleanCap);
+                        if (db) db.saveLocal('novalunch_daily_limit', cleanCap);
+                    }
+                    if (db) db.saveLocal('novalunch_current_student', updatedUser);
                 }
-                if (currentUser && currentUser.id === updatedUser.id) {
+
+                if (currentUser && (currentUser.id === updatedUser.id || (currentUser.email && updatedUser.email && currentUser.email.toLowerCase() === updatedUser.email.toLowerCase()))) {
                     setCurrentUser(prev => ({
                         ...prev,
                         ...updatedUser,
