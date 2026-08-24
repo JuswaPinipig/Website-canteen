@@ -1,11 +1,40 @@
 -- ============================================================
--- FIX: Wallet RPC Functions targeting wrong table
--- Run this in Supabase SQL Editor
--- The old functions incorrectly targeted public.profiles
--- which has NO balance column. Balance lives in public.wallets.
+-- MASTER FIX PATCH — Run this in Supabase SQL Editor
+-- Fixes:
+--   1. fn_deduct_wallet_balance targeting profiles instead of wallets
+--   2. fn_credit_wallet_balance targeting profiles instead of wallets
+--   3. fn_process_gcash_webhook targeting profiles instead of wallets
+--   4. preorders table missing columns (product_id, student_id_number, token, pickup_slot)
 -- ============================================================
 
--- Fix fn_deduct_wallet_balance
+-- ===========================================================
+-- PART 1: Fix preorders table schema (add missing columns)
+-- ===========================================================
+
+-- Add product_id column if it doesn't exist
+ALTER TABLE public.preorders
+    ADD COLUMN IF NOT EXISTS product_id UUID REFERENCES public.products(id) ON DELETE SET NULL;
+
+-- Add student_id_number (text identifier for display)
+ALTER TABLE public.preorders
+    ADD COLUMN IF NOT EXISTS student_id_number TEXT;
+
+-- Add token column for QR claim codes
+ALTER TABLE public.preorders
+    ADD COLUMN IF NOT EXISTS token TEXT;
+
+-- Add pickup_slot for specific pickup time
+ALTER TABLE public.preorders
+    ADD COLUMN IF NOT EXISTS pickup_slot TEXT DEFAULT '12:00 PM';
+
+-- Add updated_at if missing
+ALTER TABLE public.preorders
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+-- ===========================================================
+-- PART 2: Fix fn_deduct_wallet_balance
+-- (Was incorrectly updating public.profiles — no balance there)
+-- ===========================================================
 CREATE OR REPLACE FUNCTION public.fn_deduct_wallet_balance(
     p_user_id UUID,
     p_amount NUMERIC(10,2)
@@ -18,7 +47,7 @@ DECLARE
     v_current_balance NUMERIC(10,2);
     v_new_balance     NUMERIC(10,2);
 BEGIN
-    -- Lock the wallet row for this user
+    -- Lock the wallet row for this user atomically
     SELECT balance INTO v_current_balance
     FROM public.wallets
     WHERE user_id = p_user_id
@@ -43,7 +72,9 @@ BEGIN
 END;
 $$;
 
--- Fix fn_credit_wallet_balance
+-- ===========================================================
+-- PART 3: Fix fn_credit_wallet_balance
+-- ===========================================================
 CREATE OR REPLACE FUNCTION public.fn_credit_wallet_balance(
     p_user_id UUID,
     p_amount NUMERIC(10,2)
@@ -55,7 +86,6 @@ AS $$
 DECLARE
     v_new_balance NUMERIC(10,2);
 BEGIN
-    -- Upsert so it works even if wallet row does not exist yet
     INSERT INTO public.wallets (user_id, balance, updated_at)
     VALUES (p_user_id, p_amount, NOW())
     ON CONFLICT (user_id) DO UPDATE
@@ -67,7 +97,9 @@ BEGIN
 END;
 $$;
 
--- Fix fn_process_gcash_webhook (also used profiles incorrectly)
+-- ===========================================================
+-- PART 4: Fix fn_process_gcash_webhook
+-- ===========================================================
 CREATE OR REPLACE FUNCTION public.fn_process_gcash_webhook(
     p_ref_no TEXT,
     p_student_id UUID,
@@ -103,12 +135,14 @@ BEGIN
             p_ref_no, 'GCASH_WEBHOOK', 'Instant GCash Webhook Auto-Credit'
         );
     EXCEPTION WHEN OTHERS THEN
-        NULL; -- wallet_transactions is optional
+        NULL; -- wallet_transactions is optional, skip if not found
     END;
 
     RETURN jsonb_build_object('success', true, 'new_balance', v_new_bal, 'ref_no', p_ref_no);
 END;
 $$;
 
--- Reload PostgREST schema cache so changes take effect immediately
+-- ===========================================================
+-- PART 5: Reload PostgREST schema cache
+-- ===========================================================
 NOTIFY pgrst, 'reload schema';
