@@ -6761,7 +6761,7 @@
                     return;
                 }
 
-                onSelectRoleQuick(targetRole, username);
+                onSelectRoleQuick(targetRole, username, authenticatedUser);
             };
 
             const handleResetSubmit = async (e) => {
@@ -17587,7 +17587,7 @@
             }, [syncCloudData]);
 
             // Quick Role Switcher (Hardened Session Initialization)
-            const handleSelectRoleQuick = (role, userIdentifier = null) => {
+            const handleSelectRoleQuick = (role, userIdentifier = null, resolvedUser = null) => {
                 const targetRole = String(role).toUpperCase();
 
                 let effectiveIdentifier = userIdentifier;
@@ -17599,8 +17599,9 @@
                 }
 
                 if (targetRole === 'STUDENT') {
-                    let stud = null;
-                    if (effectiveIdentifier) {
+                    // Use the directly-resolved user if provided (avoids React async state race after Supabase login)
+                    let stud = resolvedUser && resolvedUser.role?.toLowerCase() === 'student' ? resolvedUser : null;
+                    if (!stud && effectiveIdentifier) {
                         const searchTarget = effectiveIdentifier.toLowerCase();
                         stud = registeredUsers.find(u =>
                             u.role?.toLowerCase() === 'student' && (
@@ -17627,8 +17628,9 @@
                         showToast('⚠️ No active Student profile found for session initialization.', 'danger');
                     }
                 } else if (targetRole === 'PARENT') {
-                    let prnt = null;
-                    if (effectiveIdentifier) {
+                    // Use the directly-resolved user if provided (avoids React async state race after Supabase login)
+                    let prnt = resolvedUser && resolvedUser.role?.toLowerCase() === 'parent' ? resolvedUser : null;
+                    if (!prnt && effectiveIdentifier) {
                         const searchTarget = effectiveIdentifier.toLowerCase();
                         prnt = registeredUsers.find(u =>
                             u.role?.toLowerCase() === 'parent' && (
@@ -17655,13 +17657,15 @@
                         showToast('⚠️ No active Parent profile found for session initialization.', 'danger');
                     }
                 } else if (targetRole === 'CASHIER') {
+                    if (resolvedUser) setCurrentUser(resolvedUser);
                     setActiveTab('register');
                     setActiveRole('CASHIER');
                 } else if (targetRole === 'ADMIN') {
+                    if (resolvedUser) setCurrentUser(resolvedUser);
                     setActiveTab('command');
                     setActiveRole('ADMIN');
                 } else if (targetRole === 'TEACHER') {
-                    const teacherUser = registeredUsers.find(u => u.role === 'Teacher') || { id: 'u_prof_maria', name: 'Prof. Maria Santos', role: 'Teacher', department: 'High School Faculty', salaryDeductionEligible: true, accumulatedSalaryDeduction: 320.00 };
+                    const teacherUser = resolvedUser || registeredUsers.find(u => u.role === 'Teacher') || { id: 'u_prof_maria', name: 'Prof. Maria Santos', role: 'Teacher', department: 'High School Faculty', salaryDeductionEligible: true, accumulatedSalaryDeduction: 320.00 };
                     setCurrentUser(teacherUser);
                     setActiveTab('salary_deductions');
                     setActiveRole('CASHIER');
