@@ -32,19 +32,26 @@ def launch_kiosk_gui():
     if is_port_in_use(8085):
         return True, "Kiosk GUI is already running on port 8085."
 
-    python_exec = sys.executable or "/usr/bin/python3"
+    python_exec = sys.executable or "python"
     try:
         log_path = os.path.join(ROOT_DIR, "novalunch_kiosk.log")
         log_file = open(log_path, "a", encoding="utf-8")
         log_file.write(f"\n--- Launching Kiosk GUI at {time.ctime()} ---\n")
         log_file.flush()
 
+        popen_kwargs = {
+            "cwd": ROOT_DIR,
+            "stdout": log_file,
+            "stderr": log_file,
+        }
+        if sys.platform == "win32":
+            popen_kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
+        else:
+            popen_kwargs["start_new_session"] = True
+
         kiosk_process = subprocess.Popen(
             [python_exec, KIOSK_SCRIPT],
-            cwd=ROOT_DIR,
-            stdout=log_file,
-            stderr=log_file,
-            start_new_session=True
+            **popen_kwargs
         )
         return True, "Python Kiosk GUI launched successfully."
     except Exception as e:
