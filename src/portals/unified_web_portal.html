@@ -17127,10 +17127,7 @@
             ]));
             const [rawIngredients, setRawIngredients] = useState(() => db?.loadLocal('novalunch_raw_ingredients', typeof INITIAL_RAW_INGREDIENTS !== 'undefined' ? INITIAL_RAW_INGREDIENTS : []));
             const [kdsOrders, setKdsOrders] = useState(() => db?.loadLocal('novalunch_kds_orders', typeof INITIAL_KDS_ORDERS !== 'undefined' ? INITIAL_KDS_ORDERS : []));
-            const [posCart, setPosCart] = useState([
-                { id: "p1", name: "Classic Cheeseburger", price: 75.00, qty: 1 },
-                { id: "p4", name: "Mineral Water (500ml)", price: 20.00, qty: 1 }
-            ]);
+            const [posCart, setPosCart] = useState([]);
             const [toastMessage, setToastMessage] = useState("");
 
             // Universal Notifications & Parent-Student Requests
