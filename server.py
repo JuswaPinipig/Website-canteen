@@ -34,11 +34,16 @@ def launch_kiosk_gui():
 
     python_exec = sys.executable or "/usr/bin/python3"
     try:
+        log_path = os.path.join(ROOT_DIR, "novalunch_kiosk.log")
+        log_file = open(log_path, "a", encoding="utf-8")
+        log_file.write(f"\n--- Launching Kiosk GUI at {time.ctime()} ---\n")
+        log_file.flush()
+
         kiosk_process = subprocess.Popen(
             [python_exec, KIOSK_SCRIPT],
             cwd=ROOT_DIR,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=log_file,
+            stderr=log_file,
             start_new_session=True
         )
         return True, "Python Kiosk GUI launched successfully."

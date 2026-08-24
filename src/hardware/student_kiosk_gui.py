@@ -145,6 +145,7 @@ class DatabaseManager:
             sqlite_path = "novalunch_edge.db"
         self.accounts_path = os.path.abspath(accounts_path)
         self.sqlite_path = os.path.abspath(sqlite_path)
+        self._lock = threading.Lock()
         self._init_sqlite()
         self.sync_remote_accounts()
         self.sync_worker = OfflineSyncWorker(self)
@@ -173,24 +174,26 @@ class DatabaseManager:
             print(f"[DB WARN] SQLite init: {e}")
 
     def load_accounts(self):
-        if os.path.exists(self.accounts_path):
-            try:
-                with open(self.accounts_path, "r", encoding="utf-8") as f:
-                    return json.load(f).get("students", [])
-            except Exception as e:
-                print(f"[DB WARN] load_accounts: {e}")
-        return []
+        with self._lock:
+            if os.path.exists(self.accounts_path):
+                try:
+                    with open(self.accounts_path, "r", encoding="utf-8") as f:
+                        return json.load(f).get("students", [])
+                except Exception as e:
+                    print(f"[DB WARN] load_accounts: {e}")
+            return []
 
     def save_accounts(self, students):
-        if os.path.exists(self.accounts_path):
-            try:
-                with open(self.accounts_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                data["students"] = students
-                with open(self.accounts_path, "w", encoding="utf-8") as f:
-                    json.dump(data, f, indent=2)
-            except Exception as e:
-                print(f"[DB ERROR] save_accounts: {e}")
+        with self._lock:
+            if os.path.exists(self.accounts_path):
+                try:
+                    with open(self.accounts_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    data["students"] = students
+                    with open(self.accounts_path, "w", encoding="utf-8") as f:
+                        json.dump(data, f, indent=2)
+                except Exception as e:
+                    print(f"[DB ERROR] save_accounts: {e}")
 
     def sync_remote_accounts(self):
         def _fetch():
@@ -284,15 +287,6 @@ class DatabaseManager:
             except Exception:
                 pass
 
-        if str(student_id) in ["2023-01900", "u101", "2023-08812"]:
-            return [{
-                "id": "po-demo-01",
-                "name": "Pork Adobo w/ Steamed Rice",
-                "price": 85.00,
-                "shelf": "Shelf B2",
-                "session": "Lunch Break (12:00 PM)",
-                "status": "Ready"
-            }]
         return []
 
     def deduct_student_balance(self, student_id, amount):
@@ -376,16 +370,24 @@ class OfflineSyncWorker(threading.Thread):
                 except Exception:
                     items = []
 
+                # Resolve student user UUID from local accounts cache
+                local_students = self.db.load_accounts()
+                matched_st = next((s for s in local_students if s.get("student_id_number") == student_id or s.get("rfid_uid") == student_id or s.get("id") == student_id), None)
+                user_uuid = matched_st.get("id") if (matched_st and str(matched_st.get("id", "")).count("-") == 4) else None
+                student_name = matched_st.get("full_name", "Student") if matched_st else "Offline Student"
+
                 order_payload = {
                     "order_number": tx_id,
-                    "student_id_number": student_id,
-                    "total_amount": total_amt,
-                    "final_amount": total_amt,
+                    "student_name": student_name,
+                    "total_amount": float(total_amt),
+                    "final_amount": float(total_amt),
                     "discount_amount": 0,
-                    "payment_method": (pay_method or 'rfid').lower(),
+                    "payment_method": (pay_method or 'RFID').upper(),
                     "order_source": "offline_edge_kiosk",
-                    "order_status": "completed"
+                    "order_status": "COMPLETED"
                 }
+                if user_uuid:
+                    order_payload["user_id"] = user_uuid
 
                 try:
                     url = f"{SUPABASE_URL}/rest/v1/orders"
@@ -1248,10 +1250,8 @@ class NovaLunchKioskGUI:
         if scanned_uid:
             clean = str(scanned_uid).strip().replace("NL-QR-", "").replace("QR-", "")
             last_tap = self.rfid_anti_passback_cache.get(clean, 0)
-            if now - last_tap < 60.0:
-                rem = int(60.0 - (now - last_tap))
-                self.status_message = f"⚠️ ANTI-PASSBACK COOLDOWN ({rem}s remaining)"
-                return
+            if now - last_tap < 3.0:
+                return  # Hardware debounce to prevent duplicate flutter
             self.rfid_anti_passback_cache[clean] = now
 
             student = self.db_manager.find_student_by_rfid(clean)

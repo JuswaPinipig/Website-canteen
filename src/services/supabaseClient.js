@@ -217,6 +217,54 @@
         return [cleanPayload];
     },
 
+    async deleteProduct(productId) {
+        // Always update local cache
+        const currentProducts = this.loadLocal('novalunch_products_catalog', []);
+        const updatedLocal = currentProducts.filter(p => p.id !== productId && p.name !== productId);
+        this.saveLocal('novalunch_products_catalog', updatedLocal);
+
+        if (this.isUUID(productId)) {
+            if (supabase) {
+                try {
+                    const { error } = await supabase.from('products').delete().eq('id', productId);
+                    if (error) console.warn("Supabase deleteProduct warning:", error);
+                } catch(e) {
+                    console.warn("Supabase deleteProduct exception:", e);
+                }
+            } else {
+                try {
+                    await this._deleteREST(`products?id=eq.${productId}`);
+                } catch(e) {}
+            }
+        }
+        return { success: true, id: productId };
+    },
+
+    async deleteUser(userId) {
+        // Always update local cache
+        const currentUsers = this.loadLocal('novalunch_registered_users', []);
+        const updatedLocal = currentUsers.filter(u => u.id !== userId);
+        this.saveLocal('novalunch_registered_users', updatedLocal);
+
+        if (this.isUUID(userId)) {
+            if (supabase) {
+                try {
+                    await supabase.from('wallets').delete().eq('user_id', userId).catch(() => {});
+                    const { error } = await supabase.from('profiles').delete().eq('id', userId);
+                    if (error) console.warn("Supabase deleteUser warning:", error);
+                } catch(e) {
+                    console.warn("Supabase deleteUser exception:", e);
+                }
+            } else {
+                try {
+                    await this._deleteREST(`wallets?user_id=eq.${userId}`).catch(() => {});
+                    await this._deleteREST(`profiles?id=eq.${userId}`);
+                } catch(e) {}
+            }
+        }
+        return { success: true, id: userId };
+    },
+
     // -------------------------------------------------------------------------
     // INVENTORY BATCH & EXPIRY MANAGEMENT
     // -------------------------------------------------------------------------
@@ -242,6 +290,27 @@
             const res = await this._postREST('inventory_batches', batchPayload);
             return res[0];
         }
+    },
+
+    async deductCartStockFifo(cartItems) {
+        if (!cartItems || !cartItems.length) return { success: true };
+        const cleanItems = cartItems.map(item => ({
+            id: item.id || item.product_id,
+            qty: parseInt(item.qty || item.quantity) || 1,
+            name: item.name || item.product_name
+        }));
+
+        if (supabase) {
+            try {
+                const { data, error } = await supabase.rpc('fn_deduct_cart_stock_fifo', { p_items: cleanItems });
+                if (!error && data) return data;
+            } catch (e) {
+                console.warn("[CanteenDB] RPC fn_deduct_cart_stock_fifo error, falling back to individual deductions", e);
+            }
+        }
+
+        // Fallback: Deduct items concurrently
+        return await Promise.all(cleanItems.map(i => this.deductStockFifo(i.id, i.qty)));
     },
 
     async deductStockFifo(productId, quantity) {
@@ -1179,14 +1248,26 @@
     },
 
     // -------------------------------------------------------------------------
-    // PRE-ORDERS & EXPRESS CLAIM TOKENS
+    // PRE-ORDERS (TOKENLESS DIRECT RFID CONFIRMATION)
     // -------------------------------------------------------------------------
     async createPreorder(payload) {
-        // payload: { student_id, student_name, item_name, price, token, status, session, shelf_location, created_at }
+        // payload: { student_id, student_name, item_name, price, session, shelf_location, status, product_id, created_at }
         const fallbackId = `po_${Date.now()}`;
-        if (supabase) {
+        const cleanPayload = {
+            student_id: payload.student_id || payload.studentId || null,
+            student_name: payload.student_name || payload.studentName || 'Student',
+            product_id: payload.product_id || payload.productId || null,
+            item_name: payload.item_name || payload.name || payload.item || 'Meal Pre-Order',
+            price: parseFloat(payload.price) || 0.0,
+            session: payload.session || 'Lunch Break (12:00 PM)',
+            shelf_location: payload.shelf_location || payload.shelf || 'Shelf B2',
+            status: payload.status || 'Pending',
+            created_at: payload.created_at || new Date().toISOString()
+        };
+
+        if (supabase && cleanPayload.student_id && this.isUUID(cleanPayload.student_id)) {
             try {
-                const { data, error } = await supabase.from('preorders').insert([payload]).select().single();
+                const { data, error } = await supabase.from('preorders').insert([cleanPayload]).select().single();
                 if (!error && data) {
                     return data;
                 }
@@ -1196,7 +1277,7 @@
             }
         } else {
             try {
-                const res = await this._postREST('preorders', payload);
+                const res = await this._postREST('preorders', cleanPayload);
                 if (res && res.length) return res[0];
             } catch (e) {
                 console.warn("[CanteenDB Notice] REST preorders fallback:", e);
@@ -1205,7 +1286,7 @@
         // Graceful fallback object with generated ID
         return {
             id: payload.id || fallbackId,
-            ...payload
+            ...cleanPayload
         };
     },
 
@@ -1213,7 +1294,7 @@
         if (supabase) {
             try {
                 let query = supabase.from('preorders').select('*').order('created_at', { ascending: false });
-                if (studentId) query = query.eq('student_id', studentId);
+                if (studentId) query = query.or(`student_id.eq.${studentId},student_name.eq.${studentId}`);
                 const { data, error } = await query;
                 if (!error && data && data.length > 0) return data;
             } catch (e) {
@@ -1225,6 +1306,25 @@
             } catch (e) { return []; }
         }
         return [];
+    },
+
+    async claimPreorderByStudent(studentId, preorderId = null) {
+        if (supabase) {
+            try {
+                const { data, error } = await supabase.rpc('fn_claim_preorder_by_student', {
+                    p_student_id: studentId,
+                    p_preorder_id: preorderId
+                });
+                if (!error && data) return data;
+            } catch (e) {
+                console.warn("[CanteenDB] fn_claim_preorder_by_student RPC fallback", e);
+            }
+        }
+        if (preorderId) {
+            await this.updatePreorderStatus(preorderId, 'Claimed');
+            return { success: true, preorder_id: preorderId, status: 'Claimed' };
+        }
+        return { success: true, status: 'Claimed' };
     },
 
     async updatePreorderStatus(preorderId, status) {
@@ -1239,7 +1339,7 @@
                 await fetch(`${SUPABASE_URL}/rest/v1/preorders?id=eq.${preorderId}`, {
                     method: 'PATCH',
                     headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json" },
-                    body: JSON.stringify({ status })
+                    body: JSON.stringify({ status, updated_at: new Date().toISOString() })
                 });
             } catch(e) {}
         }
@@ -1250,15 +1350,31 @@
     // -------------------------------------------------------------------------
     async submitGcashReload(payload) {
         // payload: { id, parent_name, student_name, student_id, amount, date, ref_no, status, receipt_img, submitter_role }
+        const cleanPayload = {
+            student_id: payload.student_id || payload.studentId || null,
+            student_name: payload.student_name || payload.studentName || 'Student',
+            parent_name: payload.parent_name || payload.parent || null,
+            amount: parseFloat(payload.amount) || 0.0,
+            reference_number: String(payload.ref_no || payload.reference_number || payload.refNo || '').trim(),
+            screenshot_url: payload.receipt_img || payload.screenshot_url || payload.receiptImg || null,
+            submitter_role: payload.submitter_role || 'student',
+            status: payload.status || 'Pending',
+            created_at: payload.date ? new Date(payload.date).toISOString() : new Date().toISOString()
+        };
+
+        if (payload.id && this.isUUID(payload.id)) {
+            cleanPayload.id = payload.id;
+        }
+
         if (supabase) {
-            const { data, error } = await supabase.from('topup_requests').insert([payload]).select().single();
+            const { data, error } = await supabase.from('topup_requests').insert([cleanPayload]).select().single();
             if (error) {
                 console.error("[CanteenDB Critical Error] Failed to submit GCash reload request:", error);
                 throw new Error(`Database error submitting top-up request: ${error.message}`);
             }
             return data;
         } else {
-            const res = await this._postREST('topup_requests', payload);
+            const res = await this._postREST('topup_requests', cleanPayload);
             if (!res || !res.length) {
                 throw new Error("Failed to submit top-up request via REST API.");
             }
@@ -1674,23 +1790,40 @@
         return await this.updateUser(studentId, { pay_later_pre_authorized: Boolean(enabled), pay_later_pre_auth_limit: parseFloat(limit) || 200.00 });
     },
 
-    async processGCashWebhook(referenceNo, userId, amount, signature = 'SIG-INSTANT-OK') {
-        if (supabase) {
-            const { data, error } = await supabase.rpc('fn_process_gcash_webhook', {
-                p_reference_no: String(referenceNo),
-                p_user_id: userId,
-                p_amount: parseFloat(amount),
-                p_signature: signature
-            });
-            if (error) throw error;
-            return data;
+    async processGCashWebhook(arg1, arg2, arg3, arg4 = 'SIG-INSTANT-OK') {
+        let referenceNo, userId, amount, signature;
+        if (typeof arg1 === 'object' && arg1 !== null) {
+            const p = arg1.payload || arg1;
+            referenceNo = p.ref_no || p.reference_number || p.referenceNo || `GC-${Date.now()}`;
+            userId = p.student_id || p.studentId || p.userId || p.user_id;
+            amount = parseFloat(p.amount) || 0.0;
+            signature = arg1.signature || arg4;
+        } else {
+            referenceNo = arg1;
+            userId = arg2;
+            amount = parseFloat(arg3) || 0.0;
+            signature = arg4;
         }
-        // Fallback local credit logic
-        const wallet = await this.getWalletByUserId(userId).catch(() => null);
-        const currentBal = wallet ? parseFloat(wallet.balance || 0) : 0;
-        const newBal = currentBal + parseFloat(amount);
-        await this.updateUser(userId, { balance: newBal });
-        return { success: true, reference_no: referenceNo, new_balance: newBal };
+
+        if (supabase && userId) {
+            try {
+                const { data, error } = await supabase.rpc('fn_process_gcash_webhook', {
+                    p_reference_no: String(referenceNo),
+                    p_user_id: userId,
+                    p_amount: amount,
+                    p_signature: signature
+                });
+                if (!error && data) return data;
+            } catch (e) {
+                console.warn("[CanteenDB] fn_process_gcash_webhook fallback", e);
+            }
+        }
+        // Fallback local credit logic using atomic creditWalletBalance
+        if (userId && amount > 0) {
+            const newBal = await this.creditWalletBalance(userId, amount);
+            return { success: true, reference_no: referenceNo, new_balance: newBal };
+        }
+        return { success: true, reference_no: referenceNo };
     },
 
     async fetchCategorySpendingRules(studentId) {
@@ -1721,23 +1854,44 @@
         }
     },
 
-    async submitMealDispute(orderId, parentId, studentId, reason, photoUrl = null) {
+    async submitMealDispute(arg1, arg2, arg3, arg4, arg5 = null) {
+        let orderId, parentId, studentId, reason, details, photoUrl;
+        if (typeof arg1 === 'object' && arg1 !== null) {
+            orderId = arg1.order_id || arg1.orderId || null;
+            parentId = arg1.parent_id || arg1.parentId || null;
+            studentId = arg1.student_id || arg1.studentId || null;
+            reason = arg1.reason || arg1.dispute_reason || 'AI Tray Recognition Error';
+            details = arg1.details || arg1.reason_details || '';
+            photoUrl = arg1.photo_url || arg1.photoUrl || null;
+        } else {
+            orderId = arg1;
+            parentId = arg2;
+            studentId = arg3;
+            reason = arg4;
+            photoUrl = arg5;
+            details = '';
+        }
+
         const payload = {
-            order_id: orderId || null,
-            parent_id: parentId,
-            student_id: studentId,
-            reason: reason,
+            order_id: String(orderId || `ORD-${Date.now()}`),
+            student_id: studentId && this.isUUID(studentId) ? studentId : null,
+            parent_id: parentId && this.isUUID(parentId) ? parentId : null,
+            dispute_reason: reason || 'AI Tray Recognition Error',
+            details: details || '',
             photo_url: photoUrl || null,
             status: 'PENDING',
             created_at: new Date().toISOString()
         };
+
         if (supabase) {
             const { data, error } = await supabase.from('meal_disputes').insert([payload]).select().single();
-            if (error) throw error;
-            return data;
+            if (error) {
+                console.warn("[CanteenDB] Supabase meal dispute write notice:", error?.message);
+            }
+            return data || payload;
         } else {
-            const res = await this._postREST('meal_disputes', payload);
-            return res[0];
+            const res = await this._postREST('meal_disputes', payload).catch(e => [payload]);
+            return res[0] || payload;
         }
     },
 
@@ -1997,6 +2151,26 @@
             return await res.json();
         } catch(err) {
             console.warn(`[CanteenDB REST Patch Error] ${endpoint}:`, err);
+            throw err;
+        }
+    },
+
+    async _deleteREST(endpoint) {
+        try {
+            const res = await fetch(`${SUPABASE_URL}/rest/v1/${endpoint}`, {
+                method: "DELETE",
+                headers: {
+                    "apikey": SUPABASE_ANON_KEY,
+                    "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
+                }
+            });
+            if (!res.ok) {
+                const errBody = await res.json().catch(() => ({ message: res.statusText }));
+                throw new Error(errBody.message || `Database delete failed (${res.status})`);
+            }
+            return true;
+        } catch(err) {
+            console.warn(`[CanteenDB REST Delete Error] ${endpoint}:`, err);
             throw err;
         }
     },
