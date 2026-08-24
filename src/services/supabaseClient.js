@@ -1040,8 +1040,14 @@
 
                 if (Object.keys(walletPatch).length > 0) {
                     walletPatch.updated_at = new Date().toISOString();
+                    walletPatch.user_id = userId;
                     if (supabase) {
-                        await supabase.from('wallets').update(walletPatch).eq('user_id', userId).catch(e => console.warn("Wallet update error:", e));
+                        try {
+                            const { error: wErr } = await supabase.from('wallets').upsert(walletPatch, { onConflict: 'user_id' });
+                            if (wErr) console.warn("Wallet upsert warning:", wErr);
+                        } catch (e) {
+                            console.warn("Wallet update error:", e);
+                        }
                     } else {
                         try {
                             await fetch(`${SUPABASE_URL}/rest/v1/wallets?user_id=eq.${userId}`, {

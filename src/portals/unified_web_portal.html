@@ -6677,49 +6677,50 @@
                         });
                         if (!error && data?.user) {
                             authSuccess = true;
-                            // First try to find the user in the in-memory list
-                            authenticatedUser = registeredUsers.find(u => u.email?.toLowerCase() === cleanUser || u.id === data.user.id);
+                            // Attempt to fetch latest live profile & wallet from Supabase database
+                            try {
+                                const { data: profileData, error: profileErr } = await supabaseClient
+                                    .from('profiles')
+                                    .select('*, wallets(*)')
+                                    .or(`id.eq.${data.user.id},email.ilike.${cleanUser}`)
+                                    .maybeSingle();
 
-                            // If not found locally (e.g. newly provisioned user or page refreshed),
-                            // fetch the profile directly from the database by auth user ID
-                            if (!authenticatedUser && window.CanteenDB) {
-                                try {
-                                    const { data: profileData, error: profileErr } = await supabaseClient
-                                        .from('profiles')
-                                        .select('*, wallets(*)')
-                                        .eq('email', username.trim())
-                                        .single();
-                                    if (!profileErr && profileData) {
-                                        const wallet = Array.isArray(profileData.wallets) ? profileData.wallets[0] : profileData.wallets;
-                                        const fetchedUser = {
-                                            id: profileData.id,
-                                            name: profileData.full_name,
-                                            firstName: profileData.first_name || profileData.full_name?.split(' ')[0] || '',
-                                            lastName: profileData.last_name || profileData.full_name?.split(' ').slice(1).join(' ') || '',
-                                            email: profileData.email,
-                                            role: profileData.role ? (profileData.role.charAt(0).toUpperCase() + profileData.role.slice(1)) : 'Student',
-                                            studentId: profileData.student_id_number || '',
-                                            rfidUid: profileData.rfid_uid || '',
-                                            balance: wallet ? parseFloat(wallet.balance) || 0 : 0,
-                                            dailyCap: wallet ? parseFloat(wallet.daily_limit) || 200 : 200,
-                                            status: profileData.status || 'active',
-                                            allergies: profileData.allergies || [],
-                                            pinCode: profileData.pin_code || '1234',
-                                            creditLiability: parseFloat(profileData.credit_liability) || 0,
-                                            creditLimit: parseFloat(profileData.credit_limit) || 500,
-                                            isCloudSynced: true
-                                        };
-                                        authenticatedUser = fetchedUser;
-                                        // Add to registeredUsers so this session and role selector can find them
-                                        setRegisteredUsers(prev => [fetchedUser, ...prev.filter(u => u.id !== fetchedUser.id)]);
-                                    }
-                                } catch (fetchErr) {
-                                    console.warn('Profile fetch after auth error:', fetchErr);
+                                if (!profileErr && profileData) {
+                                    const wallet = Array.isArray(profileData.wallets) ? profileData.wallets[0] : profileData.wallets;
+                                    const userBal = (wallet && wallet.balance !== null && wallet.balance !== undefined) ? parseFloat(wallet.balance) : (profileData.balance !== null && profileData.balance !== undefined ? parseFloat(profileData.balance) : 0.00);
+                                    const userCap = (wallet && wallet.daily_limit !== null && wallet.daily_limit !== undefined) ? parseFloat(wallet.daily_limit) : (profileData.daily_limit !== null && profileData.daily_limit !== undefined ? parseFloat(profileData.daily_limit) : 200.00);
+
+                                    const fetchedUser = {
+                                        id: profileData.id,
+                                        name: profileData.full_name,
+                                        firstName: profileData.first_name || profileData.full_name?.split(' ')[0] || '',
+                                        lastName: profileData.last_name || profileData.full_name?.split(' ').slice(1).join(' ') || '',
+                                        email: profileData.email,
+                                        role: profileData.role ? (profileData.role.charAt(0).toUpperCase() + profileData.role.slice(1)) : 'Student',
+                                        studentId: profileData.student_id_number || '',
+                                        rfidUid: profileData.rfid_uid || '',
+                                        balance: userBal,
+                                        dailyCap: userCap,
+                                        status: profileData.status || 'active',
+                                        allergies: profileData.allergies || [],
+                                        pinCode: profileData.pin_code || '1234',
+                                        creditLiability: parseFloat(profileData.credit_liability) || 0,
+                                        creditLimit: parseFloat(profileData.credit_limit) || 500,
+                                        isCloudSynced: true
+                                    };
+                                    authenticatedUser = fetchedUser;
+                                    setRegisteredUsers(prev => [fetchedUser, ...prev.filter(u => u.id !== fetchedUser.id && u.email?.toLowerCase() !== cleanUser)]);
                                 }
+                            } catch (fetchErr) {
+                                console.warn('Profile fetch after auth notice:', fetchErr);
                             }
 
-                            // Fallback: if profiles table has no record, build the user from
-                            // Supabase Auth user_metadata (populated at registration time)
+                            // If not found in profiles query, check in-memory list
+                            if (!authenticatedUser) {
+                                authenticatedUser = registeredUsers.find(u => u.email?.toLowerCase() === cleanUser || u.id === data.user.id);
+                            }
+
+                            // Fallback: if profiles table and local list have no record, build from user_metadata
                             if (!authenticatedUser) {
                                 const meta = data.user.user_metadata || {};
                                 const rawRole = meta.role || 'student';
@@ -6732,8 +6733,8 @@
                                     role: rawRole.charAt(0).toUpperCase() + rawRole.slice(1),
                                     studentId: meta.student_id_number || '',
                                     rfidUid: '',
-                                    balance: 0,
-                                    dailyCap: 200,
+                                    balance: 0.00,
+                                    dailyCap: 200.00,
                                     status: 'active',
                                     allergies: [],
                                     pinCode: '1234',
@@ -7223,8 +7224,8 @@
                 return matchCat && matchSearch && matchDiet;
             });
 
-            const safeBalance = (typeof studentBalance === 'number' && !isNaN(studentBalance)) ? studentBalance : 350;
-            const safeLimit = (typeof dailyLimit === 'number' && !isNaN(dailyLimit)) ? dailyLimit : 200;
+            const safeBalance = (typeof studentBalance === 'number' && !isNaN(studentBalance)) ? studentBalance : (typeof currentStudent?.balance === 'number' ? currentStudent.balance : 0);
+            const safeLimit = (typeof dailyLimit === 'number' && !isNaN(dailyLimit)) ? dailyLimit : (typeof currentStudent?.dailyCap === 'number' ? currentStudent.dailyCap : 200);
 
             const studentName = currentStudent?.name || currentStudent?.full_name || 'Student';
             const studentIdNum = currentStudent?.studentId || currentStudent?.student_id_number || '—';
@@ -7950,8 +7951,8 @@
             // ── Governance Policy Props ──
             globalDefaultDailyCalories = 1800
         }) {
-            const safeBalance = (typeof studentBalance === 'number' && !isNaN(studentBalance)) ? studentBalance : 350;
-            const safeLimit = (typeof dailyLimit === 'number' && !isNaN(dailyLimit)) ? dailyLimit : 200;
+            const safeBalance = (typeof studentBalance === 'number' && !isNaN(studentBalance)) ? studentBalance : (typeof activeChild?.balance === 'number' ? activeChild.balance : 0);
+            const safeLimit = (typeof dailyLimit === 'number' && !isNaN(dailyLimit)) ? dailyLimit : (typeof activeChild?.dailyCap === 'number' ? activeChild.dailyCap : 200);
 
             const [topupAmount, setTopupAmount] = useState('500');
             const [gcashRefNo, setGcashRefNo] = useState('');
@@ -17071,7 +17072,7 @@
             // ── Session State (Restored from localStorage on Reload) ──
             const [activeRole, setActiveRole] = useState(() => db?.loadLocal('novalunch_active_role', 'LOGIN') || 'LOGIN');
             const [activeTab, setActiveTab] = useState(() => db?.loadLocal('novalunch_active_tab', 'menu') || 'menu');
-            const [studentBalance, setStudentBalance] = useState(() => db?.loadLocal('novalunch_student_balance', 350.00) ?? 350.00);
+            const [studentBalance, setStudentBalance] = useState(() => db?.loadLocal('novalunch_student_balance', 0.00) ?? 0.00);
             const [dailyLimit, setDailyLimit] = useState(() => db?.loadLocal('novalunch_daily_limit', 200.00) ?? 200.00);
 
             // ── Global Governance Policy State (loaded from canteen_settings / cache) ──
@@ -17329,31 +17330,42 @@
                         if (profsData && profsData.length > 0) {
                             const mappedUsers = profsData.map(u => {
                                 const w = Array.isArray(u.wallets) ? u.wallets[0] : u.wallets;
+                                const userBal = (w && w.balance !== null && w.balance !== undefined) ? parseFloat(w.balance) : (u.balance !== null && u.balance !== undefined ? parseFloat(u.balance) : 0.00);
+                                const userCap = (w && w.daily_limit !== null && w.daily_limit !== undefined) ? parseFloat(w.daily_limit) : (u.daily_limit !== null && u.daily_limit !== undefined ? parseFloat(u.daily_limit) : 200.00);
                                 return {
                                     id: u.id,
                                     email: u.email,
                                     studentId: u.student_id_number || "2026-00001",
                                     name: u.full_name,
                                     role: u.role ? (u.role.charAt(0).toUpperCase() + u.role.slice(1)) : 'Student',
-                                    rfidUid: u.rfid_uid || "1A-2B-3C-4D",
-                                    dailyCap: w?.daily_limit ? parseFloat(w.daily_limit) : 200.00,
-                                    balance: w?.balance ? parseFloat(w.balance) : 0.00,
+                                    rfidUid: u.rfid_uid || "",
+                                    dailyCap: userCap,
+                                    balance: userBal,
                                     status: u.status || 'active',
                                     allergies: u.allergies || [],
                                     pinCode: u.pin_code || '1234',
-                                    creditLiability: u.credit_liability || 0,
-                                    creditLimit: u.credit_limit || 500,
+                                    creditLiability: parseFloat(u.credit_liability) || 0,
+                                    creditLimit: parseFloat(u.credit_limit) || 500,
                                     maxDailyCalories: u.max_daily_calories || 1800,
                                     allergenMode: u.allergen_mode || 'SOFT_WARN',
                                     managerPin: u.manager_pin || '1234'
                                 };
                             });
                             setRegisteredUsers(prev => {
-                                const localOnly = prev.filter(lu => !mappedUsers.some(mu => mu.id === lu.id || mu.email === lu.email));
+                                const cloudIds = new Set(mappedUsers.map(m => m.id));
+                                const cloudEmails = new Set(mappedUsers.map(m => m.email?.toLowerCase()).filter(Boolean));
+                                const localOnly = prev.filter(lp => !cloudIds.has(lp.id) && (!lp.email || !cloudEmails.has(lp.email.toLowerCase())));
                                 return [...mappedUsers, ...localOnly];
                             });
 
-                            if (!currentStudent) {
+                            if (currentStudent) {
+                                const updatedStud = mappedUsers.find(u => u.id === currentStudent.id || (u.email && currentStudent.email && u.email.toLowerCase() === currentStudent.email.toLowerCase()) || (u.studentId && currentStudent.studentId && u.studentId === currentStudent.studentId));
+                                if (updatedStud) {
+                                    setCurrentStudent(prev => ({ ...prev, ...updatedStud }));
+                                    setStudentBalance(updatedStud.balance);
+                                    setDailyLimit(updatedStud.dailyCap);
+                                }
+                            } else {
                                 const defaultStud = mappedUsers.find(u => u.email === 'student@gmail.com') || mappedUsers.find(u => u.role.toLowerCase() === 'student');
                                 if (defaultStud) {
                                     setCurrentStudent(defaultStud);
@@ -17361,9 +17373,16 @@
                                     setDailyLimit(defaultStud.dailyCap);
                                 }
                             }
-                            if (!currentParent) {
+                            if (currentParent) {
+                                const updatedParent = mappedUsers.find(u => u.id === currentParent.id || (u.email && currentParent.email && u.email.toLowerCase() === currentParent.email.toLowerCase()));
+                                if (updatedParent) setCurrentParent(prev => ({ ...prev, ...updatedParent }));
+                            } else {
                                 const defaultParent = mappedUsers.find(u => u.email === 'parent@gmail.com') || mappedUsers.find(u => u.role.toLowerCase() === 'parent');
                                 if (defaultParent) setCurrentParent(defaultParent);
+                            }
+                            if (currentUser) {
+                                const updatedUser = mappedUsers.find(u => u.id === currentUser.id || (u.email && currentUser.email && u.email.toLowerCase() === currentUser.email.toLowerCase()));
+                                if (updatedUser) setCurrentUser(prev => ({ ...prev, ...updatedUser }));
                             }
                             connected = true;
                         }
@@ -17529,6 +17548,41 @@
                                 setStudentBalance(newBal);
                                 setDailyLimit(newLimit);
                                 return { ...prev, balance: newBal, dailyCap: newLimit };
+                            }
+                            return prev;
+                        });
+                    })
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, (payload) => {
+                        const updatedProf = payload.new;
+                        if (!updatedProf) return;
+                        setRegisteredUsers((prev) => prev.map(u => {
+                            if (u.id === updatedProf.id || (u.email && updatedProf.email && u.email.toLowerCase() === updatedProf.email.toLowerCase())) {
+                                return {
+                                    ...u,
+                                    name: updatedProf.full_name || u.name,
+                                    studentId: updatedProf.student_id_number || u.studentId,
+                                    rfidUid: updatedProf.rfid_uid ?? u.rfidUid,
+                                    status: updatedProf.status || u.status,
+                                    allergies: updatedProf.allergies || u.allergies,
+                                    creditLiability: parseFloat(updatedProf.credit_liability) || u.creditLiability,
+                                    creditLimit: parseFloat(updatedProf.credit_limit) || u.creditLimit,
+                                    balance: updatedProf.balance !== undefined && updatedProf.balance !== null ? parseFloat(updatedProf.balance) : u.balance,
+                                    dailyCap: updatedProf.daily_limit !== undefined && updatedProf.daily_limit !== null ? parseFloat(updatedProf.daily_limit) : u.dailyCap
+                                };
+                            }
+                            return u;
+                        }));
+                        setCurrentStudent((prev) => {
+                            if (prev && (prev.id === updatedProf.id || (prev.email && updatedProf.email && prev.email.toLowerCase() === updatedProf.email.toLowerCase()))) {
+                                return {
+                                    ...prev,
+                                    name: updatedProf.full_name || prev.name,
+                                    studentId: updatedProf.student_id_number || prev.studentId,
+                                    rfidUid: updatedProf.rfid_uid ?? prev.rfidUid,
+                                    status: updatedProf.status || prev.status,
+                                    allergies: updatedProf.allergies || prev.allergies,
+                                    creditLiability: parseFloat(updatedProf.credit_liability) || prev.creditLiability
+                                };
                             }
                             return prev;
                         });
