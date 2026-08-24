@@ -6717,6 +6717,34 @@
                                     console.warn('Profile fetch after auth error:', fetchErr);
                                 }
                             }
+
+                            // Fallback: if profiles table has no record, build the user from
+                            // Supabase Auth user_metadata (populated at registration time)
+                            if (!authenticatedUser) {
+                                const meta = data.user.user_metadata || {};
+                                const rawRole = meta.role || 'student';
+                                const fallbackUser = {
+                                    id: data.user.id,
+                                    name: meta.full_name || data.user.email,
+                                    firstName: (meta.full_name || '').split(' ')[0] || '',
+                                    lastName: (meta.full_name || '').split(' ').slice(1).join(' ') || '',
+                                    email: data.user.email,
+                                    role: rawRole.charAt(0).toUpperCase() + rawRole.slice(1),
+                                    studentId: meta.student_id_number || '',
+                                    rfidUid: '',
+                                    balance: 0,
+                                    dailyCap: 200,
+                                    status: 'active',
+                                    allergies: [],
+                                    pinCode: '1234',
+                                    creditLiability: 0,
+                                    creditLimit: 500,
+                                    isCloudSynced: true
+                                };
+                                authenticatedUser = fallbackUser;
+                                setRegisteredUsers(prev => [fallbackUser, ...prev.filter(u => u.id !== fallbackUser.id)]);
+                                console.warn('[Auth] No profiles table record found — using user_metadata fallback for:', data.user.email);
+                            }
                         }
                     } catch (err) {
                         console.warn("Supabase auth check error:", err);
@@ -6830,13 +6858,7 @@
                     <div className="pointer-events-none absolute -top-32 -left-32 w-[500px] h-[500px] bg-amber-500/20 rounded-full blur-[130px] z-[2]"></div>
                     <div className="pointer-events-none absolute -bottom-40 right-1/4 w-[600px] h-[600px] bg-brand-600/20 rounded-full blur-[150px] z-[2]"></div>
 
-                    {/* TOP FLOATING HEADER BADGE */}
-                    <header className="relative z-10 flex justify-between items-center w-full max-w-6xl mx-auto pt-2">
-                        <span className="text-xs font-bold text-amber-300 bg-white/15 border border-white/30 px-4 py-1.5 rounded-full uppercase tracking-widest backdrop-blur-md shadow-lg flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                            Saint Joseph College Novaliches
-                        </span>
-                    </header>
+
 
                     {/* CENTER FLOATING IOS FROSTED GLASS CARD */}
                     <main className="relative z-10 w-full max-w-lg sm:max-w-xl lg:max-w-2xl mx-auto my-auto py-6">
@@ -6936,18 +6958,9 @@
                                     Log In <Icon.ArrowRight className="w-4 h-4 text-amber-300" />
                                 </button>
 
-                                {/* IOS GLASSMORPHIC RFID TAP PROMPT */}
-                                <div className="p-3 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 flex items-center justify-center gap-2.5 text-[11px] text-amber-300 font-semibold shadow-xs">
-                                    <Icon.CreditCard className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
-                                    <span>Or tap your RFID card to log in</span>
-                                </div>
 
-                                <div className="pt-2 flex justify-between items-center text-xs">
-                                    <span className="text-slate-200/80">Don't have an account?</span>
-                                    <button type="button" onClick={() => setRegisterModalOpen(true)} className="text-amber-300 font-bold hover:text-amber-200 hover:underline flex items-center gap-1 transition-colors">
-                                        <Icon.UserPlus className="w-3.5 h-3.5" /> Register
-                                    </button>
-                                </div>
+
+
                             </form>
 
                             <CreateAccountModal
