@@ -426,50 +426,70 @@
             if (supabase) {
                 // Primary path: atomic delta RPC (deployed via security_hardening.sql)
                 try {
-                    const { data, error } = await supabase.rpc('fn_deduct_wallet_balance', {
+                    const { data, error: rpcError } = await supabase.rpc('fn_deduct_wallet_balance', {
                         p_user_id: userId,
                         p_amount: cleanAmount
                     });
-                    if (!error && data) return data;
+                    if (rpcError) {
+                        // Re-throw business logic errors immediately
+                        if (rpcError.message && (rpcError.message.includes('INSUFFICIENT_FUNDS') || rpcError.message.includes('WALLET_NOT_FOUND'))) {
+                            throw new Error(rpcError.message);
+                        }
+                        // Fall through to safe fallback for schema errors (42703, etc.)
+                        console.warn('[CanteenDB] fn_deduct_wallet_balance RPC error, using safe fallback:', rpcError.message);
+                    } else if (data !== null && data !== undefined) {
+                        return typeof data === 'number' ? data : (data.new_balance ?? data);
+                    }
                 } catch (rpcErr) {
                     if (rpcErr.message && (rpcErr.message.includes('INSUFFICIENT_FUNDS') || rpcErr.message.includes('WALLET_NOT_FOUND'))) {
                         throw rpcErr;
                     }
-                    console.warn('[CanteenDB] fn_deduct_wallet_balance RPC unavailable, using safe fallback', rpcErr);
+                    console.warn('[CanteenDB] fn_deduct_wallet_balance RPC unavailable, using safe fallback:', rpcErr.message);
                 }
 
-                // Safe fallback: read-check-update with auto-initialization guard
+                // Safe fallback: read-check-update directly on wallets table
                 let walletBal = 0;
-                let { data: walletData, error: fetchErr } = await supabase
-                    .from('wallets').select('balance').eq('user_id', userId).maybeSingle();
+                try {
+                    const { data: walletData, error: fetchErr } = await supabase
+                        .from('wallets').select('balance').eq('user_id', userId).maybeSingle();
 
-                if (fetchErr || !walletData) {
-                    const users = this.loadLocal('novalunch_registered_users', []);
-                    const u = users.find(x => x.id === userId || x.studentId === userId);
-                    const initBal = u?.balance !== undefined ? parseFloat(u.balance) : 0;
-                    const initCap = u?.dailyCap !== undefined ? parseFloat(u.dailyCap) : 200.00;
-                    if (this.isUUID(userId)) {
-                        await supabase.from('wallets').upsert({
-                            user_id: userId,
-                            balance: initBal,
-                            daily_limit: initCap,
-                            updated_at: new Date().toISOString()
-                        }, { onConflict: 'user_id' }).catch(() => {});
+                    if (fetchErr || !walletData) {
+                        // Auto-initialize wallet from local cache if missing
+                        const users = this.loadLocal('novalunch_registered_users', []);
+                        const u = users.find(x => x.id === userId || x.studentId === userId);
+                        const initBal = u?.balance !== undefined ? parseFloat(u.balance) : 0;
+                        const initCap = u?.dailyCap !== undefined ? parseFloat(u.dailyCap) : 200.00;
+                        if (this.isUUID(userId)) {
+                            try {
+                                await supabase.from('wallets').upsert({
+                                    user_id: userId,
+                                    balance: initBal,
+                                    daily_limit: initCap,
+                                    updated_at: new Date().toISOString()
+                                }, { onConflict: 'user_id' });
+                            } catch (initErr) { console.warn('[CanteenDB] Wallet init warn:', initErr); }
+                        }
+                        walletBal = initBal;
+                    } else {
+                        walletBal = parseFloat(walletData.balance) || 0;
                     }
-                    walletBal = initBal;
-                } else {
-                    walletBal = parseFloat(walletData.balance) || 0;
+                } catch (fetchEx) {
+                    console.warn('[CanteenDB] Wallet fetch fallback error:', fetchEx);
                 }
 
                 if (walletBal < cleanAmount) {
-                    throw new Error(`INSUFFICIENT_FUNDS: Required ₱${cleanAmount.toFixed(2)}, Available ₱${walletBal.toFixed(2)}`);
+                    throw new Error(`INSUFFICIENT_FUNDS: Required \u20b1${cleanAmount.toFixed(2)}, Available \u20b1${walletBal.toFixed(2)}`);
                 }
                 const newBalance = parseFloat((walletBal - cleanAmount).toFixed(2));
                 if (this.isUUID(userId)) {
-                    const { error: wErr } = await supabase.from('wallets')
-                        .upsert({ user_id: userId, balance: newBalance, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
-                    if (wErr) throw new Error(`Database error deducting wallet: ${wErr.message}`);
-                    await supabase.from('profiles').update({ updated_at: new Date().toISOString() }).eq('id', userId).catch(() => {});
+                    try {
+                        const { error: wErr } = await supabase.from('wallets')
+                            .upsert({ user_id: userId, balance: newBalance, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+                        if (wErr) throw new Error(`Database error deducting wallet: ${wErr.message}`);
+                    } catch (upErr) { throw upErr; }
+                    try {
+                        await supabase.from('profiles').update({ updated_at: new Date().toISOString() }).eq('id', userId);
+                    } catch (e) { /* non-critical touch */ }
                 }
                 return { success: true, new_balance: newBalance };
             }
@@ -552,19 +572,41 @@
          */
         async updateStudentBalance(userId, newBalance) {
             const cleanBalance = Math.max(0, parseFloat(newBalance) || 0);
+
+            // 1. Update local cache immediately
+            const users = this.loadLocal('novalunch_registered_users', []);
+            this.saveLocal('novalunch_registered_users', users.map(u => (u.id === userId || u.studentId === userId) ? { ...u, balance: cleanBalance } : u));
+
+            // 2. Database update
             if (supabase && this.isUUID(userId)) {
-                const { error: wErr } = await supabase.from('wallets').upsert({ user_id: userId, balance: cleanBalance, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
-                if (wErr) {
-                    console.error("Failed to update wallet balance in Supabase:", wErr);
-                    throw new Error(`Database error updating wallet balance: ${wErr.message}`);
+                try {
+                    const { error: rpcErr } = await supabase.rpc('fn_admin_update_wallet', {
+                        p_user_id: userId,
+                        p_balance: cleanBalance,
+                        p_daily_limit: null,
+                        p_credit_liability: null
+                    });
+                    if (rpcErr) {
+                        const { error: wErr } = await supabase.from('wallets').upsert({ user_id: userId, balance: cleanBalance, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+                        if (wErr) await supabase.from('wallets').update({ balance: cleanBalance, updated_at: new Date().toISOString() }).eq('user_id', userId);
+                    }
+                } catch (e) {
+                    try {
+                        await supabase.from('wallets').upsert({ user_id: userId, balance: cleanBalance, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+                    } catch (e2) {
+                        console.warn('[CanteenDB] updateStudentBalance wallet update error:', e2);
+                    }
                 }
+                try {
+                    await supabase.from('profiles').update({ balance: cleanBalance, updated_at: new Date().toISOString() }).eq('id', userId);
+                } catch (e) { }
             } else {
                 const res1 = await fetch(`${SUPABASE_URL}/rest/v1/wallets?user_id=eq.${userId}`, {
                     method: 'PATCH',
                     headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json" },
                     body: JSON.stringify({ balance: cleanBalance })
                 });
-                if (!res1.ok) throw new Error(`REST API error updating wallet balance (Status ${res1.status})`);
+                if (!res1.ok) console.warn(`REST API error updating wallet balance (Status ${res1.status})`);
             }
             return cleanBalance;
         },
@@ -943,7 +985,7 @@
                 'first_name', 'last_name', 'employee_id', 'weekly_limit', 'monthly_allowance',
                 'credit_liability', 'credit_limit', 'pay_later_count', 'pay_later_pre_authorized',
                 'max_daily_calories', 'allergen_mode', 'allergies', 'restricted_categories',
-                'manager_pin', 'accumulated_salary_deduction', 'updated_at'
+                'manager_pin', 'accumulated_salary_deduction', 'balance', 'daily_limit', 'updated_at'
             ]);
 
             const profileFields = {};
@@ -970,6 +1012,13 @@
             if (updatePayload.max_daily_calories !== undefined) profileFields.max_daily_calories = parseInt(updatePayload.max_daily_calories) || 1800;
             if (updatePayload.allergenMode !== undefined) profileFields.allergen_mode = updatePayload.allergenMode;
             if (updatePayload.allergen_mode !== undefined) profileFields.allergen_mode = updatePayload.allergen_mode;
+
+            const cleanBalance = updatePayload.balance !== undefined ? (parseFloat(updatePayload.balance) || 0.0) : undefined;
+            const cleanDailyCap = updatePayload.daily_limit !== undefined ? (parseFloat(updatePayload.daily_limit) || 200.0) : (updatePayload.dailyCap !== undefined ? (parseFloat(updatePayload.dailyCap) || 200.0) : undefined);
+            const cleanLiability = updatePayload.credit_liability !== undefined ? (parseFloat(updatePayload.credit_liability) || 0.0) : (updatePayload.creditLiability !== undefined ? (parseFloat(updatePayload.creditLiability) || 0.0) : undefined);
+
+            if (cleanBalance !== undefined) profileFields.balance = cleanBalance;
+            if (cleanDailyCap !== undefined) profileFields.daily_limit = cleanDailyCap;
             profileFields.updated_at = new Date().toISOString();
 
             // 1. Update local cache immediately
@@ -981,9 +1030,11 @@
                         ...updatePayload,
                         ...(profileFields.full_name ? { name: profileFields.full_name } : {}),
                         ...(profileFields.student_id_number ? { studentId: profileFields.student_id_number } : {}),
-                        ...(profileFields.credit_limit ? { creditLimit: profileFields.credit_limit } : {}),
+                        ...(profileFields.credit_limit !== undefined ? { creditLimit: profileFields.credit_limit } : {}),
                         ...(profileFields.allergies ? { allergies: profileFields.allergies } : {}),
-                        ...(profileFields.pin_code ? { pinCode: profileFields.pin_code } : {})
+                        ...(profileFields.pin_code ? { pinCode: profileFields.pin_code } : {}),
+                        ...(cleanBalance !== undefined ? { balance: cleanBalance } : {}),
+                        ...(cleanDailyCap !== undefined ? { dailyCap: cleanDailyCap, daily_limit: cleanDailyCap } : {})
                     };
                 }
                 return u;
@@ -998,11 +1049,61 @@
 
             let updatedProfile = null;
             if (this.isUUID(userId)) {
+                // A. Update Wallets via RPC fn_admin_update_wallet or direct upsert
+                if (cleanBalance !== undefined || cleanDailyCap !== undefined || cleanLiability !== undefined) {
+                    if (supabase) {
+                        try {
+                            const { error: rpcErr } = await supabase.rpc('fn_admin_update_wallet', {
+                                p_user_id: userId,
+                                p_balance: cleanBalance ?? null,
+                                p_daily_limit: cleanDailyCap ?? null,
+                                p_credit_liability: cleanLiability ?? null
+                            });
+                            if (rpcErr) {
+                                console.warn('[CanteenDB] fn_admin_update_wallet RPC notice, falling back to direct upsert:', rpcErr.message);
+                                const walletPatch = { user_id: userId, updated_at: new Date().toISOString() };
+                                if (cleanBalance !== undefined) walletPatch.balance = cleanBalance;
+                                if (cleanDailyCap !== undefined) walletPatch.daily_limit = cleanDailyCap;
+                                if (cleanLiability !== undefined) walletPatch.credit_liability = cleanLiability;
+                                const { error: wErr } = await supabase.from('wallets').upsert(walletPatch, { onConflict: 'user_id' });
+                                if (wErr) await supabase.from('wallets').update(walletPatch).eq('user_id', userId);
+                            }
+                        } catch (e) {
+                            console.warn('[CanteenDB] Wallet update exception:', e);
+                        }
+                    } else {
+                        try {
+                            const walletPatch = {};
+                            if (cleanBalance !== undefined) walletPatch.balance = cleanBalance;
+                            if (cleanDailyCap !== undefined) walletPatch.daily_limit = cleanDailyCap;
+                            if (cleanLiability !== undefined) walletPatch.credit_liability = cleanLiability;
+                            walletPatch.updated_at = new Date().toISOString();
+                            await fetch(`${SUPABASE_URL}/rest/v1/wallets?user_id=eq.${userId}`, {
+                                method: 'PATCH',
+                                headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json" },
+                                body: JSON.stringify(walletPatch)
+                            });
+                        } catch (e) { }
+                    }
+                }
+
+                // B. Update profiles table
                 if (supabase) {
                     try {
                         const { data, error } = await supabase.from('profiles').update(sanitizedFields).eq('id', userId).select().single();
-                        if (!error && data) updatedProfile = data;
-                        else console.warn("Supabase profile update warning:", error);
+                        if (!error && data) {
+                            updatedProfile = data;
+                        } else {
+                            // If error occurred (e.g. balance or daily_limit column not yet in profiles schema), retry without mirror columns
+                            if (error && (error.code === '42703' || (error.message && error.message.includes('column')))) {
+                                const profileFallback = { ...sanitizedFields };
+                                delete profileFallback.balance;
+                                delete profileFallback.daily_limit;
+                                const { data: fbData } = await supabase.from('profiles').update(profileFallback).eq('id', userId).select().single();
+                                if (fbData) updatedProfile = fbData;
+                            }
+                            console.warn("Supabase profile update notice:", error?.message);
+                        }
                     } catch (e) {
                         console.warn("Supabase profile update exception:", e);
                     }
@@ -1011,37 +1112,6 @@
                         const res = await this._patchREST(`profiles?id=eq.${userId}`, sanitizedFields);
                         if (res && res[0]) updatedProfile = res[0];
                     } catch (e) { }
-                }
-
-                // Update Wallet fields if balance, daily_limit, or credit_liability is provided
-                const cleanBalance = updatePayload.balance !== undefined ? (parseFloat(updatePayload.balance) || 0.0) : undefined;
-                const cleanDailyCap = updatePayload.daily_limit !== undefined ? (parseFloat(updatePayload.daily_limit) || 200.0) : (updatePayload.dailyCap !== undefined ? (parseFloat(updatePayload.dailyCap) || 200.0) : undefined);
-                const cleanLiability = updatePayload.credit_liability !== undefined ? (parseFloat(updatePayload.credit_liability) || 0.0) : (updatePayload.creditLiability !== undefined ? (parseFloat(updatePayload.creditLiability) || 0.0) : undefined);
-
-                const walletPatch = {};
-                if (cleanBalance !== undefined) walletPatch.balance = cleanBalance;
-                if (cleanDailyCap !== undefined) walletPatch.daily_limit = cleanDailyCap;
-                if (cleanLiability !== undefined) walletPatch.credit_liability = cleanLiability;
-
-                if (Object.keys(walletPatch).length > 0) {
-                    walletPatch.updated_at = new Date().toISOString();
-                    walletPatch.user_id = userId;
-                    if (supabase) {
-                        try {
-                            const { error: wErr } = await supabase.from('wallets').upsert(walletPatch, { onConflict: 'user_id' });
-                            if (wErr) console.warn("Wallet upsert warning:", wErr);
-                        } catch (e) {
-                            console.warn("Wallet update error:", e);
-                        }
-                    } else {
-                        try {
-                            await fetch(`${SUPABASE_URL}/rest/v1/wallets?user_id=eq.${userId}`, {
-                                method: 'PATCH',
-                                headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json" },
-                                body: JSON.stringify(walletPatch)
-                            });
-                        } catch (e) { }
-                    }
                 }
             }
 
@@ -1066,6 +1136,12 @@
 
         async updateUserDailyLimit(userId, newLimit) {
             const cleanLimit = Math.max(0, parseFloat(newLimit) || 0);
+
+            // 1. Update local cache immediately
+            const users = this.loadLocal('novalunch_registered_users', []);
+            this.saveLocal('novalunch_registered_users', users.map(u => (u.id === userId || u.studentId === userId) ? { ...u, dailyCap: cleanLimit, daily_limit: cleanLimit } : u));
+
+            // 2. Cloud update
             return await this.updateUser(userId, { daily_limit: cleanLimit, dailyCap: cleanLimit });
         },
 

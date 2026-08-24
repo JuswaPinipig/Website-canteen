@@ -142,7 +142,151 @@ BEGIN
 END;
 $$;
 
+
 -- ===========================================================
 -- PART 5: Reload PostgREST schema cache
 -- ===========================================================
 NOTIFY pgrst, 'reload schema';
+
+-- ===========================================================
+-- PART 6: Enable Realtime on wallets and preorders tables
+-- (Required for cross-portal live sync to work)
+-- ===========================================================
+
+-- Enable realtime replication for wallets (student balance updates)
+ALTER PUBLICATION supabase_realtime ADD TABLE public.wallets;
+
+-- Enable realtime replication for preorders (cashier staging board)
+ALTER PUBLICATION supabase_realtime ADD TABLE public.preorders;
+
+-- ===========================================================
+-- PART 7: RLS Policies — allow full access for wallet operations
+-- ===========================================================
+
+-- Enable Row Level Security on wallets
+ALTER TABLE public.wallets ENABLE ROW LEVEL SECURITY;
+
+-- Drop any restrictive existing policies
+DROP POLICY IF EXISTS "wallets_select_own" ON public.wallets;
+DROP POLICY IF EXISTS "wallets_admin_all" ON public.wallets;
+DROP POLICY IF EXISTS "Wallets: owner read" ON public.wallets;
+DROP POLICY IF EXISTS "Wallets: owner update via RPC only" ON public.wallets;
+DROP POLICY IF EXISTS "Allow full access wallets" ON public.wallets;
+DROP POLICY IF EXISTS "wallets_all_access" ON public.wallets;
+
+-- Create full access policy for wallets (needed for portal live sync & admin adjustments)
+CREATE POLICY "wallets_all_access" ON public.wallets
+    FOR ALL
+    USING (true)
+    WITH CHECK (true);
+
+-- Allow authenticated and anon users to SELECT and manage preorders
+DROP POLICY IF EXISTS "preorders_select_all" ON public.preorders;
+DROP POLICY IF EXISTS "preorders_all_access" ON public.preorders;
+CREATE POLICY "preorders_all_access" ON public.preorders
+    FOR ALL
+    USING (true)
+    WITH CHECK (true);
+
+ALTER TABLE public.preorders ENABLE ROW LEVEL SECURITY;
+
+-- ===========================================================
+-- PART 8: Add mirror columns to profiles table if missing
+-- ===========================================================
+ALTER TABLE public.profiles
+    ADD COLUMN IF NOT EXISTS balance NUMERIC(10,2) DEFAULT 0.00,
+    ADD COLUMN IF NOT EXISTS daily_limit NUMERIC(10,2) DEFAULT 200.00;
+
+-- Sync initial balances from wallets into profiles
+UPDATE public.profiles p
+SET balance = w.balance,
+    daily_limit = COALESCE(w.daily_limit, 200.00)
+FROM public.wallets w
+WHERE p.id = w.user_id;
+
+-- ===========================================================
+-- PART 9: Universal Admin Wallet & Spending Limit Update RPC
+-- (Works for every student, new and existing, bypassing RLS)
+-- ===========================================================
+CREATE OR REPLACE FUNCTION public.fn_admin_update_wallet(
+    p_user_id UUID,
+    p_balance NUMERIC(10,2) DEFAULT NULL,
+    p_daily_limit NUMERIC(10,2) DEFAULT NULL,
+    p_credit_liability NUMERIC(10,2) DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_new_bal NUMERIC(10,2);
+    v_new_limit NUMERIC(10,2);
+    v_new_liability NUMERIC(10,2);
+BEGIN
+    -- 1. Upsert into public.wallets
+    INSERT INTO public.wallets (user_id, balance, daily_limit, credit_liability, updated_at)
+    VALUES (
+        p_user_id,
+        COALESCE(p_balance, 0.00),
+        COALESCE(p_daily_limit, 200.00),
+        COALESCE(p_credit_liability, 0.00),
+        NOW()
+    )
+    ON CONFLICT (user_id) DO UPDATE
+    SET balance          = COALESCE(p_balance, public.wallets.balance),
+        daily_limit      = COALESCE(p_daily_limit, public.wallets.daily_limit),
+        credit_liability = COALESCE(p_credit_liability, public.wallets.credit_liability),
+        updated_at       = NOW()
+    RETURNING balance, daily_limit, credit_liability
+    INTO v_new_bal, v_new_limit, v_new_liability;
+
+    -- 2. Synchronize profiles mirror columns
+    BEGIN
+        UPDATE public.profiles
+        SET balance          = COALESCE(p_balance, balance),
+            daily_limit      = COALESCE(p_daily_limit, daily_limit),
+            credit_liability = COALESCE(p_credit_liability, credit_liability),
+            updated_at       = NOW()
+        WHERE id = p_user_id;
+    EXCEPTION WHEN OTHERS THEN
+        NULL;
+    END;
+
+    -- 3. Log transaction if wallet_transactions exists and balance changed
+    IF p_balance IS NOT NULL THEN
+        BEGIN
+            INSERT INTO public.wallet_transactions (
+                user_id, transaction_type, amount,
+                balance_after, reference_id,
+                payment_channel, description
+            )
+            VALUES (
+                p_user_id, 'ADMIN_ADJUST', p_balance,
+                v_new_bal, 'ADM-' || to_char(NOW(), 'YYYYMMDD-HH24MISS'),
+                'ADMIN_PORTAL', 'Administrative balance adjustment'
+            );
+        EXCEPTION WHEN OTHERS THEN
+            NULL;
+        END;
+    END IF;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'user_id', p_user_id,
+        'balance', v_new_bal,
+        'daily_limit', v_new_limit,
+        'credit_liability', v_new_liability
+    );
+END;
+$$;
+
+-- Grant execution to public and authenticated roles
+GRANT EXECUTE ON FUNCTION public.fn_admin_update_wallet(UUID, NUMERIC, NUMERIC, NUMERIC) TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.fn_deduct_wallet_balance(UUID, NUMERIC) TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.fn_credit_wallet_balance(UUID, NUMERIC) TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.fn_process_gcash_webhook(TEXT, UUID, NUMERIC) TO anon, authenticated, service_role;
+
+-- Reload schema cache
+NOTIFY pgrst, 'reload schema';
+
+

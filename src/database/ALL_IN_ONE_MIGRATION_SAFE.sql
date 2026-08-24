@@ -508,17 +508,33 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
-    v_new_balance NUMERIC(10,2);
+    v_current_balance NUMERIC(10,2);
+    v_new_balance     NUMERIC(10,2);
 BEGIN
-    UPDATE public.profiles
-    SET balance = balance - p_amount,
-        updated_at = NOW()
-    WHERE id = p_user_id AND balance >= p_amount
-    RETURNING balance INTO v_new_balance;
+    SELECT balance INTO v_current_balance
+    FROM public.wallets
+    WHERE user_id = p_user_id
+    FOR UPDATE;
 
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'Insufficient balance or user not found.';
+        RAISE EXCEPTION 'WALLET_NOT_FOUND: No wallet exists for user %', p_user_id;
     END IF;
+
+    IF v_current_balance < p_amount THEN
+        RAISE EXCEPTION 'INSUFFICIENT_FUNDS: Balance is % but tried to deduct %', v_current_balance, p_amount;
+    END IF;
+
+    UPDATE public.wallets
+    SET balance     = balance - p_amount,
+        daily_spent = COALESCE(daily_spent, 0) + p_amount,
+        updated_at  = NOW()
+    WHERE user_id = p_user_id
+    RETURNING balance INTO v_new_balance;
+
+    -- Mirror to profiles if column exists
+    BEGIN
+        UPDATE public.profiles SET balance = v_new_balance, updated_at = NOW() WHERE id = p_user_id;
+    EXCEPTION WHEN OTHERS THEN NULL; END;
 
     RETURN v_new_balance;
 END;
@@ -536,13 +552,70 @@ AS $$
 DECLARE
     v_new_balance NUMERIC(10,2);
 BEGIN
-    UPDATE public.profiles
-    SET balance = balance + p_amount,
+    INSERT INTO public.wallets (user_id, balance, updated_at)
+    VALUES (p_user_id, p_amount, NOW())
+    ON CONFLICT (user_id) DO UPDATE
+    SET balance    = public.wallets.balance + EXCLUDED.balance,
         updated_at = NOW()
-    WHERE id = p_user_id
     RETURNING balance INTO v_new_balance;
 
+    -- Mirror to profiles if column exists
+    BEGIN
+        UPDATE public.profiles SET balance = v_new_balance, updated_at = NOW() WHERE id = p_user_id;
+    EXCEPTION WHEN OTHERS THEN NULL; END;
+
     RETURN v_new_balance;
+END;
+$$;
+
+-- Universal Admin Wallet & Spending Limit Update RPC
+CREATE OR REPLACE FUNCTION public.fn_admin_update_wallet(
+    p_user_id UUID,
+    p_balance NUMERIC(10,2) DEFAULT NULL,
+    p_daily_limit NUMERIC(10,2) DEFAULT NULL,
+    p_credit_liability NUMERIC(10,2) DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_new_bal NUMERIC(10,2);
+    v_new_limit NUMERIC(10,2);
+    v_new_liability NUMERIC(10,2);
+BEGIN
+    INSERT INTO public.wallets (user_id, balance, daily_limit, credit_liability, updated_at)
+    VALUES (
+        p_user_id,
+        COALESCE(p_balance, 0.00),
+        COALESCE(p_daily_limit, 200.00),
+        COALESCE(p_credit_liability, 0.00),
+        NOW()
+    )
+    ON CONFLICT (user_id) DO UPDATE
+    SET balance          = COALESCE(p_balance, public.wallets.balance),
+        daily_limit      = COALESCE(p_daily_limit, public.wallets.daily_limit),
+        credit_liability = COALESCE(p_credit_liability, public.wallets.credit_liability),
+        updated_at       = NOW()
+    RETURNING balance, daily_limit, credit_liability
+    INTO v_new_bal, v_new_limit, v_new_liability;
+
+    BEGIN
+        UPDATE public.profiles
+        SET balance          = COALESCE(p_balance, balance),
+            daily_limit      = COALESCE(p_daily_limit, daily_limit),
+            credit_liability = COALESCE(p_credit_liability, credit_liability),
+            updated_at       = NOW()
+        WHERE id = p_user_id;
+    EXCEPTION WHEN OTHERS THEN NULL; END;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'user_id', p_user_id,
+        'balance', v_new_bal,
+        'daily_limit', v_new_limit,
+        'credit_liability', v_new_liability
+    );
 END;
 $$;
 
@@ -558,14 +631,24 @@ SECURITY DEFINER
 AS $$
 DECLARE
     v_new_bal NUMERIC(10,2);
+    v_old_bal NUMERIC(10,2);
 BEGIN
-    UPDATE public.profiles
-    SET balance = balance + p_amount, updated_at = NOW()
-    WHERE id = p_student_id
+    SELECT balance INTO v_old_bal FROM public.wallets WHERE user_id = p_student_id;
+
+    INSERT INTO public.wallets (user_id, balance, updated_at)
+    VALUES (p_student_id, p_amount, NOW())
+    ON CONFLICT (user_id) DO UPDATE
+    SET balance    = public.wallets.balance + p_amount,
+        updated_at = NOW()
     RETURNING balance INTO v_new_bal;
 
+    -- Mirror to profiles if column exists
+    BEGIN
+        UPDATE public.profiles SET balance = v_new_bal, updated_at = NOW() WHERE id = p_student_id;
+    EXCEPTION WHEN OTHERS THEN NULL; END;
+
     INSERT INTO public.wallet_transactions (user_id, transaction_type, amount, balance_before, balance_after, reference_id, payment_channel, description)
-    VALUES (p_student_id, 'RELOAD_GCASH', p_amount, COALESCE(v_new_bal - p_amount, 0), v_new_bal, p_ref_no, 'GCASH_WEBHOOK', 'Instant GCash Webhook Auto-Credit');
+    VALUES (p_student_id, 'RELOAD_GCASH', p_amount, COALESCE(v_old_bal, 0), v_new_bal, p_ref_no, 'GCASH_WEBHOOK', 'Instant GCash Webhook Auto-Credit');
 
     RETURN jsonb_build_object('success', true, 'new_balance', v_new_bal, 'ref_no', p_ref_no);
 END;

@@ -17535,11 +17535,11 @@
                         const updatedWallet = payload.new;
                         if (!updatedWallet) return;
                         const newBal = parseFloat(updatedWallet.balance) || 0;
-                        const newLimit = updatedWallet.daily_limit ? parseFloat(updatedWallet.daily_limit) : 200.0;
+                        const newLimit = (updatedWallet.daily_limit !== null && updatedWallet.daily_limit !== undefined) ? parseFloat(updatedWallet.daily_limit) : 200.0;
 
                         setRegisteredUsers((prev) => prev.map(u =>
                             u.id === updatedWallet.user_id
-                                ? { ...u, balance: newBal, dailyCap: newLimit }
+                                ? { ...u, balance: newBal, dailyCap: newLimit, daily_limit: newLimit }
                                 : u
                         ));
 
@@ -17547,7 +17547,7 @@
                             if (prev && prev.id === updatedWallet.user_id) {
                                 setStudentBalance(newBal);
                                 setDailyLimit(newLimit);
-                                return { ...prev, balance: newBal, dailyCap: newLimit };
+                                return { ...prev, balance: newBal, dailyCap: newLimit, daily_limit: newLimit };
                             }
                             return prev;
                         });
@@ -17557,6 +17557,8 @@
                         if (!updatedProf) return;
                         setRegisteredUsers((prev) => prev.map(u => {
                             if (u.id === updatedProf.id || (u.email && updatedProf.email && u.email.toLowerCase() === updatedProf.email.toLowerCase())) {
+                                const hasBal = updatedProf.balance !== undefined && updatedProf.balance !== null;
+                                const hasCap = updatedProf.daily_limit !== undefined && updatedProf.daily_limit !== null;
                                 return {
                                     ...u,
                                     name: updatedProf.full_name || u.name,
@@ -17566,14 +17568,18 @@
                                     allergies: updatedProf.allergies || u.allergies,
                                     creditLiability: parseFloat(updatedProf.credit_liability) || u.creditLiability,
                                     creditLimit: parseFloat(updatedProf.credit_limit) || u.creditLimit,
-                                    balance: updatedProf.balance !== undefined && updatedProf.balance !== null ? parseFloat(updatedProf.balance) : u.balance,
-                                    dailyCap: updatedProf.daily_limit !== undefined && updatedProf.daily_limit !== null ? parseFloat(updatedProf.daily_limit) : u.dailyCap
+                                    ...(hasBal ? { balance: parseFloat(updatedProf.balance) } : {}),
+                                    ...(hasCap ? { dailyCap: parseFloat(updatedProf.daily_limit), daily_limit: parseFloat(updatedProf.daily_limit) } : {})
                                 };
                             }
                             return u;
                         }));
                         setCurrentStudent((prev) => {
                             if (prev && (prev.id === updatedProf.id || (prev.email && updatedProf.email && prev.email.toLowerCase() === updatedProf.email.toLowerCase()))) {
+                                const hasBal = updatedProf.balance !== undefined && updatedProf.balance !== null;
+                                const hasCap = updatedProf.daily_limit !== undefined && updatedProf.daily_limit !== null;
+                                if (hasBal) setStudentBalance(parseFloat(updatedProf.balance));
+                                if (hasCap) setDailyLimit(parseFloat(updatedProf.daily_limit));
                                 return {
                                     ...prev,
                                     name: updatedProf.full_name || prev.name,
@@ -17581,7 +17587,9 @@
                                     rfidUid: updatedProf.rfid_uid ?? prev.rfidUid,
                                     status: updatedProf.status || prev.status,
                                     allergies: updatedProf.allergies || prev.allergies,
-                                    creditLiability: parseFloat(updatedProf.credit_liability) || prev.creditLiability
+                                    creditLiability: parseFloat(updatedProf.credit_liability) || prev.creditLiability,
+                                    ...(hasBal ? { balance: parseFloat(updatedProf.balance) } : {}),
+                                    ...(hasCap ? { dailyCap: parseFloat(updatedProf.daily_limit), daily_limit: parseFloat(updatedProf.daily_limit) } : {})
                                 };
                             }
                             return prev;
@@ -18106,6 +18114,9 @@
 
             // Edit & Archive Handlers (Universal Multi-Role)
             const handleUpdateStudent = async (updatedUser) => {
+                const cleanBal = updatedUser.balance !== undefined ? (parseFloat(updatedUser.balance) || 0) : undefined;
+                const cleanCap = updatedUser.dailyCap !== undefined ? (parseFloat(updatedUser.dailyCap) || 200) : (updatedUser.daily_limit !== undefined ? (parseFloat(updatedUser.daily_limit) || 200) : undefined);
+
                 if (window.CanteenDB && updatedUser.id) {
                     try {
                         await window.CanteenDB.updateUser(updatedUser.id, {
@@ -18116,8 +18127,9 @@
                             rfid_uid: updatedUser.rfidUid || null,
                             pin_code: updatedUser.pinCode || updatedUser.managerPin || null,
                             status: updatedUser.status || 'active',
-                            balance: updatedUser.balance,
-                            daily_limit: updatedUser.dailyCap,
+                            balance: cleanBal,
+                            daily_limit: cleanCap,
+                            dailyCap: cleanCap,
                             credit_liability: updatedUser.creditLiability,
                             credit_limit: updatedUser.creditLimit,
                             pay_later_allowance: updatedUser.payLaterAllowance,
@@ -18128,14 +18140,30 @@
                     }
                 }
 
-                setRegisteredUsers(prev => prev.map(u => u.id === updatedUser.id ? { ...u, ...updatedUser } : u));
+                setRegisteredUsers(prev => prev.map(u => u.id === updatedUser.id ? {
+                    ...u,
+                    ...updatedUser,
+                    ...(cleanBal !== undefined ? { balance: cleanBal } : {}),
+                    ...(cleanCap !== undefined ? { dailyCap: cleanCap, daily_limit: cleanCap } : {})
+                } : u));
+
                 if (currentStudent && currentStudent.id === updatedUser.id) {
-                    setCurrentStudent(prev => ({ ...prev, ...updatedUser }));
-                    if (updatedUser.balance !== undefined) setStudentBalance(updatedUser.balance);
-                    if (updatedUser.dailyCap !== undefined) setDailyLimit(updatedUser.dailyCap);
+                    setCurrentStudent(prev => ({
+                        ...prev,
+                        ...updatedUser,
+                        ...(cleanBal !== undefined ? { balance: cleanBal } : {}),
+                        ...(cleanCap !== undefined ? { dailyCap: cleanCap, daily_limit: cleanCap } : {})
+                    }));
+                    if (cleanBal !== undefined) setStudentBalance(cleanBal);
+                    if (cleanCap !== undefined) setDailyLimit(cleanCap);
                 }
                 if (currentUser && currentUser.id === updatedUser.id) {
-                    setCurrentUser(prev => ({ ...prev, ...updatedUser }));
+                    setCurrentUser(prev => ({
+                        ...prev,
+                        ...updatedUser,
+                        ...(cleanBal !== undefined ? { balance: cleanBal } : {}),
+                        ...(cleanCap !== undefined ? { dailyCap: cleanCap, daily_limit: cleanCap } : {})
+                    }));
                 }
             };
 
