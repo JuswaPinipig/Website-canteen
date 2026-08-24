@@ -17643,6 +17643,37 @@
                 };
             }, [syncCloudData]);
 
+            // Wallet Balance Polling — refresh student balance every 30s from Supabase
+            // This guarantees student sees updated balance even if realtime RLS blocks the broadcast
+            useEffect(() => {
+                if (!currentStudent || !currentStudent.id) return;
+                const studentId = currentStudent.id;
+
+                const pollWallet = async () => {
+                    try {
+                        if (window.CanteenDB && typeof window.CanteenDB.getWalletByUserId === 'function') {
+                            const wallet = await window.CanteenDB.getWalletByUserId(studentId);
+                            if (wallet && typeof wallet.balance !== 'undefined') {
+                                const freshBal = parseFloat(wallet.balance) || 0;
+                                const freshLimit = wallet.daily_limit ? parseFloat(wallet.daily_limit) : 200.0;
+                                setStudentBalance(prev => {
+                                    if (Math.abs(prev - freshBal) > 0.001) {
+                                        setCurrentStudent(s => s && s.id === studentId ? { ...s, balance: freshBal, dailyCap: freshLimit } : s);
+                                        setDailyLimit(freshLimit);
+                                        return freshBal;
+                                    }
+                                    return prev;
+                                });
+                            }
+                        }
+                    } catch (e) { /* silent — polling is best-effort */ }
+                };
+
+                pollWallet(); // immediate fetch on student login
+                const interval = setInterval(pollWallet, 30000); // then every 30s
+                return () => clearInterval(interval);
+            }, [currentStudent?.id]);
+
             // Quick Role Switcher (Hardened Session Initialization)
             const handleSelectRoleQuick = (role, userIdentifier = null, resolvedUser = null) => {
                 const targetRole = String(role).toUpperCase();
