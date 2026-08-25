@@ -986,9 +986,17 @@ class KioskHTTPRequestHandler(BaseHTTPRequestHandler):
         return
 
 def start_kiosk_api_server(port=HTTP_PORT):
-    server = ThreadedHTTPServer(("0.0.0.0", port), KioskHTTPRequestHandler)
-    print(f"[KIOSK API SERVER] 🟢 Live Real-Time Multi-Threaded Bridge listening on http://127.0.0.1:{port}")
-    server.serve_forever()
+    for attempt in range(5):
+        try:
+            server = ThreadedHTTPServer(("0.0.0.0", port), KioskHTTPRequestHandler)
+            print(f"[KIOSK API SERVER] 🟢 Live Real-Time Multi-Threaded Bridge listening on http://127.0.0.1:{port}")
+            server.serve_forever()
+            break
+        except OSError as e:
+            if attempt < 4:
+                time.sleep(0.5)
+            else:
+                print(f"[KIOSK API SERVER] ⚠️ Notice: Port {port} in use ({e}). Bridge will retry in background.")
 
 # ==============================================================================
 # NOVALUNCH STUDENT-FACING DISPLAY (CFD) MONITOR APPLICATION
