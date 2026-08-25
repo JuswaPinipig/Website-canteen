@@ -237,12 +237,14 @@ class DatabaseManager:
                                 bal = float(w.get("balance", p.get("balance", 200.0)))
                                 dlim = float(w.get("daily_limit", p.get("daily_limit", 200.0)))
                                 if st_id in by_id:
+                                    by_id[st_id]["id"] = p.get("id")
                                     by_id[st_id]["balance"] = bal
                                     by_id[st_id]["daily_limit"] = dlim
                                     if p.get("rfid_uid"):
                                         by_id[st_id]["rfid_uid"] = p.get("rfid_uid")
                                 else:
                                     by_id[st_id] = {
+                                        "id": p.get("id"),
                                         "full_name": p.get("full_name", "Student"),
                                         "email": p.get("email", ""),
                                         "role": "student",
@@ -422,17 +424,21 @@ class OfflineSyncWorker(threading.Thread):
                 local_students = self.db.load_accounts()
                 matched_st = next((s for s in local_students if s.get("student_id_number") == student_id or s.get("rfid_uid") == student_id or s.get("id") == student_id), None)
                 user_uuid = matched_st.get("id") if (matched_st and str(matched_st.get("id", "")).count("-") == 4) else None
-                student_name = matched_st.get("full_name", "Student") if matched_st else "Offline Student"
+
+                # Format payment_method to match DB check constraint: ('rfid', 'wallet', 'cash', 'online', 'pay_later')
+                pm = str(pay_method or 'rfid').strip().lower()
+                if pm not in ('rfid', 'wallet', 'cash', 'online', 'pay_later'):
+                    pm = 'rfid'
 
                 order_payload = {
                     "order_number": tx_id,
-                    "student_name": student_name,
                     "total_amount": float(total_amt),
                     "final_amount": float(total_amt),
-                    "discount_amount": 0,
-                    "payment_method": (pay_method or 'RFID').upper(),
-                    "order_source": "offline_edge_kiosk",
-                    "order_status": "COMPLETED"
+                    "discount_amount": 0.0,
+                    "payment_method": pm,
+                    "payment_status": "paid",
+                    "order_source": "ai_kiosk",
+                    "order_status": "completed"
                 }
                 if user_uuid:
                     order_payload["user_id"] = user_uuid
@@ -452,9 +458,49 @@ class OfflineSyncWorker(threading.Thread):
                     )
                     with urllib.request.urlopen(req, timeout=5) as resp:
                         if resp.status in (200, 201):
+                            resp_body = resp.read().decode('utf-8')
+                            try:
+                                created_data = json.loads(resp_body) if resp_body else []
+                                created_order = created_data[0] if isinstance(created_data, list) and created_data else (created_data if isinstance(created_data, dict) else {})
+                                created_id = created_order.get("id")
+                                if created_id and items:
+                                    items_payload = [{
+                                        "order_id": created_id,
+                                        "product_name": itm.get("name", "Item"),
+                                        "unit_price": float(itm.get("price", 0.0)),
+                                        "quantity": int(itm.get("qty", 1))
+                                    } for itm in items]
+                                    items_req = urllib.request.Request(
+                                        f"{SUPABASE_URL}/rest/v1/order_items",
+                                        data=json.dumps(items_payload).encode('utf-8'),
+                                        headers={
+                                            "apikey": SUPABASE_ANON_KEY,
+                                            "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
+                                            "Content-Type": "application/json"
+                                        },
+                                        method="POST"
+                                    )
+                                    with urllib.request.urlopen(items_req, timeout=5):
+                                        pass
+                            except Exception:
+                                pass
+
                             c.execute("UPDATE pending_transactions SET sync_status = 'SYNCED' WHERE transaction_id = ?", (tx_id,))
                             conn.commit()
                             print(f"[EDGE SYNC] ☁️ Replayed offline transaction to cloud: {tx_id}")
+                except urllib.error.HTTPError as http_err:
+                    err_body = ""
+                    try:
+                        err_body = http_err.read().decode('utf-8')
+                    except Exception:
+                        pass
+                    if http_err.code == 409 or "duplicate key" in err_body or "unique constraint" in err_body:
+                        c.execute("UPDATE pending_transactions SET sync_status = 'SYNCED' WHERE transaction_id = ?", (tx_id,))
+                        conn.commit()
+                        print(f"[EDGE SYNC] ☁️ Transaction already exists in cloud: {tx_id}")
+                    else:
+                        print(f"[EDGE SYNC NOTICE] Offline sync pending connection for {tx_id}: {http_err} {err_body}")
+                        break
                 except Exception as sync_err:
                     print(f"[EDGE SYNC NOTICE] Offline sync pending connection for {tx_id}: {sync_err}")
                     break  # Pause sweep if network is unreachable
@@ -782,214 +828,283 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
+    def handle_error(self, request, client_address):
+        exc_type, exc_value, _ = sys.exc_info()
+        if exc_type in (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, TimeoutError, OSError):
+            return
+        if isinstance(exc_value, OSError) and getattr(exc_value, 'winerror', None) in (10053, 10054, 10058, 10060, 32):
+            return
+        super().handle_error(request, client_address)
+
 class KioskHTTPRequestHandler(BaseHTTPRequestHandler):
+    def handle(self):
+        try:
+            super().handle()
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, TimeoutError, OSError):
+            pass
+        except Exception:
+            pass
+
+    def finish(self):
+        try:
+            super().finish()
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, TimeoutError, OSError):
+            pass
+        except Exception:
+            pass
+
     def _send_cors_headers(self, status=200, content_type="application/json"):
-        self.send_response(status)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, HEAD")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
-        self.send_header("Content-Type", content_type)
+        try:
+            self.send_response(status)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, HEAD")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+            self.send_header("Content-Type", content_type)
+        except Exception:
+            pass
 
     def do_OPTIONS(self):
-        self._send_cors_headers(200)
-        self.end_headers()
+        try:
+            self._send_cors_headers(200)
+            self.end_headers()
+        except Exception:
+            pass
 
     def do_HEAD(self):
-        parsed = urllib.parse.urlparse(self.path)
-        path = parsed.path
+        try:
+            parsed = urllib.parse.urlparse(self.path)
+            path = parsed.path
 
-        if path in ["/api/kiosk/status", "/api/scan_tray"]:
-            self._send_cors_headers(200, "application/json")
-            self.end_headers()
-        elif path in ["/api/camera/frame.jpg", "/api/camera/frame_clean.jpg", "/api/camera/frame_annotated.jpg"]:
-            self._send_cors_headers(200, "image/jpeg")
-            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
-            self.send_header("Pragma", "no-cache")
-            self.send_header("Expires", "0")
-            self.end_headers()
-        elif path == "/api/camera/stream":
-            self.send_response(200)
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
-            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
-            self.end_headers()
-        else:
-            self._send_cors_headers(200, "application/json")
-            self.end_headers()
+            if path in ["/api/kiosk/status", "/api/scan_tray"]:
+                self._send_cors_headers(200, "application/json")
+                self.end_headers()
+            elif path in ["/api/camera/frame.jpg", "/api/camera/frame_clean.jpg", "/api/camera/frame_annotated.jpg"]:
+                self._send_cors_headers(200, "image/jpeg")
+                self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
+                self.send_header("Pragma", "no-cache")
+                self.send_header("Expires", "0")
+                self.end_headers()
+            elif path == "/api/camera/stream":
+                self.send_response(200)
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+                self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
+                self.end_headers()
+            else:
+                self._send_cors_headers(200, "application/json")
+                self.end_headers()
+        except Exception:
+            pass
 
     def do_GET(self):
-        parsed = urllib.parse.urlparse(self.path)
-        path = parsed.path
+        try:
+            parsed = urllib.parse.urlparse(self.path)
+            path = parsed.path
 
-        if path in ["/api/kiosk/status", "/api/scan_tray"]:
-            self._send_cors_headers(200, "application/json")
-            self.end_headers()
-            if _GLOBAL_KIOSK_REF is not None:
-                state_data = _GLOBAL_KIOSK_REF.get_live_kiosk_data()
-            else:
-                state_data = {
-                    "status": "SUCCESS",
-                    "kiosk_state": "IDLE",
-                    "student": None,
-                    "cart": [],
-                    "total_amount": 0.0,
-                    "timestamp": time.time()
-                }
-            self.wfile.write(json.dumps(state_data).encode('utf-8'))
+            if path in ["/api/kiosk/status", "/api/scan_tray"]:
+                self._send_cors_headers(200, "application/json")
+                self.end_headers()
+                if _GLOBAL_KIOSK_REF is not None:
+                    state_data = _GLOBAL_KIOSK_REF.get_live_kiosk_data()
+                else:
+                    state_data = {
+                        "status": "SUCCESS",
+                        "kiosk_state": "IDLE",
+                        "student": None,
+                        "cart": [],
+                        "total_amount": 0.0,
+                        "timestamp": time.time()
+                    }
+                try:
+                    self.wfile.write(json.dumps(state_data).encode('utf-8'))
+                except Exception:
+                    pass
 
-        elif path in ["/api/camera/frame.jpg", "/api/camera/frame_clean.jpg"]:
-            if _GLOBAL_KIOSK_REF is not None and hasattr(_GLOBAL_KIOSK_REF, 'camera_thread') and _GLOBAL_KIOSK_REF.camera_thread:
-                jpeg_bytes = _GLOBAL_KIOSK_REF.camera_thread.get_jpeg_frame(draw_boxes=False)
-                if jpeg_bytes:
-                    self._send_cors_headers(200, "image/jpeg")
-                    self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
-                    self.send_header("Pragma", "no-cache")
-                    self.send_header("Expires", "0")
-                    self.send_header("Content-Length", str(len(jpeg_bytes)))
-                    self.end_headers()
-                    self.wfile.write(jpeg_bytes)
-                    return
-            self._send_cors_headers(404, "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"error": "Camera frame unavailable"}).encode('utf-8'))
-
-        elif path == "/api/camera/frame_annotated.jpg":
-            if _GLOBAL_KIOSK_REF is not None and hasattr(_GLOBAL_KIOSK_REF, 'camera_thread') and _GLOBAL_KIOSK_REF.camera_thread:
-                jpeg_bytes = _GLOBAL_KIOSK_REF.camera_thread.get_annotated_jpeg_frame()
-                if jpeg_bytes:
-                    self._send_cors_headers(200, "image/jpeg")
-                    self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
-                    self.send_header("Pragma", "no-cache")
-                    self.send_header("Expires", "0")
-                    self.send_header("Content-Length", str(len(jpeg_bytes)))
-                    self.end_headers()
-                    self.wfile.write(jpeg_bytes)
-                    return
-            self._send_cors_headers(404, "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"error": "Camera frame unavailable"}).encode('utf-8'))
-
-        elif path == "/api/camera/stream":
-            query = urllib.parse.parse_qs(parsed.query)
-            draw_annotated = query.get("annotated", ["0"])[0].lower() in ["1", "true", "yes"]
-            self.send_response(200)
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
-            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
-            self.send_header("Pragma", "no-cache")
-            self.send_header("Connection", "close")
-            self.end_headers()
-            try:
-                while True:
-                    if _GLOBAL_KIOSK_REF is not None and hasattr(_GLOBAL_KIOSK_REF, 'camera_thread') and _GLOBAL_KIOSK_REF.camera_thread:
-                        jpeg_bytes = _GLOBAL_KIOSK_REF.camera_thread.get_jpeg_frame(draw_boxes=draw_annotated)
-                        if jpeg_bytes:
-                            self.wfile.write(b"--frame\r\n")
-                            self.wfile.write(b"Content-Type: image/jpeg\r\n")
-                            self.wfile.write(f"Content-Length: {len(jpeg_bytes)}\r\n\r\n".encode('utf-8'))
+            elif path in ["/api/camera/frame.jpg", "/api/camera/frame_clean.jpg"]:
+                if _GLOBAL_KIOSK_REF is not None and hasattr(_GLOBAL_KIOSK_REF, 'camera_thread') and _GLOBAL_KIOSK_REF.camera_thread:
+                    jpeg_bytes = _GLOBAL_KIOSK_REF.camera_thread.get_jpeg_frame(draw_boxes=False)
+                    if jpeg_bytes:
+                        self._send_cors_headers(200, "image/jpeg")
+                        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
+                        self.send_header("Pragma", "no-cache")
+                        self.send_header("Expires", "0")
+                        self.send_header("Content-Length", str(len(jpeg_bytes)))
+                        self.end_headers()
+                        try:
                             self.wfile.write(jpeg_bytes)
-                            self.wfile.write(b"\r\n")
-                            self.wfile.flush()
-                    time.sleep(0.033)
-            except Exception:
-                pass
+                        except Exception:
+                            pass
+                        return
+                self._send_cors_headers(404, "application/json")
+                self.end_headers()
+                try:
+                    self.wfile.write(json.dumps({"error": "Camera frame unavailable"}).encode('utf-8'))
+                except Exception:
+                    pass
 
-        elif path == "/api/kiosk/events":
-            # Server-Sent Events (SSE) Real-Time stream
-            self._send_cors_headers(200, "text/event-stream")
-            self.send_header("Cache-Control", "no-cache")
-            self.send_header("Connection", "keep-alive")
-            self.end_headers()
+            elif path == "/api/camera/frame_annotated.jpg":
+                if _GLOBAL_KIOSK_REF is not None and hasattr(_GLOBAL_KIOSK_REF, 'camera_thread') and _GLOBAL_KIOSK_REF.camera_thread:
+                    jpeg_bytes = _GLOBAL_KIOSK_REF.camera_thread.get_annotated_jpeg_frame()
+                    if jpeg_bytes:
+                        self._send_cors_headers(200, "image/jpeg")
+                        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
+                        self.send_header("Pragma", "no-cache")
+                        self.send_header("Expires", "0")
+                        self.send_header("Content-Length", str(len(jpeg_bytes)))
+                        self.end_headers()
+                        try:
+                            self.wfile.write(jpeg_bytes)
+                        except Exception:
+                            pass
+                        return
+                self._send_cors_headers(404, "application/json")
+                self.end_headers()
+                try:
+                    self.wfile.write(json.dumps({"error": "Camera frame unavailable"}).encode('utf-8'))
+                except Exception:
+                    pass
 
-            with _SSE_LOCK:
-                _SSE_CLIENTS.append(self.wfile)
+            elif path == "/api/camera/stream":
+                query = urllib.parse.parse_qs(parsed.query)
+                draw_annotated = query.get("annotated", ["0"])[0].lower() in ["1", "true", "yes"]
+                self.send_response(200)
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+                self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
+                self.send_header("Pragma", "no-cache")
+                self.send_header("Connection", "close")
+                self.end_headers()
+                try:
+                    while True:
+                        if _GLOBAL_KIOSK_REF is not None and hasattr(_GLOBAL_KIOSK_REF, 'camera_thread') and _GLOBAL_KIOSK_REF.camera_thread:
+                            jpeg_bytes = _GLOBAL_KIOSK_REF.camera_thread.get_jpeg_frame(draw_boxes=draw_annotated)
+                            if jpeg_bytes:
+                                self.wfile.write(b"--frame\r\n")
+                                self.wfile.write(b"Content-Type: image/jpeg\r\n")
+                                self.wfile.write(f"Content-Length: {len(jpeg_bytes)}\r\n\r\n".encode('utf-8'))
+                                self.wfile.write(jpeg_bytes)
+                                self.wfile.write(b"\r\n")
+                                self.wfile.flush()
+                        time.sleep(0.033)
+                except Exception:
+                    pass
 
-            # Send initial state snapshot immediately
-            if _GLOBAL_KIOSK_REF is not None:
-                init_payload = _GLOBAL_KIOSK_REF.get_live_kiosk_data()
-                self.wfile.write(f"event: kiosk_update\ndata: {json.dumps(init_payload)}\n\n".encode('utf-8'))
-                self.wfile.flush()
+            elif path == "/api/kiosk/events":
+                # Server-Sent Events (SSE) Real-Time stream
+                self._send_cors_headers(200, "text/event-stream")
+                self.send_header("Cache-Control", "no-cache")
+                self.send_header("Connection", "keep-alive")
+                self.end_headers()
 
-            try:
-                while True:
-                    time.sleep(15)
-                    self.wfile.write(b": heartbeat\n\n")
-                    self.wfile.flush()
-            except Exception:
                 with _SSE_LOCK:
-                    if self.wfile in _SSE_CLIENTS:
-                        _SSE_CLIENTS.remove(self.wfile)
+                    _SSE_CLIENTS.append(self.wfile)
 
-        else:
-            self._send_cors_headers(404, "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"error": "Not Found"}).encode('utf-8'))
+                # Send initial state snapshot immediately
+                if _GLOBAL_KIOSK_REF is not None:
+                    init_payload = _GLOBAL_KIOSK_REF.get_live_kiosk_data()
+                    try:
+                        self.wfile.write(f"event: kiosk_update\ndata: {json.dumps(init_payload)}\n\n".encode('utf-8'))
+                        self.wfile.flush()
+                    except Exception:
+                        pass
+
+                try:
+                    while True:
+                        time.sleep(15)
+                        self.wfile.write(b": heartbeat\n\n")
+                        self.wfile.flush()
+                except Exception:
+                    with _SSE_LOCK:
+                        if self.wfile in _SSE_CLIENTS:
+                            _SSE_CLIENTS.remove(self.wfile)
+
+            else:
+                self._send_cors_headers(404, "application/json")
+                self.end_headers()
+                try:
+                    self.wfile.write(json.dumps({"error": "Not Found"}).encode('utf-8'))
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def do_POST(self):
-        parsed = urllib.parse.urlparse(self.path)
-        path = parsed.path
-
-        content_len = int(self.headers.get('Content-Length', 0))
-        body = self.rfile.read(content_len).decode('utf-8') if content_len > 0 else "{}"
         try:
-            req_data = json.loads(body)
+            parsed = urllib.parse.urlparse(self.path)
+            path = parsed.path
+
+            content_len = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_len).decode('utf-8') if content_len > 0 else "{}"
+            try:
+                req_data = json.loads(body)
+            except Exception:
+                req_data = {}
+
+            if path == "/api/kiosk/sync":
+                action = req_data.get("action", "")
+                if _GLOBAL_KIOSK_REF is not None:
+                    if action == "reset":
+                        _GLOBAL_KIOSK_REF.transition_to_state(STATE_IDLE)
+                    elif action == "scan":
+                        _GLOBAL_KIOSK_REF.execute_simulation_step(2)
+                    elif action == "pay":
+                        _GLOBAL_KIOSK_REF.execute_simulation_step(4)
+                    elif action == "pay_later":
+                        _GLOBAL_KIOSK_REF.execute_pay_later_checkout()
+                    elif action in ["confirm_payment", "complete_checkout"]:
+                        st = req_data.get("student")
+                        amt = float(req_data.get("amount", _GLOBAL_KIOSK_REF.total_amount))
+                        if st and isinstance(st, dict):
+                            student_id = st.get("studentId") or st.get("student_id_number") or st.get("id", "STU-2026")
+                            student_name = st.get("name") or st.get("full_name", "Student")
+                            curr_bal = float(st.get("balance", 200.0))
+                            rem_bal = max(0.0, curr_bal - amt)
+                            _GLOBAL_KIOSK_REF.active_student = {
+                                "id": student_id,
+                                "name": student_name,
+                                "email": st.get("email", ""),
+                                "rfidUid": st.get("rfidUid") or st.get("rfid_uid", ""),
+                                "balance": rem_bal,
+                                "daily_limit": float(st.get("daily_limit", 200.0))
+                            }
+                            # Deduct balance in local database cache
+                            _GLOBAL_KIOSK_REF.db_manager.deduct_student_balance(student_id, amt)
+                            tx_id = f"TXN_{int(time.time())}_{student_id.replace('-', '')}"
+                            _GLOBAL_KIOSK_REF.db_manager.record_transaction(
+                                tx_id, student_id, _GLOBAL_KIOSK_REF.cart_items, amt,
+                                _GLOBAL_KIOSK_REF.latest_tray_image, payment_method="rfid"
+                            )
+
+                        _GLOBAL_KIOSK_REF.total_amount = amt
+                        _GLOBAL_KIOSK_REF.status_message = "Payment have been confirmed please claim your order."
+                        _GLOBAL_KIOSK_REF.current_state = STATE_SETTLEMENT
+                        _GLOBAL_KIOSK_REF.state_timer = time.time()
+                        _GLOBAL_KIOSK_REF.notify_pos_update()
+
+                self._send_cors_headers(200, "application/json")
+                self.end_headers()
+                resp = {"status": "SUCCESS", "action": action, "data": _GLOBAL_KIOSK_REF.get_live_kiosk_data() if _GLOBAL_KIOSK_REF else None}
+                try:
+                    self.wfile.write(json.dumps(resp).encode('utf-8'))
+                except Exception:
+                    pass
+
+            elif path in ["/api/cache_offline", "/api/offline_sync"]:
+                self._send_cors_headers(200, "application/json")
+                self.end_headers()
+                try:
+                    self.wfile.write(json.dumps({"status": "SUCCESS", "message": "Offline cache synced"}).encode('utf-8'))
+                except Exception:
+                    pass
+            else:
+                self._send_cors_headers(404, "application/json")
+                self.end_headers()
+                try:
+                    self.wfile.write(json.dumps({"error": "Not Found"}).encode('utf-8'))
+                except Exception:
+                    pass
         except Exception:
-            req_data = {}
-
-        if path == "/api/kiosk/sync":
-            action = req_data.get("action", "")
-            if _GLOBAL_KIOSK_REF is not None:
-                if action == "reset":
-                    _GLOBAL_KIOSK_REF.transition_to_state(STATE_IDLE)
-                elif action == "scan":
-                    _GLOBAL_KIOSK_REF.execute_simulation_step(2)
-                elif action == "pay":
-                    _GLOBAL_KIOSK_REF.execute_simulation_step(4)
-                elif action == "pay_later":
-                    _GLOBAL_KIOSK_REF.execute_pay_later_checkout()
-                elif action in ["confirm_payment", "complete_checkout"]:
-                    st = req_data.get("student")
-                    amt = float(req_data.get("amount", _GLOBAL_KIOSK_REF.total_amount))
-                    if st and isinstance(st, dict):
-                        student_id = st.get("studentId") or st.get("student_id_number") or st.get("id", "STU-2026")
-                        student_name = st.get("name") or st.get("full_name", "Student")
-                        curr_bal = float(st.get("balance", 200.0))
-                        rem_bal = max(0.0, curr_bal - amt)
-                        _GLOBAL_KIOSK_REF.active_student = {
-                            "id": student_id,
-                            "name": student_name,
-                            "email": st.get("email", ""),
-                            "rfidUid": st.get("rfidUid") or st.get("rfid_uid", ""),
-                            "balance": rem_bal,
-                            "daily_limit": float(st.get("daily_limit", 200.0))
-                        }
-                        # Deduct balance in local database cache
-                        _GLOBAL_KIOSK_REF.db_manager.deduct_student_balance(student_id, amt)
-                        tx_id = f"TXN_{int(time.time())}_{student_id.replace('-', '')}"
-                        _GLOBAL_KIOSK_REF.db_manager.record_transaction(
-                            tx_id, student_id, _GLOBAL_KIOSK_REF.cart_items, amt,
-                            _GLOBAL_KIOSK_REF.latest_tray_image, payment_method="rfid"
-                        )
-
-                    _GLOBAL_KIOSK_REF.total_amount = amt
-                    _GLOBAL_KIOSK_REF.status_message = "Payment have been confirmed please claim your order."
-                    _GLOBAL_KIOSK_REF.current_state = STATE_SETTLEMENT
-                    _GLOBAL_KIOSK_REF.state_timer = time.time()
-                    _GLOBAL_KIOSK_REF.notify_pos_update()
-
-            self._send_cors_headers(200, "application/json")
-            self.end_headers()
-            resp = {"status": "SUCCESS", "action": action, "data": _GLOBAL_KIOSK_REF.get_live_kiosk_data() if _GLOBAL_KIOSK_REF else None}
-            self.wfile.write(json.dumps(resp).encode('utf-8'))
-
-        elif path in ["/api/cache_offline", "/api/offline_sync"]:
-            self._send_cors_headers(200, "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"status": "SUCCESS", "message": "Offline cache synced"}).encode('utf-8'))
-        else:
-            self._send_cors_headers(404, "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"error": "Not Found"}).encode('utf-8'))
+            pass
 
     def log_message(self, format, *args):
         return
