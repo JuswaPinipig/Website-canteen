@@ -584,37 +584,34 @@ DECLARE
     v_new_limit NUMERIC(10,2);
     v_new_liability NUMERIC(10,2);
 BEGIN
-    INSERT INTO public.wallets (user_id, balance, daily_limit, credit_liability, updated_at)
+    INSERT INTO public.wallets (user_id, balance, daily_limit, updated_at)
     VALUES (
         p_user_id,
         COALESCE(p_balance, 0.00),
         COALESCE(p_daily_limit, 200.00),
-        COALESCE(p_credit_liability, 0.00),
         NOW()
     )
     ON CONFLICT (user_id) DO UPDATE
     SET balance          = COALESCE(p_balance, public.wallets.balance),
         daily_limit      = COALESCE(p_daily_limit, public.wallets.daily_limit),
-        credit_liability = COALESCE(p_credit_liability, public.wallets.credit_liability),
         updated_at       = NOW()
-    RETURNING balance, daily_limit, credit_liability
-    INTO v_new_bal, v_new_limit, v_new_liability;
+    RETURNING balance, daily_limit
+    INTO v_new_bal, v_new_limit;
 
-    BEGIN
-        UPDATE public.profiles
-        SET balance          = COALESCE(p_balance, balance),
-            daily_limit      = COALESCE(p_daily_limit, daily_limit),
-            credit_liability = COALESCE(p_credit_liability, credit_liability),
-            updated_at       = NOW()
-        WHERE id = p_user_id;
-    EXCEPTION WHEN OTHERS THEN NULL; END;
+    IF p_credit_liability IS NOT NULL THEN
+        BEGIN
+            UPDATE public.profiles
+            SET credit_liability = p_credit_liability,
+                updated_at       = NOW()
+            WHERE id = p_user_id;
+        EXCEPTION WHEN OTHERS THEN NULL; END;
+    END IF;
 
     RETURN jsonb_build_object(
         'success', true,
         'user_id', p_user_id,
         'balance', v_new_bal,
-        'daily_limit', v_new_limit,
-        'credit_liability', v_new_liability
+        'daily_limit', v_new_limit
     );
 END;
 $$;

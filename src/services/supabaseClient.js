@@ -647,60 +647,23 @@
             const users = this.loadLocal('novalunch_registered_users', []);
             this.saveLocal('novalunch_registered_users', users.map(u => (u.id === userId || u.studentId === userId) ? { ...u, balance: cleanBalance } : u));
 
-            // 2. Database update
-            if (supabase && this.isUUID(userId)) {
-                let success = false;
-                try {
-                    const { error: rpcErr } = await supabase.rpc('fn_admin_update_wallet', {
-                        p_user_id: userId,
-                        p_balance: cleanBalance,
-                        p_daily_limit: null,
-                        p_credit_liability: null
-                    });
-                    if (!rpcErr) success = true;
-                } catch (e) { }
-
-                // Fallback: Use direct upsert / update
-                if (!success) {
+            // 2. Database update to wallets table
+            if (this.isUUID(userId)) {
+                if (supabase) {
                     try {
-                        const { error: wErr } = await supabase.from('wallets').upsert({ user_id: userId, balance: cleanBalance, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
-                        if (!wErr) success = true;
-                        else await supabase.from('wallets').update({ balance: cleanBalance, updated_at: new Date().toISOString() }).eq('user_id', userId);
-                    } catch (e2) { }
-                }
-
-                // Bulletproof Fallback: Use existing SECURITY DEFINER delta functions
-                if (!success) {
-                    try {
-                        const { data: wCheck } = await supabase.from('wallets').select('balance').eq('user_id', userId).maybeSingle();
-                        const currentBalInDb = wCheck ? (parseFloat(wCheck.balance) || 0) : null;
-                        if (currentBalInDb === null) {
-                            if (cleanBalance > 0) {
-                                await supabase.rpc('fn_credit_wallet_balance', { p_user_id: userId, p_amount: cleanBalance });
-                            }
-                        } else if (Math.abs(currentBalInDb - cleanBalance) > 0.009) {
-                            const delta = cleanBalance - currentBalInDb;
-                            if (delta > 0) {
-                                await supabase.rpc('fn_credit_wallet_balance', { p_user_id: userId, p_amount: parseFloat(delta.toFixed(2)) });
-                            } else if (delta < 0) {
-                                await supabase.rpc('fn_deduct_wallet_balance', { p_user_id: userId, p_amount: parseFloat(Math.abs(delta).toFixed(2)) });
-                            }
+                        const { error: patchErr } = await supabase.from('wallets').update({ balance: cleanBalance, updated_at: new Date().toISOString() }).eq('user_id', userId);
+                        if (patchErr) {
+                            await supabase.from('wallets').upsert({ user_id: userId, balance: cleanBalance, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
                         }
-                    } catch (deltaErr) {
-                        console.warn('[CanteenDB] updateStudentBalance delta fallback notice:', deltaErr);
-                    }
+                    } catch (e) { }
                 }
-
                 try {
-                    await supabase.from('profiles').update({ balance: cleanBalance, updated_at: new Date().toISOString() }).eq('id', userId);
+                    await fetch(`${SUPABASE_URL}/rest/v1/wallets?user_id=eq.${userId}`, {
+                        method: 'PATCH',
+                        headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json" },
+                        body: JSON.stringify({ balance: cleanBalance, updated_at: new Date().toISOString() })
+                    });
                 } catch (e) { }
-            } else {
-                const res1 = await fetch(`${SUPABASE_URL}/rest/v1/wallets?user_id=eq.${userId}`, {
-                    method: 'PATCH',
-                    headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json" },
-                    body: JSON.stringify({ balance: cleanBalance })
-                });
-                if (!res1.ok) console.warn(`REST API error updating wallet balance (Status ${res1.status})`);
             }
             return cleanBalance;
         },
@@ -1151,6 +1114,7 @@
             if (updatePayload.max_daily_calories !== undefined) profileFields.max_daily_calories = parseInt(updatePayload.max_daily_calories) || 1800;
             if (updatePayload.allergenMode !== undefined) profileFields.allergen_mode = updatePayload.allergenMode;
             if (updatePayload.allergen_mode !== undefined) profileFields.allergen_mode = updatePayload.allergen_mode;
+            profileFields.updated_at = new Date().toISOString();
 
             const cleanBalance = updatePayload.balance !== undefined ? (parseFloat(updatePayload.balance) || 0.0) : undefined;
             const cleanDailyCap = updatePayload.daily_limit !== undefined ? (parseFloat(updatePayload.daily_limit) || 200.0) : (updatePayload.dailyCap !== undefined ? (parseFloat(updatePayload.dailyCap) || 200.0) : undefined);
@@ -1178,7 +1142,7 @@
             });
             this.saveLocal('novalunch_registered_users', updatedLocal);
 
-            // 2. Only pass valid columns to Supabase if valid UUID
+            // 2. Only pass valid columns to Supabase profiles
             const sanitizedFields = {};
             for (const [k, v] of Object.entries(profileFields)) {
                 if (VALID_PROFILE_COLUMNS.has(k)) sanitizedFields[k] = v;
@@ -1186,68 +1150,33 @@
 
             let updatedProfile = null;
             if (this.isUUID(userId)) {
-                // A. Update Wallets via RPC fn_admin_update_wallet, direct upsert, or delta RPC
-                if (cleanBalance !== undefined || cleanDailyCap !== undefined || cleanLiability !== undefined) {
+                // A. Update Wallets table directly (balance and daily_limit)
+                if (cleanBalance !== undefined || cleanDailyCap !== undefined) {
+                    const walletPatch = { updated_at: new Date().toISOString() };
+                    if (cleanBalance !== undefined) walletPatch.balance = cleanBalance;
+                    if (cleanDailyCap !== undefined) walletPatch.daily_limit = cleanDailyCap;
+
                     if (supabase) {
-                        let walletSuccess = false;
                         try {
-                            const { error: rpcErr } = await supabase.rpc('fn_admin_update_wallet', {
-                                p_user_id: userId,
-                                p_balance: cleanBalance ?? null,
-                                p_daily_limit: cleanDailyCap ?? null,
-                                p_credit_liability: cleanLiability ?? null
-                            });
-                            if (!rpcErr) walletSuccess = true;
-                        } catch (e) { }
-
-                        // Fallback 1: Direct upsert / update
-                        if (!walletSuccess) {
-                            try {
-                                const walletPatch = { user_id: userId, updated_at: new Date().toISOString() };
-                                if (cleanBalance !== undefined) walletPatch.balance = cleanBalance;
-                                if (cleanDailyCap !== undefined) walletPatch.daily_limit = cleanDailyCap;
-                                if (cleanLiability !== undefined) walletPatch.credit_liability = cleanLiability;
-                                const { error: wErr } = await supabase.from('wallets').upsert(walletPatch, { onConflict: 'user_id' });
-                                if (!wErr) walletSuccess = true;
-                                else await supabase.from('wallets').update(walletPatch).eq('user_id', userId);
-                            } catch (e) { }
-                        }
-
-                        // Fallback 2: Atomic Delta RPCs (works unconditionally even with strict RLS)
-                        if (!walletSuccess && cleanBalance !== undefined) {
-                            try {
-                                const { data: wCheck } = await supabase.from('wallets').select('balance').eq('user_id', userId).maybeSingle();
-                                const currentBalInDb = wCheck ? (parseFloat(wCheck.balance) || 0) : null;
-                                if (currentBalInDb === null) {
-                                    if (cleanBalance > 0) {
-                                        await supabase.rpc('fn_credit_wallet_balance', { p_user_id: userId, p_amount: cleanBalance });
-                                    }
-                                } else if (Math.abs(currentBalInDb - cleanBalance) > 0.009) {
-                                    const delta = cleanBalance - currentBalInDb;
-                                    if (delta > 0) {
-                                        await supabase.rpc('fn_credit_wallet_balance', { p_user_id: userId, p_amount: parseFloat(delta.toFixed(2)) });
-                                    } else if (delta < 0) {
-                                        await supabase.rpc('fn_deduct_wallet_balance', { p_user_id: userId, p_amount: parseFloat(Math.abs(delta).toFixed(2)) });
-                                    }
-                                }
-                            } catch (deltaErr) {
-                                console.warn('[CanteenDB] updateUser wallet delta fallback notice:', deltaErr);
+                            const { error: patchErr } = await supabase.from('wallets').update(walletPatch).eq('user_id', userId);
+                            if (patchErr) {
+                                await supabase.from('wallets').upsert({ user_id: userId, ...walletPatch }, { onConflict: 'user_id' });
                             }
+                        } catch (e) {
+                            console.warn('[CanteenDB] Wallet update exception:', e);
                         }
-                    } else {
-                        try {
-                            const walletPatch = {};
-                            if (cleanBalance !== undefined) walletPatch.balance = cleanBalance;
-                            if (cleanDailyCap !== undefined) walletPatch.daily_limit = cleanDailyCap;
-                            if (cleanLiability !== undefined) walletPatch.credit_liability = cleanLiability;
-                            walletPatch.updated_at = new Date().toISOString();
-                            await fetch(`${SUPABASE_URL}/rest/v1/wallets?user_id=eq.${userId}`, {
-                                method: 'PATCH',
-                                headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json" },
-                                body: JSON.stringify(walletPatch)
-                            });
-                        } catch (e) { }
                     }
+                    try {
+                        await fetch(`${SUPABASE_URL}/rest/v1/wallets?user_id=eq.${userId}`, {
+                            method: 'PATCH',
+                            headers: {
+                                "apikey": SUPABASE_ANON_KEY,
+                                "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+                                "Content-Type": "application/json"
+                            },
+                            body: JSON.stringify(walletPatch)
+                        });
+                    } catch (e) { }
                 }
 
                 // B. Update profiles table

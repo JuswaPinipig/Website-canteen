@@ -150,14 +150,29 @@ NOTIFY pgrst, 'reload schema';
 
 -- ===========================================================
 -- PART 6: Enable Realtime on wallets and preorders tables
--- (Required for cross-portal live sync to work)
+-- (Idempotent check to avoid 42710 already member error)
 -- ===========================================================
 
--- Enable realtime replication for wallets (student balance updates)
-ALTER PUBLICATION supabase_realtime ADD TABLE public.wallets;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables 
+        WHERE pubname = 'supabase_realtime' 
+          AND schemaname = 'public' 
+          AND tablename = 'wallets'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.wallets;
+    END IF;
 
--- Enable realtime replication for preorders (cashier staging board)
-ALTER PUBLICATION supabase_realtime ADD TABLE public.preorders;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables 
+        WHERE pubname = 'supabase_realtime' 
+          AND schemaname = 'public' 
+          AND tablename = 'preorders'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.preorders;
+    END IF;
+END $$;
 
 -- ===========================================================
 -- PART 7: RLS Policies — allow full access for wallet operations
@@ -221,36 +236,33 @@ AS $$
 DECLARE
     v_new_bal NUMERIC(10,2);
     v_new_limit NUMERIC(10,2);
-    v_new_liability NUMERIC(10,2);
 BEGIN
     -- 1. Upsert into public.wallets
-    INSERT INTO public.wallets (user_id, balance, daily_limit, credit_liability, updated_at)
+    INSERT INTO public.wallets (user_id, balance, daily_limit, updated_at)
     VALUES (
         p_user_id,
         COALESCE(p_balance, 0.00),
         COALESCE(p_daily_limit, 200.00),
-        COALESCE(p_credit_liability, 0.00),
         NOW()
     )
     ON CONFLICT (user_id) DO UPDATE
     SET balance          = COALESCE(p_balance, public.wallets.balance),
         daily_limit      = COALESCE(p_daily_limit, public.wallets.daily_limit),
-        credit_liability = COALESCE(p_credit_liability, public.wallets.credit_liability),
         updated_at       = NOW()
-    RETURNING balance, daily_limit, credit_liability
-    INTO v_new_bal, v_new_limit, v_new_liability;
+    RETURNING balance, daily_limit
+    INTO v_new_bal, v_new_limit;
 
-    -- 2. Synchronize profiles mirror columns
-    BEGIN
-        UPDATE public.profiles
-        SET balance          = COALESCE(p_balance, balance),
-            daily_limit      = COALESCE(p_daily_limit, daily_limit),
-            credit_liability = COALESCE(p_credit_liability, credit_liability),
-            updated_at       = NOW()
-        WHERE id = p_user_id;
-    EXCEPTION WHEN OTHERS THEN
-        NULL;
-    END;
+    -- 2. Synchronize profiles columns if needed
+    IF p_credit_liability IS NOT NULL THEN
+        BEGIN
+            UPDATE public.profiles
+            SET credit_liability = p_credit_liability,
+                updated_at       = NOW()
+            WHERE id = p_user_id;
+        EXCEPTION WHEN OTHERS THEN
+            NULL;
+        END;
+    END IF;
 
     -- 3. Log transaction if wallet_transactions exists and balance changed
     IF p_balance IS NOT NULL THEN
@@ -275,7 +287,7 @@ BEGIN
         'user_id', p_user_id,
         'balance', v_new_bal,
         'daily_limit', v_new_limit,
-        'credit_liability', v_new_liability
+        'credit_liability', COALESCE(p_credit_liability, 0.00)
     );
 END;
 $$;
