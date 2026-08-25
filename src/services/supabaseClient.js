@@ -1461,7 +1461,7 @@
         },
 
         // -------------------------------------------------------------------------
-        // PRE-ORDERS (TOKENLESS DIRECT RFID CONFIRMATION)
+        // PRE-ORDERS (TOKENLESS DIRECT RFID CONFIRMATION & ARCHIVING)
         // -------------------------------------------------------------------------
         async createPreorder(payload) {
             const fallbackId = payload.id || `po_${Date.now()}`;
@@ -1482,6 +1482,9 @@
                 shelf_location: payload.shelf_location || payload.shelf || 'Shelf B2',
                 shelf: payload.shelf || payload.shelf_location || 'Shelf B2',
                 status: payload.status || 'Pending',
+                is_archived: Boolean(payload.is_archived || payload.status === 'Claimed' || payload.status === 'Archived'),
+                archived_at: payload.archived_at || (payload.status === 'Claimed' || payload.status === 'Archived' ? new Date().toISOString() : null),
+                order_number: payload.order_number || payload.orderNo || null,
                 created_at: payload.created_at || new Date().toISOString()
             };
 
@@ -1502,11 +1505,14 @@
                         session: cleanPayload.session,
                         shelf_location: cleanPayload.shelf_location,
                         status: cleanPayload.status,
+                        is_archived: cleanPayload.is_archived,
+                        archived_at: cleanPayload.archived_at,
+                        order_number: cleanPayload.order_number,
                         created_at: cleanPayload.created_at
                     };
                     const { data, error } = await supabase.from('preorders').insert([dbPayload]).select().single();
                     if (!error && data) {
-                        const combined = { ...cleanPayload, id: data.id };
+                        const combined = { ...cleanPayload, id: data.id, is_archived: data.is_archived ?? cleanPayload.is_archived, archived_at: data.archived_at ?? cleanPayload.archived_at };
                         this.saveLocal('novalunch_preorders', [combined, ...localPos.filter(p => p.id !== cleanPayload.id && p.id !== data.id)]);
                         return combined;
                     }
@@ -1532,22 +1538,30 @@
                 }
             }
             if (cloudPos.length > 0) {
-                const mapped = cloudPos.map(p => ({
-                    id: p.id,
-                    name: p.item_name || p.name || 'Meal Item',
-                    item: p.item_name || p.name || 'Meal Item',
-                    item_name: p.item_name || p.name || 'Meal Item',
-                    price: parseFloat(p.price) || 0,
-                    token: p.token || 'QR-PASS',
-                    status: p.status || 'Pending',
-                    studentId: p.student_id,
-                    student_id: p.student_id,
-                    studentName: p.student_name,
-                    student_name: p.student_name,
-                    shelf: p.shelf_location || 'Shelf B2',
-                    shelf_location: p.shelf_location || 'Shelf B2',
-                    session: p.session || 'Lunch Break (12:00 PM)'
-                }));
+                const mapped = cloudPos.map(p => {
+                    const isArch = Boolean(p.is_archived || p.status === 'Claimed' || p.status === 'Archived' || p.status === 'Completed');
+                    return {
+                        id: p.id,
+                        name: p.item_name || p.name || 'Meal Item',
+                        item: p.item_name || p.name || 'Meal Item',
+                        item_name: p.item_name || p.name || 'Meal Item',
+                        price: parseFloat(p.price) || 0,
+                        token: p.token || 'QR-PASS',
+                        status: p.status || 'Pending',
+                        is_archived: isArch,
+                        archived_at: p.archived_at || (isArch ? p.updated_at || p.created_at : null),
+                        order_number: p.order_number || null,
+                        orderNo: p.order_number || null,
+                        studentId: p.student_id,
+                        student_id: p.student_id,
+                        studentName: p.student_name,
+                        student_name: p.student_name,
+                        shelf: p.shelf_location || 'Shelf B2',
+                        shelf_location: p.shelf_location || 'Shelf B2',
+                        session: p.session || 'Lunch Break (12:00 PM)',
+                        created_at: p.created_at || new Date().toISOString()
+                    };
+                });
                 const merged = [...mapped, ...localPos.filter(lp => !mapped.some(mp => mp.id === lp.id))];
                 this.saveLocal('novalunch_preorders', merged);
                 if (studentId) {
@@ -1574,18 +1588,39 @@
                 }
             }
             if (preorderId) {
-                await this.updatePreorderStatus(preorderId, 'Claimed');
-                return { success: true, preorder_id: preorderId, status: 'Claimed' };
+                await this.archivePreorder(preorderId, { status: 'Claimed' });
+                return { success: true, preorder_id: preorderId, status: 'Claimed', is_archived: true };
             }
             return { success: true, status: 'Claimed' };
         },
 
-        async updatePreorderStatus(preorderId, status) {
+        async updatePreorderStatus(preorderId, status, extraFields = {}) {
+            const isCompletedOrArchived = (status === 'Claimed' || status === 'Archived' || status === 'Completed' || Boolean(extraFields.is_archived));
+            const archivedAt = isCompletedOrArchived ? (extraFields.archived_at || new Date().toISOString()) : null;
+            const isArchived = isCompletedOrArchived;
+
             const localPos = this.loadLocal('novalunch_preorders', []);
-            this.saveLocal('novalunch_preorders', localPos.map(p => p.id === preorderId ? { ...p, status } : p));
+            this.saveLocal('novalunch_preorders', localPos.map(p => p.id === preorderId ? { 
+                ...p, 
+                status, 
+                is_archived: isArchived, 
+                archived_at: archivedAt,
+                ...extraFields 
+            } : p));
+
+            const updatePayload = {
+                status,
+                is_archived: isArchived,
+                archived_at: archivedAt,
+                updated_at: new Date().toISOString(),
+                ...(extraFields.order_number ? { order_number: extraFields.order_number } : {}),
+                ...(extraFields.refunded_amount !== undefined ? { refunded_amount: extraFields.refunded_amount } : {}),
+                ...(extraFields.refund_note ? { refund_note: extraFields.refund_note } : {})
+            };
+
             if (supabase) {
                 try {
-                    await supabase.from('preorders').update({ status, updated_at: new Date().toISOString() }).eq('id', preorderId);
+                    await supabase.from('preorders').update(updatePayload).eq('id', preorderId);
                 } catch (e) {
                     console.warn("[CanteenDB Notice] updatePreorderStatus fallback:", e);
                 }
@@ -1594,10 +1629,25 @@
                     await fetch(`${SUPABASE_URL}/rest/v1/preorders?id=eq.${preorderId}`, {
                         method: 'PATCH',
                         headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json" },
-                        body: JSON.stringify({ status, updated_at: new Date().toISOString() })
+                        body: JSON.stringify(updatePayload)
                     });
                 } catch (e) { }
             }
+        },
+
+        async archivePreorder(preorderId, { orderNo = null, status = 'Claimed' } = {}) {
+            return await this.updatePreorderStatus(preorderId, status, {
+                is_archived: true,
+                archived_at: new Date().toISOString(),
+                ...(orderNo ? { order_number: orderNo, orderNo } : {})
+            });
+        },
+
+        async unarchivePreorder(preorderId) {
+            return await this.updatePreorderStatus(preorderId, 'Pending', {
+                is_archived: false,
+                archived_at: null
+            });
         },
 
         // -------------------------------------------------------------------------

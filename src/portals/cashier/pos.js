@@ -11,7 +11,7 @@
 
 import {
     getStudentByRfid, updateStudentBalance, recordTransaction, localStore, claimPreOrder
-} from './firebase-config.js';
+} from '../../config/firebase-config.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     // Initial State
@@ -467,6 +467,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function showReceipt(total, payMethod, txnId) {
+        const receiptDetails = document.getElementById('receiptDetails') || document.getElementById('receipt-details');
         if (receiptDetails) {
             const payMethodLabels = {
                 RFID_CREDIT: '💳 RFID Wallet Credit',

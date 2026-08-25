@@ -5952,7 +5952,7 @@
         // =====================================================================
         // 5. ADMIN TUITION BILLING & SAFETY NET LEDGER VIEW
         // =====================================================================
-        function AdminTuitionBillingView({ showToast = () => { } }) {
+        function AdminTuitionBillingView({ showToast = () => { }, registeredUsers = [], setRegisteredUsers = () => { }, onSettleDebt = null }) {
             const { useState, useMemo } = React;
             const [searchQuery, setSearchQuery] = useState('');
             const [gradeFilter, setGradeFilter] = useState('ALL');
@@ -5962,7 +5962,8 @@
             const [sortField, setSortField] = useState('debt');
             const [sortDirection, setSortDirection] = useState('desc');
 
-            const [tuitionRecords, setTuitionRecords] = useState([
+            // Baseline historical records
+            const [localRecords, setLocalRecords] = useState([
                 {
                     id: '2023-01900',
                     refId: 'SIS-2026-0820-001',
@@ -5970,13 +5971,17 @@
                     grade: 'Grade 10 - St. Ignatius',
                     debt: 105.00,
                     cap: 500.00,
-                    parent: 'Maria Santos',
+                    parent: 'Maria Santos Dela Cruz',
                     parentContact: '0917-882-9102',
                     item: '1x Pork Adobo, 1x Water',
                     photo: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=300&q=80',
                     date: new Date(Date.now() - 86400000 * 1.2),
                     status: 'ACTIVE_DEBT',
-                    synced: false
+                    synced: false,
+                    paymentMethod: null,
+                    receiptNo: null,
+                    settledAt: null,
+                    remarks: ''
                 },
                 {
                     id: '2024-08210',
@@ -5985,13 +5990,17 @@
                     grade: 'Grade 8 - St. Claire',
                     debt: 240.00,
                     cap: 500.00,
-                    parent: 'Maria Santos',
+                    parent: 'Maria Santos Dela Cruz',
                     parentContact: '0917-882-9102',
                     item: '2x Chicken Meal, 1x Juice',
                     photo: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=300&q=80',
                     date: new Date(Date.now() - 86400000 * 1.5),
                     status: 'ACTIVE_DEBT',
-                    synced: false
+                    synced: false,
+                    paymentMethod: null,
+                    receiptNo: null,
+                    settledAt: null,
+                    remarks: ''
                 },
                 {
                     id: '2023-01122',
@@ -6006,7 +6015,11 @@
                     photo: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=300&q=80',
                     date: new Date(Date.now() - 86400000 * 2.5),
                     status: 'ACTIVE_DEBT',
-                    synced: false
+                    synced: false,
+                    paymentMethod: null,
+                    receiptNo: null,
+                    settledAt: null,
+                    remarks: ''
                 },
                 {
                     id: '2025-09941',
@@ -6021,9 +6034,86 @@
                     photo: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=300&q=80',
                     date: new Date(Date.now() - 86400000 * 3.5),
                     status: 'ACTIVE_DEBT',
-                    synced: false
+                    synced: false,
+                    paymentMethod: null,
+                    receiptNo: null,
+                    settledAt: null,
+                    remarks: ''
                 }
             ]);
+
+            // Interactive Settlement Modal State
+            const [settleModalOpen, setSettleModalOpen] = useState(false);
+            const [activeSettleRecord, setActiveSettleRecord] = useState(null);
+            const [settleMethod, setSettleMethod] = useState('cash'); // 'cash' | 'online' | 'sis_tuition' | 'waiver'
+            const [settleAmount, setSettleAmount] = useState('');
+            const [settleRefNo, setSettleRefNo] = useState('');
+            const [settleRemarks, setSettleRemarks] = useState('');
+            const [settleError, setSettleError] = useState('');
+            const [isSubmittingSettle, setIsSubmittingSettle] = useState(false);
+
+            // Official Printable Receipt Modal State
+            const [receiptModalOpen, setReceiptModalOpen] = useState(false);
+            const [receiptData, setReceiptData] = useState(null);
+
+            // Dynamically combine localRecords with live registeredUsers state
+            const tuitionRecords = useMemo(() => {
+                const map = new Map();
+
+                // 1. Load local base records
+                localRecords.forEach(r => map.set(r.id, { ...r }));
+
+                // 2. Sync with registeredUsers
+                if (registeredUsers && registeredUsers.length > 0) {
+                    registeredUsers.forEach(u => {
+                        const studId = u.studentId || u.id;
+                        const liveLiability = parseFloat(u.creditLiability ?? u.credit_liability ?? 0);
+                        const liveCap = parseFloat(u.creditLimit ?? u.credit_limit ?? 500);
+
+                        if (map.has(studId)) {
+                            const existing = map.get(studId);
+                            let status = existing.status;
+                            if (liveLiability === 0 && existing.debt > 0) {
+                                status = existing.status === 'SYNCED_TO_SIS' ? 'SYNCED_TO_SIS' : 'PAID_DIRECT';
+                            } else if (liveLiability > 0) {
+                                status = 'ACTIVE_DEBT';
+                            }
+                            map.set(studId, {
+                                ...existing,
+                                debt: liveLiability,
+                                cap: liveCap || existing.cap,
+                                name: u.name || existing.name,
+                                grade: u.department || u.grade || existing.grade,
+                                parent: u.guardian || u.parent || existing.parent,
+                                parentContact: u.parentContact || u.phone || existing.parentContact,
+                                status
+                            });
+                        } else if (liveLiability > 0) {
+                            map.set(studId, {
+                                id: studId,
+                                refId: `SIS-${new Date().getFullYear()}-${studId.replace(/[^0-9]/g, '') || '001'}`,
+                                name: u.name || 'Student Account',
+                                grade: u.department || 'Enrolled Student',
+                                debt: liveLiability,
+                                cap: liveCap,
+                                parent: u.guardian || 'Guardian on Record',
+                                parentContact: u.phone || '0917-000-0000',
+                                item: 'Pay Later Emergency Canteen Allowance',
+                                photo: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=300&q=80',
+                                date: new Date(),
+                                status: 'ACTIVE_DEBT',
+                                synced: false,
+                                paymentMethod: null,
+                                receiptNo: null,
+                                settledAt: null,
+                                remarks: ''
+                            });
+                        }
+                    });
+                }
+
+                return Array.from(map.values());
+            }, [localRecords, registeredUsers]);
 
             // Helper for weekly breakdown
             const weekDays = useMemo(() => {
@@ -6072,6 +6162,19 @@
                 { label: 'Week 5', dateStr: 'Aug 29 — Aug 31', debtTotal: 0, studentsCount: 0, isCurrent: false }
             ], []);
 
+            // Summary Metrics
+            const totalActiveDebt = useMemo(() => {
+                return tuitionRecords.filter(r => r.status === 'ACTIVE_DEBT' || r.status === 'PARTIALLY_PAID').reduce((sum, r) => sum + (parseFloat(r.debt) || 0), 0);
+            }, [tuitionRecords]);
+
+            const activeDebtorsCount = useMemo(() => {
+                return tuitionRecords.filter(r => (r.status === 'ACTIVE_DEBT' || r.status === 'PARTIALLY_PAID') && r.debt > 0).length;
+            }, [tuitionRecords]);
+
+            const settledAccountsCount = useMemo(() => {
+                return tuitionRecords.filter(r => r.status === 'PAID_DIRECT' || r.status === 'SYNCED_TO_SIS' || r.status === 'ADMIN_WAIVED').length;
+            }, [tuitionRecords]);
+
             // Filtered & Sorted
             const filteredTuition = useMemo(() => {
                 return tuitionRecords.filter(item => {
@@ -6081,7 +6184,8 @@
                         const matchId = item.id.toLowerCase().includes(q);
                         const matchGrade = item.grade.toLowerCase().includes(q);
                         const matchParent = item.parent.toLowerCase().includes(q);
-                        if (!matchName && !matchId && !matchGrade && !matchParent) return false;
+                        const matchReceipt = (item.receiptNo || '').toLowerCase().includes(q);
+                        if (!matchName && !matchId && !matchGrade && !matchParent && !matchReceipt) return false;
                     }
 
                     if (selectedDayKey) {
@@ -6091,7 +6195,12 @@
                     }
 
                     if (gradeFilter !== 'ALL' && !item.grade.includes(gradeFilter)) return false;
-                    if (statusFilter !== 'ALL' && item.status !== statusFilter) return false;
+                    if (statusFilter !== 'ALL') {
+                        if (statusFilter === 'ACTIVE_DEBT' && item.status !== 'ACTIVE_DEBT' && item.status !== 'PARTIALLY_PAID') return false;
+                        if (statusFilter === 'PAID_DIRECT' && item.status !== 'PAID_DIRECT') return false;
+                        if (statusFilter === 'SYNCED_TO_SIS' && item.status !== 'SYNCED_TO_SIS') return false;
+                        if (statusFilter === 'ADMIN_WAIVED' && item.status !== 'ADMIN_WAIVED') return false;
+                    }
 
                     return true;
                 }).sort((a, b) => {
@@ -6118,33 +6227,320 @@
                 }
             };
 
-            const handleBatchToSis = (studentId) => {
-                setTuitionRecords(prev => prev.map(r => r.id === studentId ? { ...r, status: 'SYNCED_TO_SIS', synced: true } : r));
+            // Open settlement modal
+            const handleOpenSettleModal = (record) => {
+                setActiveSettleRecord(record);
+                setSettleMethod('cash');
+                setSettleAmount(record.debt > 0 ? record.debt.toFixed(2) : '0.00');
+                setSettleRefNo(`OR-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`);
+                setSettleRemarks('');
+                setSettleError('');
+                setSettleModalOpen(true);
+            };
+
+            // Fast 1-Click Reset to ₱0.00
+            const handleQuickReset = async (record) => {
+                if (!confirm(`⚡ CONFIRM DEBT CLEARANCE & BALANCE RESET\n\nAre you sure you want to reset the active Pay Later balance for "${record.name}" (ID: ${record.id}) to ₱0.00?\n\nThis will clear the current ₱${record.debt.toFixed(2)} liability in the canteen ledger and cloud database.`)) {
+                    return;
+                }
+
+                const genRef = `WAIVE-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+                if (onSettleDebt) {
+                    await onSettleDebt(record.id, record.debt, 'waiver', genRef, 'Administrative Reset to ₱0.00');
+                }
+
+                // Update local records
+                setLocalRecords(prev => prev.map(r => r.id === record.id ? {
+                    ...r,
+                    debt: 0.00,
+                    status: 'ADMIN_WAIVED',
+                    paymentMethod: 'waiver',
+                    receiptNo: genRef,
+                    settledAt: new Date(),
+                    remarks: 'Administrative Balance Reset to ₱0.00'
+                } : r));
+
+                showToast(`🛡️ Cleared Pay Later debt for ${record.name} to ₱0.00!`, 'success');
+            };
+
+            // Confirm Settlement from Modal
+            const handleConfirmSettlement = async () => {
+                if (!activeSettleRecord) return;
+                setSettleError('');
+
+                const isWaiver = settleMethod === 'waiver';
+                const amt = isWaiver ? activeSettleRecord.debt : parseFloat(settleAmount) || 0;
+
+                if (amt <= 0 && !isWaiver) {
+                    return setSettleError('Please enter a valid repayment amount greater than ₱0.00');
+                }
+                if (amt > activeSettleRecord.debt && !isWaiver) {
+                    return setSettleError(`Repayment cannot exceed active debt of ₱${activeSettleRecord.debt.toFixed(2)}`);
+                }
+
+                setIsSubmittingSettle(true);
+                try {
+                    const finalRef = settleRefNo.trim() || `OR-${Date.now()}`;
+                    const remainingDebt = isWaiver ? 0 : Math.max(0, activeSettleRecord.debt - amt);
+                    let newStatus = 'ACTIVE_DEBT';
+
+                    if (remainingDebt === 0) {
+                        if (settleMethod === 'cash') newStatus = 'PAID_DIRECT';
+                        else if (settleMethod === 'online') newStatus = 'PAID_DIRECT';
+                        else if (settleMethod === 'sis_tuition') newStatus = 'SYNCED_TO_SIS';
+                        else if (settleMethod === 'waiver') newStatus = 'ADMIN_WAIVED';
+                    } else {
+                        newStatus = 'PARTIALLY_PAID';
+                    }
+
+                    // Invoke core handler
+                    if (onSettleDebt) {
+                        await onSettleDebt(activeSettleRecord.id, amt, settleMethod, finalRef, settleRemarks);
+                    }
+
+                    // Update local state
+                    setLocalRecords(prev => prev.map(r => r.id === activeSettleRecord.id ? {
+                        ...r,
+                        debt: remainingDebt,
+                        status: newStatus,
+                        paymentMethod: settleMethod,
+                        receiptNo: finalRef,
+                        settledAt: new Date(),
+                        remarks: settleRemarks,
+                        synced: settleMethod === 'sis_tuition'
+                    } : r));
+
+                    // Prepare receipt voucher data
+                    const voucher = {
+                        receiptNo: finalRef,
+                        date: new Date(),
+                        studentName: activeSettleRecord.name,
+                        studentId: activeSettleRecord.id,
+                        grade: activeSettleRecord.grade,
+                        parentName: activeSettleRecord.parent,
+                        parentContact: activeSettleRecord.parentContact,
+                        previousDebt: activeSettleRecord.debt,
+                        amountPaid: amt,
+                        remainingDebt: remainingDebt,
+                        paymentMethod: settleMethod,
+                        remarks: settleRemarks,
+                        items: activeSettleRecord.item
+                    };
+
+                    setReceiptData(voucher);
+                    setSettleModalOpen(false);
+                    setReceiptModalOpen(true);
+                    showToast(`✅ Successfully processed repayment of ₱${amt.toFixed(2)} for ${activeSettleRecord.name}!`, 'success');
+                } catch (err) {
+                    console.error("Settlement error:", err);
+                    setSettleError("Failed to process settlement. Please try again.");
+                } finally {
+                    setIsSubmittingSettle(false);
+                }
+            };
+
+            const handleBatchToSis = async (studentId) => {
+                const record = tuitionRecords.find(r => r.id === studentId);
+                const debt = record ? record.debt : 0;
+                const sisRef = `SIS-TUITION-${new Date().getFullYear()}-${studentId}`;
+
+                if (onSettleDebt && record) {
+                    await onSettleDebt(studentId, debt, 'sis_tuition', sisRef, 'Batched & Assessed to SIS Tuition Billing');
+                }
+
+                setLocalRecords(prev => prev.map(r => r.id === studentId ? {
+                    ...r,
+                    debt: 0.00,
+                    status: 'SYNCED_TO_SIS',
+                    synced: true,
+                    paymentMethod: 'sis_tuition',
+                    receiptNo: sisRef,
+                    settledAt: new Date(),
+                    remarks: 'Assessed to Student Tuition Billing Statement'
+                } : r));
+
                 showToast(`✅ Added Pay Later tab to student's tuition billing statement!`, 'success');
             };
 
             const handleExportSisCSV = () => {
-                const csv = "Student ID,Student Name,Grade Section,Total Debt,Parent Email,Last Transaction\n" +
-                    filteredTuition.map(r => `"${r.id}","${r.name}","${r.grade}",${r.debt.toFixed(2)},"${r.parentContact}","${new Date(r.date).toLocaleDateString()}"`).join('\n');
+                const csv = "Student ID,Student Name,Grade Section,Original Debt,Remaining Debt,Payment Status,Payment Method,Official Receipt / Ref,Settlement Date,Parent Name,Parent Contact,Remarks\n" +
+                    filteredTuition.map(r => `"${r.id}","${r.name}","${r.grade}",${r.cap ? r.cap.toFixed(2) : '0.00'},${r.debt.toFixed(2)},"${r.status}","${r.paymentMethod || 'N/A'}","${r.receiptNo || r.refId || 'N/A'}","${r.settledAt ? new Date(r.settledAt).toLocaleString() : new Date(r.date).toLocaleDateString()}","${r.parent}","${r.parentContact}","${r.remarks || ''}"`).join('\n');
                 const blob = new Blob([csv], { type: 'text/csv' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `SJC_Tuition_Billing_PayLater_Sync_${new Date().toISOString().split('T')[0]}.csv`;
+                a.download = `SJC_PayLater_Settlement_Ledger_${new Date().toISOString().split('T')[0]}.csv`;
                 a.click();
-                showToast("📥 Tuition billing sync CSV exported for SIS registrar.");
+                showToast("📥 Pay Later settlement ledger CSV exported for Registrar & Accounting.");
+            };
+
+            const printReceiptWindow = () => {
+                if (!receiptData) return;
+                const printWin = window.open('', '_blank', 'width=650,height=750');
+                if (!printWin) return alert("Please allow popups to print official repayment receipt.");
+
+                const methodLabel = receiptData.paymentMethod === 'cash' ? 'CASH PAYMENT'
+                    : receiptData.paymentMethod === 'online' ? 'ONLINE TRANSFER (GCASH / BANK)'
+                        : receiptData.paymentMethod === 'sis_tuition' ? 'SIS TUITION LEDGER ASSESSMENT'
+                            : receiptData.paymentMethod === 'waiver' ? 'ADMINISTRATIVE WAIVER / CLEARANCE'
+                                : 'CANTEEN RFID WALLET';
+
+                const printableReceiptHtml = [
+                    '<!DOCTYPE html>',
+                    '<html>',
+                    '<head>',
+                    '    <title>Official Repayment Receipt - ' + receiptData.receiptNo + '</title>',
+                    '    <style>',
+                    '        body { font-family: "Helvetica Neue", Arial, sans-serif; padding: 24px; color: #0f172a; margin: 0; background: #fff; }',
+                    '        .header { text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 16px; }',
+                    '        .school-title { font-size: 16px; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase; color: #1e1b4b; }',
+                    '        .school-sub { font-size: 11px; color: #64748b; margin-top: 2px; }',
+                    '        .voucher-badge { display: inline-block; background: #f1f5f9; border: 1px solid #cbd5e1; font-size: 10px; font-weight: bold; padding: 4px 10px; border-radius: 999px; margin-top: 8px; text-transform: uppercase; }',
+                    '        .meta-grid { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 16px; }',
+                    '        .meta-block { line-height: 1.5; }',
+                    '        .details-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 12px; }',
+                    '        .details-table th { background: #f8fafc; border: 1px solid #e2e8f0; padding: 8px; text-align: left; font-size: 10px; text-transform: uppercase; color: #475569; }',
+                    '        .details-table td { border: 1px solid #e2e8f0; padding: 8px; }',
+                    '        .amount-cell { font-family: monospace; font-weight: bold; font-size: 13px; text-align: right; }',
+                    '        .summary-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 20px; font-size: 12px; }',
+                    '        .signatures { display: flex; justify-content: space-between; margin-top: 40px; }',
+                    '        .sig-line { width: 45%; text-align: center; border-top: 1px solid #0f172a; padding-top: 6px; font-size: 11px; font-weight: bold; }',
+                    '        @media print {',
+                    '            body { padding: 0; }',
+                    '            .no-print { display: none; }',
+                    '        }',
+                    '    <' + '/style>',
+                    '<' + '/head>',
+                    '<body>',
+                    '    <div class="header">',
+                    '        <div class="school-title">Saint Joseph College — Canteen Services</div>',
+                    '        <div class="school-sub">San Miguel, Manila • NovaLunch Integrated POS & Credit Settlement</div>',
+                    '        <div class="voucher-badge">Official Pay Later Repayment Voucher</div>',
+                    '    </div>',
+                    '    <div class="meta-grid">',
+                    '        <div class="meta-block">',
+                    '            <strong>Official Receipt Ref:</strong> ' + receiptData.receiptNo + '<br>',
+                    '            <strong>Date & Time:</strong> ' + new Date(receiptData.date).toLocaleString() + '<br>',
+                    '            <strong>Payment Channel:</strong> ' + methodLabel,
+                    '        </div>',
+                    '        <div class="meta-block" style="text-align: right;">',
+                    '            <strong>Student Account:</strong> ' + receiptData.studentName + '<br>',
+                    '            <strong>Student ID:</strong> ' + receiptData.studentId + '<br>',
+                    '            <strong>Grade & Section:</strong> ' + receiptData.grade + '<br>',
+                    '            <strong>Parent / Guardian:</strong> ' + receiptData.parentName + ' (' + receiptData.parentContact + ')',
+                    '        </div>',
+                    '    </div>',
+                    '    <table class="details-table">',
+                    '        <thead>',
+                    '            <tr>',
+                    '                <th>Description / Items Covered</th>',
+                    '                <th style="text-align: right;">Previous Debt</th>',
+                    '                <th style="text-align: right;">Amount Paid</th>',
+                    '                <th style="text-align: right;">Remaining Tab Balance</th>',
+                    '            </tr>',
+                    '        </thead>',
+                    '        <tbody>',
+                    '            <tr>',
+                    '                <td>',
+                    '                    <strong>Emergency Canteen Tab Repayment</strong><br>',
+                    '                    <span style="font-size: 10px; color: #64748b;">' + (receiptData.items || 'Canteen meal charges') + '</span>',
+                    (receiptData.remarks ? '<br><em style="font-size: 10px; color: #475569;">Note: ' + receiptData.remarks + '</em>' : ''),
+                    '                </td>',
+                    '                <td class="amount-cell">₱' + receiptData.previousDebt.toFixed(2) + '</td>',
+                    '                <td class="amount-cell" style="color: #047857;">₱' + receiptData.amountPaid.toFixed(2) + '</td>',
+                    '                <td class="amount-cell" style="color: ' + (receiptData.remainingDebt > 0 ? '#b45309' : '#0f172a') + ';">₱' + receiptData.remainingDebt.toFixed(2) + '</td>',
+                    '            </tr>',
+                    '        </tbody>',
+                    '    </table>',
+                    '    <div class="summary-box">',
+                    '        <div style="display: flex; justify-content: space-between;">',
+                    '            <span><strong>Total Amount Settled:</strong></span>',
+                    '            <span style="font-size: 16px; font-weight: 900; color: #047857; font-family: monospace;">₱' + receiptData.amountPaid.toFixed(2) + '</span>',
+                    '        </div>',
+                    '        <div style="font-size: 10px; color: #64748b; margin-top: 4px;">',
+                    '            Status: ' + (receiptData.remainingDebt === 0 ? 'CLEARED & SETTLED IN FULL (₱0.00 BALANCE)' : 'PARTIALLY SETTLED — OUTSTANDING BALANCE REMAINING'),
+                    '        </div>',
+                    '    </div>',
+                    '    <div class="signatures">',
+                    '        <div class="sig-line">',
+                    '            Cashier / Admin In-Charge<br>',
+                    '            <span style="font-size: 9px; color: #64748b; font-weight: normal;">Authorized Canteen Personnel</span>',
+                    '        </div>',
+                    '        <div class="sig-line">',
+                    '            Student / Parent Payor<br>',
+                    '            <span style="font-size: 9px; color: #64748b; font-weight: normal;">Signature / Acknowledgment</span>',
+                    '        </div>',
+                    '    </div>',
+                    '    <div class="no-print" style="margin-top: 24px; text-align: center;">',
+                    '        <button onclick="window.print()" style="padding: 8px 16px; background: #0f172a; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer;">🖨️ Print Receipt</button>',
+                    '    </div>',
+                    '<' + '/body>',
+                    '<' + '/html>'
+                ].join('\n');
+
+                printWin.document.open();
+                printWin.document.write(printableReceiptHtml);
+                printWin.document.close();
             };
 
             return (
                 <div className="space-y-5 animate-in fade-in duration-150">
+                    {/* METRICS & OVERVIEW BAR */}
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3.5">
+                        <div className="enterprise-card p-4 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex items-center justify-between">
+                            <div>
+                                <div className="text-[10px] uppercase font-bold text-amber-800 tracking-wider">Total Active Credit Debt</div>
+                                <div className="font-outfit text-2xl font-black text-amber-950 mt-0.5">₱{totalActiveDebt.toFixed(2)}</div>
+                                <div className="text-[10px] text-amber-700 font-medium mt-0.5">Outstanding student tab liabilities</div>
+                            </div>
+                            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-800 flex items-center justify-center font-bold">
+                                <Icon.DollarSign className="w-5 h-5" />
+                            </div>
+                        </div>
+
+                        <div className="enterprise-card p-4 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex items-center justify-between">
+                            <div>
+                                <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Active Debt Accounts</div>
+                                <div className="font-outfit text-2xl font-black text-slate-900 mt-0.5">{activeDebtorsCount} <span className="text-xs font-normal text-slate-500">Students</span></div>
+                                <div className="text-[10px] text-slate-500 font-medium mt-0.5">Accounts with open credit</div>
+                            </div>
+                            <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-700 flex items-center justify-center font-bold">
+                                <Icon.AlertTriangle className="w-5 h-5" />
+                            </div>
+                        </div>
+
+                        <div className="enterprise-card p-4 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex items-center justify-between">
+                            <div>
+                                <div className="text-[10px] uppercase font-bold text-emerald-800 tracking-wider">Settled & Reconciled</div>
+                                <div className="font-outfit text-2xl font-black text-emerald-900 mt-0.5">{settledAccountsCount} <span className="text-xs font-normal text-emerald-700">Accounts</span></div>
+                                <div className="text-[10px] text-emerald-700 font-medium mt-0.5">Paid, synced to SIS, or cleared</div>
+                            </div>
+                            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
+                                <Icon.CheckCircle className="w-5 h-5" />
+                            </div>
+                        </div>
+
+                        <div className="enterprise-card p-4 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex items-center justify-between">
+                            <div>
+                                <div className="text-[10px] uppercase font-bold text-indigo-800 tracking-wider">Tuition SIS Synced</div>
+                                <div className="font-outfit text-2xl font-black text-indigo-950 mt-0.5">{tuitionRecords.filter(r => r.status === 'SYNCED_TO_SIS').length} <span className="text-xs font-normal text-indigo-700">Batched</span></div>
+                                <div className="text-[10px] text-indigo-700 font-medium mt-0.5">Transferred to billing records</div>
+                            </div>
+                            <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-800 flex items-center justify-center font-bold">
+                                <Icon.FileSpreadsheet className="w-5 h-5" />
+                            </div>
+                        </div>
+                    </div>
+
                     {/* TOP CONTROLS & FILTER BAR */}
                     <div className="enterprise-card p-3.5 sm:p-4 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-3">
                         {/* LEFT: SEARCH & DROPDOWNS */}
                         <div className="flex flex-wrap items-center gap-2.5 flex-1">
-                            <div className="relative min-w-[200px] flex-1 sm:flex-initial sm:w-60">
+                            <div className="relative min-w-[200px] flex-1 sm:flex-initial sm:w-64">
                                 <input
                                     type="text"
-                                    placeholder="Search student, grade, parent..."
+                                    placeholder="Search student, ID, parent, OR ref..."
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                     className="w-full bg-slate-50/90 border border-slate-200 rounded-xl pl-8 pr-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 transition-all font-medium"
@@ -6164,7 +6560,7 @@
                                     onChange={(e) => setGradeFilter(e.target.value)}
                                     className="appearance-none bg-slate-50/90 border border-slate-200 rounded-xl pl-3 pr-7 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100/80 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 transition-all cursor-pointer"
                                 >
-                                    <option value="ALL">All Grades</option>
+                                    <option value="ALL">All Grades & Sections</option>
                                     <option value="Grade 7">Grade 7</option>
                                     <option value="Grade 8">Grade 8</option>
                                     <option value="Grade 9">Grade 9</option>
@@ -6182,9 +6578,11 @@
                                     onChange={(e) => setStatusFilter(e.target.value)}
                                     className="appearance-none bg-slate-50/90 border border-slate-200 rounded-xl pl-3 pr-7 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100/80 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 transition-all cursor-pointer"
                                 >
-                                    <option value="ALL">All Statuses</option>
+                                    <option value="ALL">All Payment Statuses</option>
                                     <option value="ACTIVE_DEBT">Active Debt</option>
+                                    <option value="PAID_DIRECT">Paid (Direct)</option>
                                     <option value="SYNCED_TO_SIS">Synced to SIS</option>
+                                    <option value="ADMIN_WAIVED">Cleared / Waived</option>
                                 </select>
                                 <Icon.ChevronDown className="w-3 h-3 absolute right-2.5 top-3 text-slate-400 pointer-events-none" />
                             </div>
@@ -6233,7 +6631,7 @@
                                 onClick={handleExportSisCSV}
                                 className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs"
                             >
-                                <Icon.Download className="w-3.5 h-3.5 text-amber-300" /> Export SIS CSV
+                                <Icon.Download className="w-3.5 h-3.5 text-amber-300" /> Export Settlement CSV
                             </button>
                         </div>
                     </div>
@@ -6321,7 +6719,7 @@
                                             </div>
                                         </th>
                                         <th className="py-3.5 px-4 font-bold text-slate-500">
-                                            PURCHASED ITEMS & TRAY PROOF
+                                            PURCHASED ITEMS & PROOF
                                         </th>
                                         <th className="py-3.5 px-4 font-bold text-slate-500">
                                             GRADE & SECTION
@@ -6337,95 +6735,155 @@
                                             className="py-3.5 px-4 cursor-pointer select-none hover:text-slate-900 transition-colors text-right"
                                         >
                                             <div className="flex items-center justify-end gap-1">
-                                                <span>OUTSTANDING DEBT</span>
+                                                <span>ACTIVE TAB DEBT</span>
                                                 <Icon.ArrowUpDown className="w-3 h-3 text-slate-400" />
                                             </div>
                                         </th>
                                         <th className="py-3.5 px-4 text-center">
                                             STATUS
                                         </th>
-                                        <th className="py-3.5 px-3 text-center w-24">ACTIONS</th>
+                                        <th className="py-3.5 px-3 text-center min-w-[200px]">ACTIONS & RESET</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
-                                    {filteredTuition.map((row) => (
-                                        <tr key={row.id} className="hover:bg-slate-50/70 transition-colors group">
-                                            {/* STUDENT */}
-                                            <td className="py-3 px-4">
-                                                <div className="font-bold text-slate-900">{row.name}</div>
-                                                <div className="font-mono text-[10px] text-slate-400">ID: {row.id}</div>
-                                            </td>
+                                    {filteredTuition.map((row) => {
+                                        const hasActiveDebt = row.debt > 0;
+                                        return (
+                                            <tr key={row.id} className="hover:bg-slate-50/70 transition-colors group">
+                                                {/* STUDENT */}
+                                                <td className="py-3 px-4">
+                                                    <div className="font-bold text-slate-900">{row.name}</div>
+                                                    <div className="font-mono text-[10px] text-slate-400">ID: {row.id}</div>
+                                                </td>
 
-                                            {/* ITEMS & TRAY PROOF */}
-                                            <td className="py-3 px-4">
-                                                <div className="flex items-center gap-2">
-                                                    <img
-                                                        src={row.photo}
-                                                        alt="Tray Proof"
-                                                        className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0"
-                                                        onError={(e) => {
-                                                            e.target.onerror = null;
-                                                            e.target.src = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=300&q=80";
-                                                        }}
-                                                    />
-                                                    <div>
-                                                        <span className="text-xs font-bold text-slate-800 block truncate max-w-[130px]">{row.item}</span>
-                                                        <span className="text-[9px] text-emerald-700 font-mono font-bold">✓ YOLO Timestamped</span>
+                                                {/* ITEMS & TRAY PROOF */}
+                                                <td className="py-3 px-4">
+                                                    <div className="flex items-center gap-2">
+                                                        <img
+                                                            src={row.photo}
+                                                            alt="Tray Proof"
+                                                            className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0"
+                                                            onError={(e) => {
+                                                                e.target.onerror = null;
+                                                                e.target.src = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=300&q=80";
+                                                            }}
+                                                        />
+                                                        <div>
+                                                            <span className="text-xs font-bold text-slate-800 block truncate max-w-[130px]">{row.item}</span>
+                                                            <span className="text-[9px] text-emerald-700 font-mono font-bold">✓ YOLO Timestamped</span>
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            </td>
+                                                </td>
 
-                                            {/* GRADE */}
-                                            <td className="py-3 px-4 text-slate-700 font-medium whitespace-nowrap">
-                                                {row.grade}
-                                            </td>
+                                                {/* GRADE */}
+                                                <td className="py-3 px-4 text-slate-700 font-medium whitespace-nowrap">
+                                                    {row.grade}
+                                                </td>
 
-                                            {/* PARENT */}
-                                            <td className="py-3 px-4 whitespace-nowrap">
-                                                <div className="font-bold text-slate-800">{row.parent}</div>
-                                                <div className="text-[10px] text-slate-400 font-mono">{row.parentContact}</div>
-                                            </td>
+                                                {/* PARENT */}
+                                                <td className="py-3 px-4 whitespace-nowrap">
+                                                    <div className="font-bold text-slate-800">{row.parent}</div>
+                                                    <div className="text-[10px] text-slate-400 font-mono">{row.parentContact}</div>
+                                                </td>
 
-                                            {/* CREDIT CAP */}
-                                            <td className="py-3 px-4 text-right font-mono text-slate-600">
-                                                ₱{row.cap.toFixed(2)}
-                                            </td>
+                                                {/* CREDIT CAP */}
+                                                <td className="py-3 px-4 text-right font-mono text-slate-600">
+                                                    ₱{row.cap.toFixed(2)}
+                                                </td>
 
-                                            {/* OUTSTANDING DEBT */}
-                                            <td className="py-3 px-4 text-right font-mono whitespace-nowrap">
-                                                <span className="font-bold text-amber-900 text-sm">
-                                                    ₱{row.debt.toFixed(2)}
-                                                </span>
-                                            </td>
-
-                                            {/* STATUS */}
-                                            <td className="py-3 px-4 text-center whitespace-nowrap">
-                                                {row.status === 'SYNCED_TO_SIS' ? (
-                                                    <span className="inline-block px-2.5 py-0.5 rounded-md font-bold text-[10px] tracking-wide bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                                        SYNCED TO SIS
+                                                {/* OUTSTANDING DEBT */}
+                                                <td className="py-3 px-4 text-right font-mono whitespace-nowrap">
+                                                    <span className={`font-bold text-sm ${hasActiveDebt ? 'text-amber-900 font-extrabold' : 'text-slate-400'}`}>
+                                                        ₱{row.debt.toFixed(2)}
                                                     </span>
-                                                ) : (
-                                                    <span className="inline-block px-2.5 py-0.5 rounded-md font-bold text-[10px] tracking-wide bg-amber-50 text-amber-800 border border-amber-200">
-                                                        ACTIVE DEBT
-                                                    </span>
-                                                )}
-                                            </td>
+                                                </td>
 
-                                            {/* ACTIONS */}
-                                            <td className="py-3 px-3 text-center whitespace-nowrap">
-                                                {row.status !== 'SYNCED_TO_SIS' ? (
-                                                    <button
-                                                        onClick={() => handleBatchToSis(row.id)}
-                                                        className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-[11px] font-bold transition-all inline-flex items-center gap-1"
-                                                    >
-                                                        <Icon.Check className="w-3 h-3 text-emerald-600" /> Batch to SIS
-                                                    </button>
-                                                ) : (
-                                                    <span className="text-[11px] text-emerald-700 font-bold">✓ Assessed</span>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
+                                                {/* STATUS */}
+                                                <td className="py-3 px-4 text-center whitespace-nowrap">
+                                                    {row.status === 'SYNCED_TO_SIS' ? (
+                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md font-bold text-[10px] tracking-wide bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                                            SYNCED TO SIS
+                                                        </span>
+                                                    ) : row.status === 'PAID_DIRECT' ? (
+                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md font-bold text-[10px] tracking-wide bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                            ✓ SETTLED & PAID
+                                                        </span>
+                                                    ) : row.status === 'ADMIN_WAIVED' ? (
+                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md font-bold text-[10px] tracking-wide bg-purple-50 text-purple-700 border border-purple-200">
+                                                            🛡️ ADMIN CLEARED
+                                                        </span>
+                                                    ) : row.status === 'PARTIALLY_PAID' ? (
+                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md font-bold text-[10px] tracking-wide bg-yellow-50 text-yellow-800 border border-yellow-200">
+                                                            ⏳ PARTIALLY PAID
+                                                        </span>
+                                                    ) : (
+                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md font-bold text-[10px] tracking-wide bg-amber-50 text-amber-800 border border-amber-200">
+                                                            ACTIVE DEBT
+                                                        </span>
+                                                    )}
+                                                </td>
+
+                                                {/* ACTIONS */}
+                                                <td className="py-3 px-3 text-center whitespace-nowrap">
+                                                    <div className="flex items-center justify-center gap-1.5">
+                                                        {hasActiveDebt ? (
+                                                            <>
+                                                                <button
+                                                                    onClick={() => handleOpenSettleModal(row)}
+                                                                    className="px-2.5 py-1 bg-amber-700 hover:bg-amber-800 text-white rounded-lg text-[11px] font-bold transition-all inline-flex items-center gap-1 shadow-2xs"
+                                                                    title="Record Payment & Issue Official Receipt"
+                                                                >
+                                                                    <Icon.DollarSign className="w-3 h-3 text-amber-200" /> Settle
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleQuickReset(row)}
+                                                                    className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold transition-all inline-flex items-center gap-1"
+                                                                    title="1-Click Reset to ₱0.00 (Administrative Clearance)"
+                                                                >
+                                                                    ⚡ Reset
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleBatchToSis(row.id)}
+                                                                    className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[11px] font-semibold transition-all inline-flex items-center gap-1"
+                                                                    title="Transfer balance directly to SIS tuition fee assessment"
+                                                                >
+                                                                    <Icon.Check className="w-3 h-3" /> SIS
+                                                                </button>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        const v = {
+                                                                            receiptNo: row.receiptNo || row.refId || `OR-${row.id}`,
+                                                                            date: row.settledAt || row.date || new Date(),
+                                                                            studentName: row.name,
+                                                                            studentId: row.id,
+                                                                            grade: row.grade,
+                                                                            parentName: row.parent,
+                                                                            parentContact: row.parentContact,
+                                                                            previousDebt: row.cap || 500,
+                                                                            amountPaid: row.cap || 500,
+                                                                            remainingDebt: 0.00,
+                                                                            paymentMethod: row.paymentMethod || 'cash',
+                                                                            remarks: row.remarks || 'Account cleared & reconciled.',
+                                                                            items: row.item
+                                                                        };
+                                                                        setReceiptData(v);
+                                                                        setReceiptModalOpen(true);
+                                                                    }}
+                                                                    className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-[11px] font-bold transition-all inline-flex items-center gap-1"
+                                                                >
+                                                                    <Icon.FileText className="w-3 h-3 text-slate-600" /> Receipt
+                                                                </button>
+                                                                <span className="text-[11px] text-emerald-700 font-bold px-1">✓ Cleared</span>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
 
                                     {filteredTuition.length === 0 && (
                                         <tr>
@@ -6446,11 +6904,276 @@
                             </div>
                             <div className="flex items-center gap-4 font-mono">
                                 <div>
-                                    Total Credit Liability: <strong className="text-amber-900">₱{filteredTuition.reduce((sum, r) => sum + r.debt, 0).toFixed(2)}</strong>
+                                    Total Unsettled Debt: <strong className="text-amber-900 font-bold">₱{filteredTuition.reduce((sum, r) => sum + r.debt, 0).toFixed(2)}</strong>
                                 </div>
                             </div>
                         </div>
                     </div>
+
+                    {/* MODAL: INTERACTIVE SETTLEMENT & REPAYMENT PROCESSING */}
+                    <CustomModal
+                        isOpen={settleModalOpen}
+                        onClose={() => { setSettleModalOpen(false); setSettleError(''); }}
+                        title="Settle Pay Later Credit Tab & Record Payment"
+                        subtitle={activeSettleRecord ? `Student: ${activeSettleRecord.name} (ID: ${activeSettleRecord.id}) • Grade: ${activeSettleRecord.grade}` : ''}
+                        icon={Icon.DollarSign}
+                        size="md"
+                    >
+                        {activeSettleRecord && (
+                            <div className="space-y-4 py-2">
+                                {/* STUDENT DEBT BANNER */}
+                                <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-center justify-between">
+                                    <div>
+                                        <span className="text-[10px] uppercase font-bold text-amber-800 tracking-wider">Active Tab Debt Due</span>
+                                        <div className="font-outfit text-2xl font-black text-amber-900">₱{activeSettleRecord.debt.toFixed(2)}</div>
+                                        <div className="text-[11px] text-amber-800/80 font-medium">Guardian: {activeSettleRecord.parent}</div>
+                                    </div>
+                                    <div className="text-right">
+                                        <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Credit Limit</span>
+                                        <div className="font-outfit text-lg font-bold text-slate-700">₱{activeSettleRecord.cap.toFixed(2)}</div>
+                                        <div className="text-[10px] text-slate-500 font-mono">Ref: {activeSettleRecord.refId}</div>
+                                    </div>
+                                </div>
+
+                                {/* PAYMENT METHOD CARDS */}
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-700 mb-1.5">Payment Method & Channel</label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setSettleMethod('cash')}
+                                            className={`p-3 rounded-xl border text-left transition-all ${settleMethod === 'cash' ? 'bg-amber-700 text-white border-amber-700 shadow-sm' : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'}`}
+                                        >
+                                            <div className="font-bold text-xs flex items-center gap-1.5">
+                                                <Icon.Banknote className="w-4 h-4" /> Cash Counter Payment
+                                            </div>
+                                            <div className={`text-[10px] mt-0.5 ${settleMethod === 'cash' ? 'text-amber-100' : 'text-slate-500'}`}>Paid in cash at canteen/accounting</div>
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => setSettleMethod('online')}
+                                            className={`p-3 rounded-xl border text-left transition-all ${settleMethod === 'online' ? 'bg-emerald-700 text-white border-emerald-700 shadow-sm' : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'}`}
+                                        >
+                                            <div className="font-bold text-xs flex items-center gap-1.5">
+                                                <Icon.CreditCard className="w-4 h-4" /> Online / GCash Transfer
+                                            </div>
+                                            <div className={`text-[10px] mt-0.5 ${settleMethod === 'online' ? 'text-emerald-100' : 'text-slate-500'}`}>Bank, e-wallet, or GCash ref</div>
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => setSettleMethod('sis_tuition')}
+                                            className={`p-3 rounded-xl border text-left transition-all ${settleMethod === 'sis_tuition' ? 'bg-indigo-700 text-white border-indigo-700 shadow-sm' : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'}`}
+                                        >
+                                            <div className="font-bold text-xs flex items-center gap-1.5">
+                                                <Icon.FileSpreadsheet className="w-4 h-4" /> SIS Tuition Assessment
+                                            </div>
+                                            <div className={`text-[10px] mt-0.5 ${settleMethod === 'sis_tuition' ? 'text-indigo-100' : 'text-slate-500'}`}>Charge to student tuition bill</div>
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setSettleMethod('waiver');
+                                                setSettleAmount(activeSettleRecord.debt.toFixed(2));
+                                            }}
+                                            className={`p-3 rounded-xl border text-left transition-all ${settleMethod === 'waiver' ? 'bg-purple-700 text-white border-purple-700 shadow-sm' : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'}`}
+                                        >
+                                            <div className="font-bold text-xs flex items-center gap-1.5">
+                                                <Icon.ShieldCheck className="w-4 h-4" /> Admin Waiver / Reset
+                                            </div>
+                                            <div className={`text-[10px] mt-0.5 ${settleMethod === 'waiver' ? 'text-purple-100' : 'text-slate-500'}`}>Scholarship / Cleared (₱0.00)</div>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* REPAYMENT AMOUNT INPUT */}
+                                {settleMethod !== 'waiver' ? (
+                                    <div>
+                                        <div className="flex justify-between items-center mb-1">
+                                            <label className="text-xs font-bold text-slate-700">Repayment Amount (₱)</label>
+                                            <button
+                                                type="button"
+                                                onClick={() => setSettleAmount(activeSettleRecord.debt.toFixed(2))}
+                                                className="text-[11px] font-bold text-amber-700 hover:underline inline-flex items-center gap-1"
+                                            >
+                                                ⚡ Full Repayment (₱{activeSettleRecord.debt.toFixed(2)})
+                                            </button>
+                                        </div>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            min="0.01"
+                                            max={activeSettleRecord.debt}
+                                            value={settleAmount}
+                                            onChange={(e) => setSettleAmount(e.target.value)}
+                                            placeholder="0.00"
+                                            className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-amber-500"
+                                        />
+                                        {parseFloat(settleAmount) > 0 && parseFloat(settleAmount) < activeSettleRecord.debt && (
+                                            <div className="text-[11px] font-semibold text-slate-500 mt-1">
+                                                Remaining tab debt after this payment: <strong className="text-amber-800">₱{(activeSettleRecord.debt - (parseFloat(settleAmount) || 0)).toFixed(2)}</strong>
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl text-xs text-purple-900">
+                                        <strong>🛡️ Administrative Reset:</strong> Full outstanding balance of <strong>₱{activeSettleRecord.debt.toFixed(2)}</strong> will be cleared and reset to <strong>₱0.00</strong>.
+                                    </div>
+                                )}
+
+                                {/* OFFICIAL RECEIPT (OR) / REFERENCE NUMBER */}
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-700 mb-1">Official Receipt (OR) / Transaction Reference No.</label>
+                                    <input
+                                        type="text"
+                                        value={settleRefNo}
+                                        onChange={(e) => setSettleRefNo(e.target.value)}
+                                        placeholder="e.g. OR-2026-0825-001 or GCash Ref"
+                                        className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-amber-500"
+                                    />
+                                    <p className="text-[10px] text-slate-400 mt-0.5">Printed on the official receipt statement for physical/accounting reconciliation.</p>
+                                </div>
+
+                                {/* ADMIN NOTES / REMARKS */}
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-700 mb-1">Audit Notes / Remarks (Optional)</label>
+                                    <input
+                                        type="text"
+                                        value={settleRemarks}
+                                        onChange={(e) => setSettleRemarks(e.target.value)}
+                                        placeholder="e.g. Paid at bursar counter, parent authorized via SMS"
+                                        className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs text-slate-800 focus:ring-2 focus:ring-amber-500"
+                                    />
+                                </div>
+
+                                {settleError && (
+                                    <div className="p-3 bg-rose-100 border border-rose-300 rounded-xl text-xs font-bold text-rose-900">
+                                        {settleError}
+                                    </div>
+                                )}
+
+                                <div className="flex gap-2 pt-2 border-t border-slate-200">
+                                    <ActionButton
+                                        variant="secondary"
+                                        onClick={() => { setSettleModalOpen(false); setSettleError(''); }}
+                                        className="w-1/3 py-2.5"
+                                        disabled={isSubmittingSettle}
+                                    >
+                                        Cancel
+                                    </ActionButton>
+                                    <ActionButton
+                                        variant="primary"
+                                        onClick={handleConfirmSettlement}
+                                        disabled={isSubmittingSettle}
+                                        className="w-2/3 py-2.5 font-bold shadow-md bg-amber-700 hover:bg-amber-800 text-white"
+                                    >
+                                        {isSubmittingSettle ? 'Processing...' : '🤝 Confirm & Record Payment'}
+                                    </ActionButton>
+                                </div>
+                            </div>
+                        )}
+                    </CustomModal>
+
+                    {/* MODAL: OFFICIAL PRINTABLE SETTLEMENT RECEIPT */}
+                    <CustomModal
+                        isOpen={receiptModalOpen}
+                        onClose={() => setReceiptModalOpen(false)}
+                        title="Official Repayment Receipt Voucher"
+                        subtitle={receiptData ? `Ref: ${receiptData.receiptNo} • ${receiptData.studentName}` : ''}
+                        icon={Icon.FileText}
+                        size="md"
+                    >
+                        {receiptData && (
+                            <div className="space-y-4 py-2">
+                                <div className="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-4 text-xs">
+                                    {/* SCHOOL HEADER */}
+                                    <div className="text-center border-b border-slate-200 pb-3">
+                                        <div className="font-black text-sm text-slate-900 uppercase tracking-wide">St. Jude Catholic School — Canteen Services</div>
+                                        <div className="text-[10px] text-slate-500">San Miguel, Manila • Official Pay Later Repayment Voucher</div>
+                                        <div className="inline-block mt-2 px-2.5 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full">
+                                            ✓ PAYMENT PROCESSED & VERIFIED
+                                        </div>
+                                    </div>
+
+                                    {/* METADATA */}
+                                    <div className="grid grid-cols-2 gap-2 text-[11px]">
+                                        <div>
+                                            <span className="text-slate-400 font-semibold block">Official Receipt No:</span>
+                                            <span className="font-mono font-bold text-slate-900">{receiptData.receiptNo}</span>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="text-slate-400 font-semibold block">Date & Time:</span>
+                                            <span className="font-semibold text-slate-900">{new Date(receiptData.date).toLocaleString()}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-slate-400 font-semibold block">Student Name & ID:</span>
+                                            <span className="font-bold text-slate-900">{receiptData.studentName} ({receiptData.studentId})</span>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="text-slate-400 font-semibold block">Payment Channel:</span>
+                                            <span className="font-bold text-slate-900 uppercase">{receiptData.paymentMethod.replace('_', ' ')}</span>
+                                        </div>
+                                    </div>
+
+                                    {/* BREAKDOWN TABLE */}
+                                    <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
+                                        <table className="w-full text-left">
+                                            <thead className="bg-slate-100 border-b border-slate-200 text-[10px] uppercase font-bold text-slate-600">
+                                                <tr>
+                                                    <th className="p-2">Item Description</th>
+                                                    <th className="p-2 text-right">Previous</th>
+                                                    <th className="p-2 text-right">Paid</th>
+                                                    <th className="p-2 text-right">Remaining</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100 font-mono">
+                                                <tr>
+                                                    <td className="p-2 font-sans font-medium text-slate-800">
+                                                        Emergency Tab Settlement
+                                                        {receiptData.remarks && <div className="text-[10px] text-slate-500 font-normal mt-0.5">Note: {receiptData.remarks}</div>}
+                                                    </td>
+                                                    <td className="p-2 text-right text-slate-600">₱{receiptData.previousDebt.toFixed(2)}</td>
+                                                    <td className="p-2 text-right font-bold text-emerald-700">₱{receiptData.amountPaid.toFixed(2)}</td>
+                                                    <td className="p-2 text-right font-bold text-amber-900">₱{receiptData.remainingDebt.toFixed(2)}</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    {/* FOOTER CALLOUT */}
+                                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex justify-between items-center">
+                                        <div>
+                                            <div className="text-[10px] font-bold uppercase text-emerald-800">Total Cleared</div>
+                                            <div className="font-outfit text-lg font-black text-emerald-900">₱{receiptData.amountPaid.toFixed(2)}</div>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="text-[10px] font-bold text-slate-500">Remaining Tab:</span>
+                                            <div className="font-outfit text-sm font-bold text-slate-800">₱{receiptData.remainingDebt.toFixed(2)}</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-2 pt-2 border-t border-slate-200">
+                                    <ActionButton
+                                        variant="secondary"
+                                        onClick={() => setReceiptModalOpen(false)}
+                                        className="w-1/3 py-2.5"
+                                    >
+                                        Close
+                                    </ActionButton>
+                                    <ActionButton
+                                        variant="primary"
+                                        onClick={printReceiptWindow}
+                                        className="w-2/3 py-2.5 font-bold shadow-md bg-slate-900 hover:bg-slate-800 text-white flex items-center justify-center gap-1.5"
+                                    >
+                                        <Icon.Printer className="w-4 h-4 text-amber-300" /> 🖨️ Print Official Receipt
+                                    </ActionButton>
+                                </div>
+                            </div>
+                        )}
+                    </CustomModal>
                 </div>
             );
         }
@@ -7401,6 +8124,7 @@
             const [gcashRefNo, setGcashRefNo] = useState('');
             const [uploadedFileName, setUploadedFileName] = useState('');
             const [topupErrorMsg, setTopupErrorMsg] = useState('');
+            const [preorderViewTab, setPreorderViewTab] = useState('active'); // 'active' | 'archived'
 
             const categories = ['All', 'Meals & Mains', 'Beverages', 'Snacks & Bakery', 'Fruits & Healthy'];
             const filteredMenu = menuCatalog.filter(i => {
@@ -7488,6 +8212,23 @@
                 { id: 'ORD-2026-872', date: 'Yesterday, 12:05 PM', items: 'Beef Pares w/ Rice, Iced Fruit Juice', total: 120.00, method: 'RFID Tap', status: 'Completed', cashier: 'Register #01' },
                 { id: 'ORD-2026-850', date: 'July 27, 2026, 9:45 AM', items: 'Ham & Cheese Sandwich, Fresh Red Apple', total: 70.00, method: 'RFID Tap', status: 'Completed', cashier: 'Express Kiosk #02' }
             ];
+
+            // Filter student preorders: Strictly segregated into Active vs Archived
+            const myStudentPreorders = (preorders || []).filter(po => {
+                const pStudId = String(po.studentId || po.student_id || '').toLowerCase();
+                const pStudNum = String(po.studentIdNumber || po.student_id_number || '').toLowerCase();
+                const pName = String(po.studentName || po.student_name || '').toLowerCase();
+                const curId = String(currentStudent?.id || '').toLowerCase();
+                const curNum = String(studentIdNum).toLowerCase();
+                const curName = String(studentName).toLowerCase();
+
+                return (pStudId && (pStudId === curId || pStudId === curNum)) ||
+                       (pStudNum && (pStudNum === curNum || pStudNum === curId)) ||
+                       (pName && (pName === curName || curName.includes(pName) || pName.includes(curName)));
+            });
+
+            const activeStudentPreorders = myStudentPreorders.filter(po => !po.is_archived && po.status !== 'Claimed' && po.status !== 'Archived' && po.status !== 'Cancelled');
+            const archivedStudentPreorders = myStudentPreorders.filter(po => po.is_archived || po.status === 'Claimed' || po.status === 'Archived' || po.status === 'Completed');
 
             const pendingRequestsForMe = parentStudentLinkRequests.filter(req => req.status === 'pending' && (req.student_id_number === studentIdNum || req.studentId === studentIdNum || req.student_id === currentStudent?.id));
 
@@ -7715,60 +8456,118 @@
                                     )}
                                 </section>
 
-                                {/* RIGHT PANEL: ACTIVE PRE-ORDERS */}
+                                {/* RIGHT PANEL: PRE-ORDERS (ACTIVE & ARCHIVED) */}
                                 <section className="lg:col-span-4 space-y-4">
                                     <div className="enterprise-card p-6 rounded-3xl space-y-3 bg-white border border-slate-200 shadow-sm">
-                                        <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-                                            <h3 className="font-outfit text-lg font-bold text-slate-900">Active Pre-Orders</h3>
-                                            <span className="text-xs font-bold text-brand-700 bg-brand-50 px-2.5 py-1 rounded-full border border-brand-100">{preorders.length} Reserved</span>
+                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100 pb-3">
+                                            <h3 className="font-outfit text-base font-bold text-slate-900">Pre-Order Reservations</h3>
+                                            <div className="flex bg-slate-100 p-0.5 rounded-xl gap-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setPreorderViewTab('active')}
+                                                    className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all ${preorderViewTab === 'active' ? 'bg-brand-700 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'}`}
+                                                >
+                                                    Active ({activeStudentPreorders.length})
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setPreorderViewTab('archived')}
+                                                    className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all ${preorderViewTab === 'archived' ? 'bg-brand-700 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'}`}
+                                                >
+                                                    Archived ({archivedStudentPreorders.length})
+                                                </button>
+                                            </div>
                                         </div>
 
-                                        {preorders.length === 0 ? (
-                                            <div className="py-8 text-center text-slate-400 space-y-2">
-                                                <Icon.ShoppingBag className="w-8 h-8 mx-auto text-slate-300" />
-                                                <p className="text-xs font-semibold text-slate-600">No active meal reservations</p>
-                                                <p className="text-[11px] text-slate-400">Browse the catalog to reserve a tray for today's recess or lunch.</p>
-                                            </div>
-                                        ) : (
-                                            <div className="space-y-3 max-h-96 overflow-y-auto">
-                                                {preorders.map((po, idx) => {
-                                                    const isReady = po.status === 'Ready';
-                                                    const isClaimed = po.status === 'Claimed';
-                                                    const shelf = po.shelf || po.shelf_location || 'Shelf B2';
+                                        {preorderViewTab === 'active' ? (
+                                            activeStudentPreorders.length === 0 ? (
+                                                <div className="py-8 text-center text-slate-400 space-y-2">
+                                                    <Icon.ShoppingBag className="w-8 h-8 mx-auto text-slate-300" />
+                                                    <p className="text-xs font-semibold text-slate-600">No active meal reservations</p>
+                                                    <p className="text-[11px] text-slate-400">Browse the catalog to reserve a tray for today's recess or lunch.</p>
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-3 max-h-96 overflow-y-auto">
+                                                    {activeStudentPreorders.map((po, idx) => {
+                                                        const isReady = po.status === 'Ready';
+                                                        const shelf = po.shelf || po.shelf_location || 'Shelf B2';
 
-                                                    return (
-                                                        <div key={po.id || idx} className="p-3.5 bg-slate-50/80 rounded-2xl border border-slate-200 space-y-2.5 text-xs">
-                                                            <div className="flex justify-between items-start">
-                                                                <div>
-                                                                    <div className="font-bold text-slate-900">{po.name || po.item}</div>
-                                                                    <div className="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1.5">
-                                                                        <span>{po.session || 'Lunch Break'}</span>
-                                                                        <span>•</span>
-                                                                        <span className="font-bold text-brand-700">📍 {shelf}</span>
+                                                        return (
+                                                            <div key={po.id || idx} className="p-3.5 bg-slate-50/80 rounded-2xl border border-slate-200 space-y-2.5 text-xs">
+                                                                <div className="flex justify-between items-start">
+                                                                    <div>
+                                                                        <div className="font-bold text-slate-900">{po.name || po.item}</div>
+                                                                        <div className="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1.5">
+                                                                            <span>{po.session || 'Lunch Break'}</span>
+                                                                            <span>•</span>
+                                                                            <span className="font-bold text-brand-700">📍 {shelf}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="text-right">
+                                                                        <div className="font-outfit font-bold text-brand-700">₱{parseFloat(po.price || 0).toFixed(2)}</div>
+                                                                        <span className={`px-2 py-0.5 rounded text-[9px] font-bold mt-0.5 inline-block ${isReady ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                                                                            {isReady ? '🟢 Ready on Shelf' : '🟡 Preparing'}
+                                                                        </span>
                                                                     </div>
                                                                 </div>
-                                                                <div className="text-right">
-                                                                    <div className="font-outfit font-bold text-brand-700">₱{parseFloat(po.price || 0).toFixed(2)}</div>
-                                                                    <span className={`px-2 py-0.5 rounded text-[9px] font-bold mt-0.5 inline-block ${isClaimed ? 'bg-slate-200 text-slate-700' : isReady ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
-                                                                        {isClaimed ? '✓ Claimed' : isReady ? '🟢 Ready on Shelf' : '🟡 Preparing'}
-                                                                    </span>
+
+                                                                {/* Step indicator */}
+                                                                <div className="pt-1.5 border-t border-slate-200/60 flex items-center justify-between text-[9px] text-slate-500 font-medium">
+                                                                    <span className="text-brand-700 font-bold">1. Placed</span>
+                                                                    <span>➔</span>
+                                                                    <span className={po.status === 'Preparing' || isReady ? 'text-brand-700 font-bold' : ''}>2. Kitchen</span>
+                                                                    <span>➔</span>
+                                                                    <span className={isReady ? 'text-emerald-700 font-bold' : ''}>3. Shelf</span>
+                                                                    <span>➔</span>
+                                                                    <span>4. Handed Over</span>
                                                                 </div>
                                                             </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )
+                                        ) : (
+                                            archivedStudentPreorders.length === 0 ? (
+                                                <div className="py-8 text-center text-slate-400 space-y-2">
+                                                    <Icon.Archive className="w-8 h-8 mx-auto text-slate-300" />
+                                                    <p className="text-xs font-semibold text-slate-600">No archived pre-orders yet</p>
+                                                    <p className="text-[11px] text-slate-400">Completed and fulfilled meal pre-orders will be archived here.</p>
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-3 max-h-96 overflow-y-auto">
+                                                    {archivedStudentPreorders.map((po, idx) => {
+                                                        const shelf = po.shelf || po.shelf_location || 'Shelf B2';
+                                                        const archiveDateStr = po.archived_at
+                                                            ? new Date(po.archived_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                                                            : (po.created_at ? new Date(po.created_at).toLocaleDateString() : 'Fulfilled');
 
-                                                            {/* Step indicator */}
-                                                            <div className="pt-1.5 border-t border-slate-200/60 flex items-center justify-between text-[9px] text-slate-500 font-medium">
-                                                                <span className="text-brand-700 font-bold">1. Placed</span>
-                                                                <span>➔</span>
-                                                                <span className={po.status === 'Preparing' || isReady || isClaimed ? 'text-brand-700 font-bold' : ''}>2. Kitchen</span>
-                                                                <span>➔</span>
-                                                                <span className={isReady || isClaimed ? 'text-emerald-700 font-bold' : ''}>3. Shelf</span>
-                                                                <span>➔</span>
-                                                                <span className={isClaimed ? 'text-slate-900 font-bold' : ''}>4. Handed Over</span>
+                                                        return (
+                                                            <div key={po.id || idx} className="p-3.5 bg-slate-100/70 rounded-2xl border border-slate-200/80 space-y-2 text-xs">
+                                                                <div className="flex justify-between items-start">
+                                                                    <div>
+                                                                        <div className="font-bold text-slate-800">{po.name || po.item}</div>
+                                                                        <div className="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1.5">
+                                                                            <span>{po.session || 'Lunch Break'}</span>
+                                                                            <span>•</span>
+                                                                            <span>📍 Handed over at {shelf}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="text-right">
+                                                                        <div className="font-outfit font-bold text-slate-700">₱{parseFloat(po.price || 0).toFixed(2)}</div>
+                                                                        <span className="px-2 py-0.5 rounded text-[9px] font-bold mt-0.5 inline-block bg-slate-200 text-slate-700">
+                                                                            📦 Archived (Claimed)
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="pt-1.5 border-t border-slate-200 flex justify-between items-center text-[10px] text-slate-400 font-mono">
+                                                                    <span>{po.order_number || po.orderNo ? `Ref: ${po.order_number || po.orderNo}` : 'Express Counter Handover'}</span>
+                                                                    <span>{archiveDateStr}</span>
+                                                                </div>
                                                             </div>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )
                                         )}
                                     </div>
                                 </section>
@@ -8018,7 +8817,15 @@
                             return (
                                 <div className="space-y-4">
                                     <div className="flex items-center gap-3.5 p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
-                                        <img src={preorderItem.img} alt={preorderItem.name} className="w-16 h-16 object-cover rounded-xl border border-slate-200" />
+                                        <img
+                                            src={preorderItem.img}
+                                            alt={preorderItem.name}
+                                            onError={(e) => {
+                                                e.target.onerror = null;
+                                                e.target.src = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80";
+                                            }}
+                                            className="w-16 h-16 object-cover rounded-xl border border-slate-200"
+                                        />
                                         <div className="flex-1">
                                             <div className="font-bold text-slate-900 text-sm">{preorderItem.name}</div>
                                             <div className="text-xs text-slate-500">{preorderItem.category} • {preorderItem.unit || '1 Serving'}</div>
@@ -8500,8 +9307,9 @@
 
                         {/* ACTIVE CHILD PRE-ORDERS CARD */}
                         {(() => {
-                            const childPos = preorders.filter(po => (po.studentId === childIdNum || po.student_id === activeChild.id || po.studentName === childName) && po.status !== 'Claimed');
-                            if (childPos.length === 0) return null;
+                            const childPos = preorders.filter(po => (po.studentId === childIdNum || po.student_id === activeChild.id || po.studentName === childName || (po.studentName && childName && po.studentName.toLowerCase() === childName.toLowerCase())));
+                            const activeChildPos = childPos.filter(po => !po.is_archived && po.status !== 'Claimed' && po.status !== 'Archived' && po.status !== 'Cancelled');
+                            if (activeChildPos.length === 0) return null;
                             return (
                                 <div className="p-4 bg-emerald-50 border border-emerald-300 rounded-2xl space-y-2 shadow-xs">
                                     <div className="flex items-center justify-between">
@@ -8509,14 +9317,14 @@
                                             <Icon.Package className="w-5 h-5 text-emerald-700" />
                                             <span>Active Meal Pre-Order for {childName}</span>
                                         </div>
-                                        <span className="text-xs font-bold bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full border border-emerald-200">{childPos.length} Reserved</span>
+                                        <span className="text-xs font-bold bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full border border-emerald-200">{activeChildPos.length} Reserved</span>
                                     </div>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                                        {childPos.map((po, idx) => (
+                                        {activeChildPos.map((po, idx) => (
                                             <div key={idx} className="p-3 bg-white rounded-xl border border-emerald-200/80 flex justify-between items-center text-xs">
                                                 <div>
                                                     <div className="font-bold text-slate-900">{po.name || po.item}</div>
-                                                    <div className="text-[10px] text-slate-500">{po.session || 'Lunch Break'} • <strong className="text-emerald-700">📍 {po.shelf || 'Shelf B2'}</strong></div>
+                                                    <div className="text-[10px] text-slate-500">{po.session || 'Lunch Break'} • <strong className="text-emerald-700">📍 {po.shelf || po.shelf_location || 'Shelf B2'}</strong></div>
                                                 </div>
                                                 <div className="text-right">
                                                     <div className="font-outfit font-bold text-emerald-700">₱{parseFloat(po.price || 0).toFixed(2)}</div>
@@ -8975,6 +9783,10 @@
                                             <img
                                                 src="https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=600&q=80"
                                                 alt="Overhead Tray Snapshot"
+                                                onError={(e) => {
+                                                    e.target.onerror = null;
+                                                    e.target.src = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=600&q=80";
+                                                }}
                                                 className="w-full h-full object-cover opacity-90"
                                             />
                                             <div className="absolute top-3 left-3 bg-brand-950/80 text-amber-400 border border-brand-800 text-[10px] font-bold px-2.5 py-1 rounded-full backdrop-blur-xs flex items-center gap-1">
@@ -9021,6 +9833,10 @@
                                             <img
                                                 src="https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=600&q=80"
                                                 alt="Overhead Tray Snapshot"
+                                                onError={(e) => {
+                                                    e.target.onerror = null;
+                                                    e.target.src = "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=600&q=80";
+                                                }}
                                                 className="w-full h-full object-cover opacity-90"
                                             />
                                             <div className="absolute top-3 left-3 bg-brand-950/80 text-amber-400 border border-brand-800 text-[10px] font-bold px-2.5 py-1 rounded-full backdrop-blur-xs flex items-center gap-1">
@@ -9067,6 +9883,10 @@
                                             <img
                                                 src="https://images.unsplash.com/photo-1528735602780-2552fd46c7af?auto=format&fit=crop&w=600&q=80"
                                                 alt="Overhead Tray Snapshot"
+                                                onError={(e) => {
+                                                    e.target.onerror = null;
+                                                    e.target.src = "https://images.unsplash.com/photo-1528735602780-2552fd46c7af?auto=format&fit=crop&w=600&q=80";
+                                                }}
                                                 className="w-full h-full object-cover opacity-90"
                                             />
                                             <div className="absolute top-3 left-3 bg-brand-950/80 text-amber-400 border border-brand-800 text-[10px] font-bold px-2.5 py-1 rounded-full backdrop-blur-xs flex items-center gap-1">
@@ -10255,7 +11075,7 @@
                                 {/* SMART ACTIVE PRE-ORDER NOTICE */}
                                 {(() => {
                                     const activePo = selectedStudent ? preorders.find(po => {
-                                        if (po.status === 'Claimed' || po.status === 'Cancelled') return false;
+                                        if (po.is_archived || po.status === 'Claimed' || po.status === 'Archived' || po.status === 'Cancelled') return false;
                                         const poStudId = String(po.studentId || po.student_id || '').toLowerCase();
                                         const poStudNum = String(po.studentIdNumber || po.student_id_number || '').toLowerCase();
                                         const poName = String(po.studentName || po.student_name || '').toLowerCase();
@@ -10372,7 +11192,15 @@
                                                 return (
                                                     <div key={item.id} className={`p-3 rounded-2xl bg-white border border-slate-200/80 space-y-2.5 flex flex-col justify-between hover:shadow-xs hover:border-slate-300 transition-all ${isNearExpiry ? 'border-amber-300 bg-amber-50/20' : ''}`}>
                                                         <div className="flex gap-2.5 items-center">
-                                                            <img src={item.img} alt={item.name} className="w-12 h-12 object-cover rounded-xl shrink-0 ring-1 ring-slate-100 shadow-2xs" />
+                                                            <img
+                                                                src={item.img}
+                                                                alt={item.name}
+                                                                onError={(e) => {
+                                                                    e.target.onerror = null;
+                                                                    e.target.src = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80";
+                                                                }}
+                                                                className="w-12 h-12 object-cover rounded-xl shrink-0 ring-1 ring-slate-100 shadow-2xs"
+                                                            />
                                                             <div className="space-y-0.5 overflow-hidden">
                                                                 <div className="font-bold text-xs text-slate-900 leading-snug line-clamp-2">{item.name}</div>
                                                                 <div className="text-[10px] text-slate-500">{item.category}</div>
@@ -10706,8 +11534,8 @@
 
                     {/* SUB-TAB 2: PICKUP ORDERS & LIVE STAGING BOARD (ZERO QR SCAN / ZERO PASSCODE) */}
                     {(currentTab === 'pickup_orders' || currentTab === 'qr_claim') && (() => {
-                        const activePreorders = preorders.filter(p => p.status !== 'Claimed');
-                        const claimedToday = preorders.filter(p => p.status === 'Claimed');
+                        const activePreorders = preorders.filter(p => !p.is_archived && p.status !== 'Claimed' && p.status !== 'Archived' && p.status !== 'Cancelled');
+                        const claimedToday = preorders.filter(p => p.is_archived || p.status === 'Claimed' || p.status === 'Archived' || p.status === 'Completed');
 
                         // Filter by session
                         const sessionFiltered = activePreorders.filter(po => {
@@ -11959,7 +12787,7 @@
         // =====================================================================
         // 5. CANTEEN ADMIN MODULE (WITH AI VISION TRAINING QUEUE & AUDIT LOGS)
         // =====================================================================
-        function AdminView({ gcashQueue, menuCatalog, registeredUsers, setRegisteredUsers = () => { }, recentOrders = [], setRecentOrders = () => { }, refundsList = [], setRefundsList = () => { }, inventoryBatches = [], setInventoryBatches = () => { }, onApproveTopup, onRejectTopup, onAddProduct, onUpdateProduct, onArchiveProduct, onAddNewStudent, onUpdateStudent, onArchiveStudent, activeTab = 'command', setActiveTab, onSignOut, onSelectRoleQuick, isCloudConnected, onRefreshCloud, notifications = [], onMarkNotifRead, onMarkAllNotifRead, onOpenCommandPalette, onExportMenuCSV, onExportStudentsCSV, onUnarchiveStudent, onUnarchiveProduct, onRestoreOrder, onRestoreBatch, onRestoreTopup, onPurgeItem, rawIngredients = [], setRawIngredients, setMenuCatalog = () => { }, kdsOrders = [], setKdsOrders, showToast = () => { } }) {
+        function AdminView({ gcashQueue, menuCatalog, registeredUsers, setRegisteredUsers = () => { }, recentOrders = [], setRecentOrders = () => { }, refundsList = [], setRefundsList = () => { }, inventoryBatches = [], setInventoryBatches = () => { }, preorders = [], onUnarchivePreorder, onApproveTopup, onRejectTopup, onAddProduct, onUpdateProduct, onArchiveProduct, onAddNewStudent, onUpdateStudent, onArchiveStudent, onSettleDebt = null, activeTab = 'command', setActiveTab, onSignOut, onSelectRoleQuick, isCloudConnected, onRefreshCloud, notifications = [], onMarkNotifRead, onMarkAllNotifRead, onOpenCommandPalette, onExportMenuCSV, onExportStudentsCSV, onUnarchiveStudent, onUnarchiveProduct, onRestoreOrder, onRestoreBatch, onRestoreTopup, onPurgeItem, rawIngredients = [], setRawIngredients, setMenuCatalog = () => { }, kdsOrders = [], setKdsOrders, showToast = () => { } }) {
             const [addStudentModalOpen, setAddStudentModalOpen] = useState(false);
             const [editAccountModalOpen, setEditAccountModalOpen] = useState(false);
             const [editingUser, setEditingUser] = useState(null);
@@ -11986,7 +12814,7 @@
             const [gcashReviewOpen, setGcashReviewOpen] = useState(false);
 
             // Master Archive Center State
-            const [archiveSubTab, setArchiveSubTab] = useState('all'); // 'all' | 'accounts' | 'menu' | 'orders' | 'inventory' | 'topup'
+            const [archiveSubTab, setArchiveSubTab] = useState('all'); // 'all' | 'accounts' | 'menu' | 'orders' | 'inventory' | 'topup' | 'preorders'
             const [archiveSearchQuery, setArchiveSearchQuery] = useState('');
             const [archiveDetailItem, setArchiveDetailItem] = useState(null);
             const [restoreConfirmItem, setRestoreConfirmItem] = useState(null);
@@ -12783,15 +13611,6 @@
                                 <p className="text-xs text-slate-500">Live Cloud Database: <strong className="font-mono text-brand-700">wtvkmywmlifcsddlgvnn</strong></p>
                             </div>
                             <div className="flex flex-wrap gap-2">
-                                <button onClick={() => setIsSisTuitionExportOpen(true)} className="px-3.5 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm btn-press">
-                                    <Icon.Database className="w-3.5 h-3.5 text-amber-300" /> Pay Later Sync
-                                </button>
-                                <button onClick={() => setActiveTab('refunds')} className="px-3.5 py-2 bg-rose-700 hover:bg-rose-800 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm btn-press">
-                                    <Icon.RotateCcw className="w-3.5 h-3.5 text-rose-200" /> Refunds & Returns
-                                </button>
-                                <button onClick={() => setIsDisputeQueueOpen(true)} className="px-3.5 py-2 bg-rose-700 hover:bg-rose-800 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm btn-press">
-                                    <Icon.ShieldAlert className="w-3.5 h-3.5 text-rose-200" /> Order Disputes
-                                </button>
                                 {onExportMenuCSV && (
                                     <button onClick={onExportMenuCSV} className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs">
                                         <Icon.Download className="w-3.5 h-3.5 text-slate-600" /> Export Menu CSV
@@ -14888,6 +15707,7 @@
                             const archivedOrders = recentOrders.filter(o => o.status === 'voided' || o.order_status === 'voided' || o.status === 'archived');
                             const archivedBatches = inventoryBatches.filter(b => ['EXPIRED', 'SPOILED', 'ROLLED_OVER', 'DEPLETED', 'archived'].includes(b.status));
                             const archivedTopups = gcashQueue.filter(t => t.status === 'Rejected' || t.status === 'Archived');
+                            const archivedPreorders = (preorders || []).filter(p => p.is_archived || p.status === 'Claimed' || p.status === 'Archived' || p.status === 'Completed');
 
                             // Consolidated list item mapper
                             const allArchivedItems = [
@@ -14945,6 +15765,17 @@
                                     date: t.date || t.created_at || '2026-08-06',
                                     rawStatus: t.status,
                                     data: t
+                                })),
+                                ...archivedPreorders.map(p => ({
+                                    id: p.id,
+                                    type: 'preorder',
+                                    categoryName: 'Archived Pre-Order',
+                                    title: `${p.name || p.item || 'Meal Item'} (₱${(parseFloat(p.price) || 0).toFixed(2)})`,
+                                    subtitle: `Student: ${p.studentName || 'Student'} • Shelf: ${p.shelf || p.shelf_location || 'Shelf B2'} • Session: ${p.session || 'Lunch Break'}`,
+                                    reason: p.status === 'Cancelled' ? (p.refundNote || 'Pre-order cancelled & refunded') : `Meal fulfilled & archived (${p.order_number || p.orderNo || 'Express Handover'})`,
+                                    date: p.archived_at ? new Date(p.archived_at).toLocaleString() : (p.created_at || '2026-08-06'),
+                                    rawStatus: p.status || 'Archived',
+                                    data: p
                                 }))
                             ];
 
@@ -14956,7 +15787,8 @@
                                     (archiveSubTab === 'menu' && item.type === 'product') ||
                                     (archiveSubTab === 'orders' && item.type === 'order') ||
                                     (archiveSubTab === 'inventory' && item.type === 'batch') ||
-                                    (archiveSubTab === 'topup' && item.type === 'topup')
+                                    (archiveSubTab === 'topup' && item.type === 'topup') ||
+                                    (archiveSubTab === 'preorders' && item.type === 'preorder')
                                 );
                                 const q = archiveSearchQuery.toLowerCase().trim();
                                 const matchesSearch = !q || (
@@ -15049,7 +15881,7 @@
                                                         <h2 className="font-outfit text-2xl font-black text-slate-900 tracking-tight">Master System Archive Center</h2>
                                                     </div>
                                                     <p className="text-xs text-slate-500 max-w-2xl">
-                                                        Centralized database vault for soft-deleted accounts, deactivated menu items, voided POS receipts, expired inventory batches, and rejected GCash reloads.
+                                                        Centralized database vault for soft-deleted accounts, deactivated menu items, voided POS receipts, expired inventory batches, fulfilled pre-orders, and rejected GCash reloads.
                                                     </p>
                                                 </div>
                                                 <div className="flex items-center gap-2">
@@ -15063,7 +15895,7 @@
                                             </div>
 
                                             {/* METRIC PILL COUNTERS */}
-                                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
                                                 <div onClick={() => setArchiveSubTab('all')} className={`p-4 rounded-2xl border transition-all cursor-pointer ${archiveSubTab === 'all' ? 'bg-amber-50 border-amber-300 shadow-sm' : 'bg-white border-slate-200 hover:border-slate-300'}`}>
                                                     <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Total Archives</div>
                                                     <div className="font-outfit text-2xl font-black text-slate-900 mt-1">{allArchivedItems.length}</div>
@@ -15082,7 +15914,12 @@
                                                 <div onClick={() => setArchiveSubTab('orders')} className={`p-4 rounded-2xl border transition-all cursor-pointer ${archiveSubTab === 'orders' ? 'bg-amber-50 border-amber-300 shadow-sm' : 'bg-white border-slate-200 hover:border-slate-300'}`}>
                                                     <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Voided Orders</div>
                                                     <div className="font-outfit text-2xl font-black text-rose-900 mt-1">{archivedOrders.length}</div>
-                                                    <div className="text-[10px] text-rose-700 font-semibold mt-0.5">Cancelled POS Receipts</div>
+                                                    <div className="text-[10px] text-rose-700 font-semibold mt-0.5">Cancelled Receipts</div>
+                                                </div>
+                                                <div onClick={() => setArchiveSubTab('preorders')} className={`p-4 rounded-2xl border transition-all cursor-pointer ${archiveSubTab === 'preorders' ? 'bg-amber-50 border-amber-300 shadow-sm' : 'bg-white border-slate-200 hover:border-slate-300'}`}>
+                                                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Pre-Orders</div>
+                                                    <div className="font-outfit text-2xl font-black text-teal-900 mt-1">{archivedPreorders.length}</div>
+                                                    <div className="text-[10px] text-teal-700 font-semibold mt-0.5">Fulfilled Trays</div>
                                                 </div>
                                                 <div onClick={() => setArchiveSubTab('inventory')} className={`p-4 rounded-2xl border transition-all cursor-pointer ${archiveSubTab === 'inventory' ? 'bg-amber-50 border-amber-300 shadow-sm' : 'bg-white border-slate-200 hover:border-slate-300'}`}>
                                                     <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Expired Batches</div>
@@ -15122,6 +15959,12 @@
                                                         className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${archiveSubTab === 'orders' ? 'bg-rose-800 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
                                                     >
                                                         Voided Orders ({archivedOrders.length})
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setArchiveSubTab('preorders')}
+                                                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${archiveSubTab === 'preorders' ? 'bg-teal-800 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                                    >
+                                                        Pre-Orders ({archivedPreorders.length})
                                                     </button>
                                                     <button
                                                         onClick={() => setArchiveSubTab('inventory')}
@@ -15179,7 +16022,8 @@
                                                                         product: 'bg-emerald-50 text-emerald-800 border-emerald-200',
                                                                         order: 'bg-rose-50 text-rose-800 border-rose-200',
                                                                         batch: 'bg-amber-50 text-amber-800 border-amber-200',
-                                                                        topup: 'bg-purple-50 text-purple-800 border-purple-200'
+                                                                        topup: 'bg-purple-50 text-purple-800 border-purple-200',
+                                                                        preorder: 'bg-teal-50 text-teal-800 border-teal-200'
                                                                     };
 
                                                                     const typeIcon = {
@@ -15187,7 +16031,8 @@
                                                                         product: Icon.Package,
                                                                         order: Icon.ShoppingBag,
                                                                         batch: Icon.Layers,
-                                                                        topup: Icon.CreditCard
+                                                                        topup: Icon.CreditCard,
+                                                                        preorder: Icon.ShoppingCart
                                                                     }[item.type] || Icon.Archive;
 
                                                                     const ItemIconComp = typeIcon;
@@ -15337,6 +16182,7 @@
                                                                     else if (item.type === 'order' && onRestoreOrder) onRestoreOrder(item.id);
                                                                     else if (item.type === 'batch' && onRestoreBatch) onRestoreBatch(item.id);
                                                                     else if (item.type === 'topup' && onRestoreTopup) onRestoreTopup(item.id);
+                                                                    else if (item.type === 'preorder' && onUnarchivePreorder) onUnarchivePreorder(item.id);
                                                                     setRestoreConfirmItem(null);
                                                                 }}
                                                                 className="w-2/3 py-2.5 font-bold bg-emerald-700 hover:bg-emerald-800 text-white"
@@ -15396,7 +16242,12 @@
 
                         {/* TAB: TUITION FEE BILLING SYNC & SAFETY NET LEDGER */}
                         {activeTab === 'tuition_billing' && (
-                            <AdminTuitionBillingView showToast={showToast} />
+                            <AdminTuitionBillingView
+                                showToast={showToast}
+                                registeredUsers={registeredUsers}
+                                setRegisteredUsers={setRegisteredUsers}
+                                onSettleDebt={onSettleDebt}
+                            />
                         )}
 
                         {/* TAB: FACULTY & STAFF SALARY DEDUCTION AUDIT & PAYROLL REPORTS */}
@@ -15485,50 +16336,7 @@
                                             ))}
                                         </div>
 
-                                        {/* ITEMIZED TABLE */}
-                                        <div className="pt-4 space-y-3">
-                                            <h4 className="font-outfit font-bold text-slate-900 text-sm">Comprehensive Salary Deduction Ledger</h4>
-                                            {allDeductions.length === 0 ? (
-                                                <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 text-slate-400 text-xs">
-                                                    No salary deduction meal charges recorded for this cutoff.
-                                                </div>
-                                            ) : (
-                                                <div className="overflow-x-auto rounded-2xl border border-slate-200">
-                                                    <table className="w-full text-left text-xs bg-white">
-                                                        <thead>
-                                                            <tr className="border-b text-slate-500 uppercase font-bold bg-slate-50">
-                                                                <th className="py-2.5 px-3">Date & Time</th>
-                                                                <th className="py-2.5 px-3">Employee</th>
-                                                                <th className="py-2.5 px-3">Staff ID</th>
-                                                                <th className="py-2.5 px-3">Department</th>
-                                                                <th className="py-2.5 px-3">Order Ref</th>
-                                                                <th className="py-2.5 px-3">Meal Items</th>
-                                                                <th className="py-2.5 px-3 text-right">Amount</th>
-                                                                <th className="py-2.5 px-3 text-center">Status</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody className="divide-y divide-slate-100">
-                                                            {allDeductions.map((d, i) => (
-                                                                <tr key={d.id || i} className="hover:bg-slate-50 transition-colors">
-                                                                    <td className="py-2.5 px-3 font-semibold text-slate-700">{d.date}</td>
-                                                                    <td className="py-2.5 px-3 font-bold text-slate-900">{d.employeeName}</td>
-                                                                    <td className="py-2.5 px-3 font-mono text-slate-600">{d.employeeId}</td>
-                                                                    <td className="py-2.5 px-3 text-slate-600">{d.department}</td>
-                                                                    <td className="py-2.5 px-3 font-mono font-bold text-brand-700">{d.orderNo || d.id}</td>
-                                                                    <td className="py-2.5 px-3 text-slate-800">{typeof d.items === 'string' ? d.items : 'Canteen meal'}</td>
-                                                                    <td className="py-2.5 px-3 text-right font-outfit font-bold text-indigo-900">₱{(parseFloat(d.amount) || 0).toFixed(2)}</td>
-                                                                    <td className="py-2.5 px-3 text-center">
-                                                                        <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-bold rounded-full">
-                                                                            ⏳ {d.status || 'PENDING_PAYROLL'}
-                                                                        </span>
-                                                                    </td>
-                                                                </tr>
-                                                            ))}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            )}
-                                        </div>
+
                                     </div>
                                 </section>
                             );
@@ -17194,6 +18002,10 @@
                                                 <img
                                                     src={item.receiptImg || "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600&auto=format&fit=crop"}
                                                     alt="GCash Screenshot Proof"
+                                                    onError={(e) => {
+                                                        e.target.onerror = null;
+                                                        e.target.src = "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600&auto=format&fit=crop";
+                                                    }}
                                                     className={`w-full h-full ${isImageZoomed ? 'object-contain scale-125' : 'object-cover'} transition-transform duration-300`}
                                                 />
                                                 <div className="absolute top-3 left-3 bg-slate-950/80 text-white border border-slate-700 px-2.5 py-1 rounded-full text-[10px] font-mono">
@@ -18202,7 +19014,7 @@
                 const cleanId = String(identifier).trim().toLowerCase();
 
                 const targetPo = preorders.find(p => {
-                    if (p.status === 'Claimed' || p.status === 'Cancelled') return false;
+                    if (p.is_archived || p.status === 'Claimed' || p.status === 'Archived' || p.status === 'Cancelled') return false;
                     const pId = String(p.id || '').toLowerCase();
                     const pToken = String(p.token || '').toLowerCase();
                     const pStudId = String(p.studentId || p.student_id || '').toLowerCase();
@@ -18217,33 +19029,65 @@
                     return false;
                 }
 
-                // Mark pre-order as claimed in state & cloud DB
-                setPreorders(prev => prev.map(p => p.id === targetPo.id ? { ...p, status: 'Claimed' } : p));
+                const claimOrderNo = `CLAIM-${Math.floor(1000 + Math.random() * 9000)}`;
+                const nowIso = new Date().toISOString();
+
+                // Mark pre-order as claimed and archived in state & cloud DB
+                setPreorders(prev => prev.map(p => p.id === targetPo.id ? {
+                    ...p,
+                    status: 'Claimed',
+                    is_archived: true,
+                    archived_at: nowIso,
+                    order_number: claimOrderNo,
+                    orderNo: claimOrderNo
+                } : p));
+
                 if (window.CanteenDB && targetPo.id) {
-                    window.CanteenDB.updatePreorderStatus(targetPo.id, 'Claimed').catch(e => console.warn(e));
+                    if (window.CanteenDB.archivePreorder) {
+                        window.CanteenDB.archivePreorder(targetPo.id, { orderNo: claimOrderNo, status: 'Claimed' }).catch(e => console.warn(e));
+                    } else if (window.CanteenDB.updatePreorderStatus) {
+                        window.CanteenDB.updatePreorderStatus(targetPo.id, 'Claimed').catch(e => console.warn(e));
+                    }
                 }
 
                 // Add to Shift Recent Orders as PRE_PAID POS transaction (NO double balance deduction)
                 const prePaidOrder = {
-                    orderNo: `CLAIM-${Math.floor(1000 + Math.random() * 9000)}`,
+                    orderNo: claimOrderNo,
+                    order_number: claimOrderNo,
                     date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                    created_at: new Date().toISOString(),
+                    created_at: nowIso,
                     student: targetPo.studentName || (currentStudent ? currentStudent.name : "Student"),
                     studentId: targetPo.studentId || (currentStudent ? currentStudent.studentId : "2023-01900"),
+                    user_id: targetPo.student_id || targetPo.studentId || (currentStudent ? currentStudent.id : null),
                     items: [{ name: targetPo.name || targetPo.item, price: targetPo.price, qty: 1 }],
                     total: targetPo.price,
                     paymentMethod: 'PRE_ORDER (Express Handover)',
-                    cashier: 'Express POS Counter'
+                    payment_method: 'PRE_ORDER (Express Handover)',
+                    cashier: 'Express POS Counter',
+                    status: 'completed',
+                    order_status: 'completed'
                 };
                 setRecentOrders(prev => [prePaidOrder, ...prev]);
-                showToast(`✅ Meal handed over for ${targetPo.studentName || 'Student'} (${targetPo.name || targetPo.item})!`);
+                showToast(`✅ Meal handed over & archived for ${targetPo.studentName || 'Student'} (${targetPo.name || targetPo.item})!`);
                 return true;
             };
 
             const handleUpdatePreorderStatus = (preorderId, newStatus) => {
-                setPreorders(prev => prev.map(p => p.id === preorderId ? { ...p, status: newStatus } : p));
+                const isAutoArchiving = newStatus === 'Claimed' || newStatus === 'Archived' || newStatus === 'Completed';
+                const nowIso = isAutoArchiving ? new Date().toISOString() : null;
+
+                setPreorders(prev => prev.map(p => p.id === preorderId ? {
+                    ...p,
+                    status: newStatus,
+                    ...(isAutoArchiving ? { is_archived: true, archived_at: p.archived_at || nowIso } : {})
+                } : p));
+
                 if (window.CanteenDB) {
-                    window.CanteenDB.updatePreorderStatus(preorderId, newStatus).catch(e => console.warn(e));
+                    if (isAutoArchiving && window.CanteenDB.archivePreorder) {
+                        window.CanteenDB.archivePreorder(preorderId, { status: newStatus }).catch(e => console.warn(e));
+                    } else {
+                        window.CanteenDB.updatePreorderStatus(preorderId, newStatus).catch(e => console.warn(e));
+                    }
                 }
                 showToast(`Pre-order status updated to: ${newStatus}`);
             };
@@ -18602,7 +19446,7 @@
                 }
             };
 
-            const handleSettleDebt = async (studentId, amountPaid, paymentMethod = 'cash') => {
+            const handleSettleDebt = async (studentId, amountPaid, paymentMethod = 'cash', referenceNo = null, remarks = '') => {
                 const targetUser = registeredUsers.find(u => u.id === studentId || u.studentId === studentId);
                 if (!targetUser) {
                     alert("Student not found for tab settlement.");
@@ -18610,8 +19454,9 @@
                 }
 
                 const currentLiability = targetUser.creditLiability || 0;
-                const cleanPaid = Math.min(currentLiability, parseFloat(amountPaid) || 0);
-                if (cleanPaid <= 0) {
+                const isWaiver = paymentMethod === 'waiver';
+                const cleanPaid = isWaiver ? currentLiability : Math.min(currentLiability, parseFloat(amountPaid) || 0);
+                if (cleanPaid <= 0 && !isWaiver) {
                     alert("Please enter a valid positive repayment amount.");
                     return false;
                 }
@@ -18625,8 +19470,8 @@
                     newBal = newBal - cleanPaid;
                 }
 
-                const newLiability = Math.max(0, currentLiability - cleanPaid);
-                const newCount = newLiability === 0 ? 0 : (targetUser.payLaterCount || 0);
+                const newLiability = isWaiver ? 0 : Math.max(0, currentLiability - cleanPaid);
+                const newCount = targetUser.payLaterCount || 0; // maintain historical transaction count for student record audit
 
                 setRegisteredUsers(prevUsers => prevUsers.map(u => {
                     if (u.id === targetUser.id) {
@@ -18645,18 +19490,23 @@
                     window.CanteenDB.settleStudentDebt(targetUser.id, cleanPaid, paymentMethod).catch(e => console.warn(e));
                 }
 
+                const generatedRef = referenceNo || `OR-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
+                const methodLabel = paymentMethod === 'sis_tuition' ? 'SIS Tuition Billing' : paymentMethod === 'waiver' ? 'Administrative Waiver' : paymentMethod.toUpperCase();
+
                 // Add in-app notification
                 const newNotif = {
                     id: 'notif_' + Date.now(),
-                    title: 'Pay Later Tab Settled! 🤝',
-                    message: `Cleared ₱${cleanPaid.toFixed(2)} Pay Later credit debt via ${paymentMethod.toUpperCase()}. Remaining Tab Balance: ₱${newLiability.toFixed(2)}.`,
+                    title: isWaiver ? 'Pay Later Debt Waived / Reset! 🛡️' : 'Pay Later Tab Settled! 🤝',
+                    message: isWaiver
+                        ? `Cleared ₱${cleanPaid.toFixed(2)} debt liability for ${targetUser.name} via Administrative Reset (Ref: ${generatedRef}). Remaining Balance: ₱0.00.${remarks ? ` Note: ${remarks}` : ''}`
+                        : `Cleared ₱${cleanPaid.toFixed(2)} Pay Later credit debt for ${targetUser.name} via ${methodLabel} (Ref: ${generatedRef}). Remaining Tab Balance: ₱${newLiability.toFixed(2)}.${remarks ? ` Note: ${remarks}` : ''}`,
                     timestamp: 'Just now',
                     read: false,
                     type: 'financial'
                 };
                 setNotifications(prev => [newNotif, ...prev]);
-                showToast(`Settled ₱${cleanPaid.toFixed(2)} tab debt for ${targetUser.name}!`);
-                return { success: true, remainingLiability: newLiability };
+                showToast(isWaiver ? `Reset tab debt for ${targetUser.name} to ₱0.00!` : `Settled ₱${cleanPaid.toFixed(2)} tab debt for ${targetUser.name}!`);
+                return { success: true, remainingLiability: newLiability, referenceNo: generatedRef, amountPaid: cleanPaid };
             };
 
             const handleUpdateProduct = async (updatedProd) => {
@@ -18773,6 +19623,26 @@
                 }
             };
 
+            const handleUnarchivePreorder = async (preorderId) => {
+                try {
+                    setPreorders(prev => prev.map(p => p.id === preorderId ? {
+                        ...p,
+                        status: 'Pending',
+                        is_archived: false,
+                        archived_at: null
+                    } : p));
+                    if (window.CanteenDB && window.CanteenDB.unarchivePreorder) {
+                        await window.CanteenDB.unarchivePreorder(preorderId).catch(e => console.warn(e));
+                    } else if (supabaseClient) {
+                        await supabaseClient.from('preorders').update({ status: 'Pending', is_archived: false, archived_at: null, updated_at: new Date().toISOString() }).eq('id', preorderId).catch(e => console.warn(e));
+                    }
+                    showToast(`Restored pre-order back to Active Reservations queue!`);
+                } catch (err) {
+                    console.error("[Restore Pre-Order Error]", err);
+                    showToast(`⚠️ Failed to restore pre-order: ${err.message}`, "danger");
+                }
+            };
+
             const handlePurgeItem = async (type, id) => {
                 if (type === 'student' || type === 'user') {
                     setRegisteredUsers(prev => prev.filter(u => u.id !== id));
@@ -18791,6 +19661,10 @@
                 } else if (type === 'topup') {
                     setGcashQueue(prev => prev.filter(t => t.id !== id));
                     showToast(`Permanently purged top-up request.`);
+                } else if (type === 'preorder') {
+                    setPreorders(prev => prev.filter(p => p.id !== id));
+                    if (supabaseClient) await supabaseClient.from('preorders').delete().eq('id', id).catch(e => console.warn(e));
+                    showToast(`Permanently purged pre-order record.`);
                 }
             };
 
@@ -18911,6 +19785,9 @@
                                             shelf_location: item.shelf || 'Shelf B2',
                                             shelf: item.shelf || 'Shelf B2',
                                             status: 'Pending',
+                                            is_archived: false,
+                                            archived_at: null,
+                                            order_number: null,
                                             created_at: new Date().toISOString()
                                         };
 
@@ -18949,6 +19826,9 @@
                                                 shelf: item.shelf || 'Shelf B2',
                                                 shelf_location: item.shelf || 'Shelf B2',
                                                 status: 'Pending',
+                                                is_archived: false,
+                                                archived_at: null,
+                                                order_number: null,
                                                 student_id: currentStudent?.id,
                                                 studentId: currentStudent?.studentId || currentStudent?.id,
                                                 student_id_number: currentStudent?.studentId,
@@ -19294,6 +20174,53 @@
                                                 }
                                             }
 
+                                            // 5. Check and auto-archive any matching student pre-orders
+                                            try {
+                                                const matchedStud = registeredUsers.find(u => (order.rfidUid && u.rfidUid === order.rfidUid) || u.studentId === order.studentId || u.name === order.student);
+                                                if (matchedStud || order.studentId || order.student) {
+                                                    const sId = matchedStud?.id || order.studentId;
+                                                    const sNum = matchedStud?.studentId || order.studentId;
+                                                    const sName = matchedStud?.name || order.student;
+                                                    const itemNames = (order.items || []).map(i => String(i.name || '').toLowerCase());
+
+                                                    const matchingPoIds = [];
+                                                    setPreorders(prevPo => prevPo.map(po => {
+                                                        if (po.is_archived || po.status === 'Claimed' || po.status === 'Archived' || po.status === 'Cancelled') return po;
+                                                        const pStudId = String(po.studentId || po.student_id || '').toLowerCase();
+                                                        const pStudNum = String(po.studentIdNumber || po.student_id_number || '').toLowerCase();
+                                                        const pStudName = String(po.studentName || po.student_name || '').toLowerCase();
+                                                        const pItem = String(po.name || po.item || '').toLowerCase();
+
+                                                        const isStudMatch = (sId && pStudId === String(sId).toLowerCase()) ||
+                                                                            (sNum && pStudNum === String(sNum).toLowerCase()) ||
+                                                                            (sName && pStudName && (pStudName === String(sName).toLowerCase() || String(sName).toLowerCase().includes(pStudName) || pStudName.includes(String(sName).toLowerCase())));
+
+                                                        const isItemMatch = itemNames.some(inm => inm === pItem || inm.includes(pItem) || pItem.includes(inm));
+
+                                                        if (isStudMatch && isItemMatch) {
+                                                            matchingPoIds.push(po.id);
+                                                            return {
+                                                                ...po,
+                                                                status: 'Claimed',
+                                                                is_archived: true,
+                                                                archived_at: new Date().toISOString(),
+                                                                order_number: order.orderNo,
+                                                                orderNo: order.orderNo
+                                                            };
+                                                        }
+                                                        return po;
+                                                    }));
+
+                                                    if (matchingPoIds.length > 0 && window.CanteenDB && window.CanteenDB.archivePreorder) {
+                                                        matchingPoIds.forEach(pId => {
+                                                            window.CanteenDB.archivePreorder(pId, { orderNo: order.orderNo, status: 'Claimed' }).catch(e => console.warn(e));
+                                                        });
+                                                    }
+                                                }
+                                            } catch (poArchiveErr) {
+                                                console.warn("Pre-order auto-archive during checkout notice:", poArchiveErr);
+                                            }
+
                                             setPosCart([]);
                                             showToast(`Completed POS Order ${order.orderNo} (₱${order.total.toFixed(2)})!`);
                                         } catch (checkoutErr) {
@@ -19391,6 +20318,8 @@
                                     onRestoreBatch={handleRestoreBatch}
                                     onRestoreTopup={handleRestoreTopup}
                                     onPurgeItem={handlePurgeItem}
+                                    preorders={preorders}
+                                    onUnarchivePreorder={handleUnarchivePreorder}
                                     activeTab={activeTab}
                                     setActiveTab={setActiveTab}
                                     onSignOut={handleSignOut}
@@ -19405,6 +20334,7 @@
                                     setMenuCatalog={setMenuCatalog}
                                     kdsOrders={kdsOrders}
                                     setKdsOrders={setKdsOrders}
+                                    onSettleDebt={handleSettleDebt}
                                     showToast={showToast}
                                 />
                             )}
