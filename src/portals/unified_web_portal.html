@@ -8190,9 +8190,6 @@
             // ── Governance Policy Props ──
             globalDefaultDailyCalories = 1800
         }) {
-            // Parent Controls & Health Guardrails State
-            const activeChild = currentStudent || registeredUsers.find(u => u.role?.toLowerCase() === 'student') || { name: "Juan Dela Cruz", studentId: "2023-01900", rfidUid: "9A-4F-21-C8" };
-
             const safeBalance = (typeof studentBalance === 'number' && !isNaN(studentBalance)) ? studentBalance : (typeof activeChild?.balance === 'number' ? activeChild.balance : 0);
             const safeLimit = (typeof dailyLimit === 'number' && !isNaN(dailyLimit)) ? dailyLimit : (typeof activeChild?.dailyCap === 'number' ? activeChild.dailyCap : 200);
 
@@ -8206,6 +8203,9 @@
             const [parentSettleErr, setParentSettleErr] = useState('');
             const [newLimitInput, setNewLimitInput] = useState(safeLimit.toString());
             const [selectedPurchase, setSelectedPurchase] = useState(null);
+
+            // Parent Controls & Health Guardrails State
+            const activeChild = currentStudent || registeredUsers.find(u => u.role?.toLowerCase() === 'student') || { name: "Juan Dela Cruz", studentId: "2023-01900", rfidUid: "9A-4F-21-C8" };
 
             const [restrictSugar, setRestrictSugar] = useState(true);
             const [restrictPeanuts, setRestrictPeanuts] = useState(true);
