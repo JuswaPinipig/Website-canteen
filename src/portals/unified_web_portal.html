@@ -4961,29 +4961,41 @@
                 const target = refundsList.find(r => r.id === refundId);
                 if (!target) return;
 
+                const refundAmt = parseFloat(target.amount) || 0;
+                let creditedStudentId = null;
+
                 if (target.method === 'RFID_WALLET' || target.method === 'Pending Wallet Credit') {
-                    const matchedStudent = registeredUsers.find(u => u.studentId === target.studentId || u.name === target.studentName || u.id === target.studentId);
+                    const matchedStudent = registeredUsers.find(u => 
+                        (target.studentId && (u.studentId === target.studentId || u.id === target.studentId)) || 
+                        (target.studentName && u.name && u.name.toLowerCase() === target.studentName.toLowerCase())
+                    );
                     if (matchedStudent) {
-                        const newBal = (parseFloat(matchedStudent.balance) || 0) + parseFloat(target.amount);
-                        setRegisteredUsers(prev => prev.map(u => u.id === matchedStudent.id ? { ...u, balance: newBal } : u));
+                        creditedStudentId = matchedStudent.id;
+                        let newBal = (parseFloat(matchedStudent.balance) || 0) + refundAmt;
                         if (window.CanteenDB) {
-                            await window.CanteenDB.creditWalletBalance(matchedStudent.id, parseFloat(target.amount)).catch(err => console.warn("Refund balance sync warning", err));
+                            try {
+                                const rpcBal = await window.CanteenDB.creditWalletBalance(matchedStudent.id, refundAmt);
+                                if (typeof rpcBal === 'number') newBal = rpcBal;
+                            } catch (err) {
+                                console.warn("Refund balance sync warning", err);
+                            }
                         }
+                        setRegisteredUsers(prev => prev.map(u => u.id === matchedStudent.id ? { ...u, balance: newBal } : u));
                     }
                 }
 
                 if (target.restocked && target.productId) {
-                    setMenuCatalog(prev => prev.map(p => p.id === target.productId ? { ...p, stock: (p.stock || 0) + 1 } : p));
+                    setMenuCatalog(prev => prev.map(p => (p.id === target.productId || p.name === target.productId) ? { ...p, stock: (p.stock || 0) + 1 } : p));
                 }
 
                 // If linked to an order, update recentOrders status to REFUNDED
                 if (target.orderId && setRecentOrders) {
-                    setRecentOrders(prev => prev.map(o => (o.orderNo === target.orderId || o.id === target.orderId) ? { ...o, status: 'REFUNDED', refundedAmount: parseFloat(target.amount) } : o));
+                    setRecentOrders(prev => prev.map(o => (o.orderNo === target.orderId || o.id === target.orderId) ? { ...o, status: 'REFUNDED', refundedAmount: refundAmt } : o));
                 }
 
-                // Notify Cloud DB
+                // Notify Cloud DB dispute status without secondary double-credit
                 if (window.CanteenDB) {
-                    await window.CanteenDB.resolveMealDispute(target.id, 'APPROVED', target.reason || 'Admin Approved Refund', 'admin', parseFloat(target.amount), target.studentId).catch(e => { });
+                    await window.CanteenDB.resolveMealDispute(target.id, 'APPROVED', target.reason || 'Admin Approved Refund', 'admin', 0, null).catch(e => { });
                 }
 
                 setRefundsList(prev => prev.map(r => r.id === refundId ? {
@@ -4993,7 +5005,7 @@
                     processedBy: 'Admin Approved'
                 } : r));
 
-                showToast(`✅ Approved & credited ₱${parseFloat(target.amount).toFixed(2)} refund for ${target.studentName}!`, 'success');
+                showToast(`✅ Approved & credited ₱${refundAmt.toFixed(2)} refund for ${target.studentName}!`, 'success');
             };
 
             // Reject Handler
@@ -9968,10 +9980,23 @@
 
                                 {/* SMART ACTIVE PRE-ORDER NOTICE */}
                                 {(() => {
-                                    const activePo = selectedStudent ? preorders.find(po => (po.studentId === selectedStudent.studentId || po.student_id === selectedStudent.id || po.studentName === selectedStudent.name) && po.status !== 'Claimed') : null;
+                                    const activePo = selectedStudent ? preorders.find(po => {
+                                        if (po.status === 'Claimed' || po.status === 'Cancelled') return false;
+                                        const poStudId = String(po.studentId || po.student_id || '').toLowerCase();
+                                        const poStudNum = String(po.studentIdNumber || po.student_id_number || '').toLowerCase();
+                                        const poName = String(po.studentName || po.student_name || '').toLowerCase();
+
+                                        const targetId = String(selectedStudent.id || '').toLowerCase();
+                                        const targetNum = String(selectedStudent.studentId || selectedStudent.student_id || selectedStudent.student_id_number || '').toLowerCase();
+                                        const targetName = String(selectedStudent.name || '').toLowerCase();
+
+                                        return (poStudId && (poStudId === targetId || poStudId === targetNum)) ||
+                                               (poStudNum && (poStudNum === targetNum || poStudNum === targetId)) ||
+                                               (poName && (poName === targetName || (targetName && poName.includes(targetName)) || (targetName && targetName.includes(poName))));
+                                    }) : null;
                                     if (!activePo) return null;
 
-                                    const poName = activePo.name || activePo.item || 'Meal Item';
+                                    const poName = activePo.name || activePo.item || activePo.item_name || 'Meal Item';
                                     const poPrice = parseFloat(activePo.price || 0);
                                     const poShelf = activePo.shelf || activePo.shelf_location || 'Shelf B2';
                                     const isMeal = ["rice", "adobo", "chicken", "pares", "spaghetti", "meal", "bowl", "pork", "beef", "sinigang", "caldereta", "menudo", "bistek", "fish", "ulam", "silog", "lunch", "burger steak"].some(k => poName.toLowerCase().includes(k)) || (activePo.category || '').toLowerCase().includes('meal');
@@ -9985,7 +10010,7 @@
                                                     </div>
                                                     <div>
                                                         <div className="flex items-center gap-2 flex-wrap">
-                                                            <h4 className="font-outfit font-bold text-xs text-amber-950">Active Pre-Order: {activePo.studentName || selectedStudent.name}</h4>
+                                                            <h4 className="font-outfit font-bold text-xs text-amber-950">Active Pre-Order: {activePo.studentName || activePo.student_name || selectedStudent.name}</h4>
                                                             <span className="bg-emerald-100 text-emerald-800 text-[9px] font-bold px-2 py-0.2 rounded-full border border-emerald-300">📍 {poShelf}</span>
                                                             <span className="bg-amber-100 text-amber-800 text-[9px] font-bold px-2 py-0.2 rounded-full">{activePo.session || 'Lunch Break'}</span>
                                                         </div>
@@ -10005,7 +10030,7 @@
                                                         <button
                                                             onClick={() => {
                                                                 if (onRefundPackagedPreorder) {
-                                                                    onRefundPackagedPreorder(activePo.id, activePo, poPrice, selectedStudent.id);
+                                                                    onRefundPackagedPreorder(activePo.id, activePo, poPrice, selectedStudent.id || selectedStudent.studentId);
                                                                 } else {
                                                                     showToast(`Refunded ₱${poPrice.toFixed(2)} to ${selectedStudent.name}'s wallet!`);
                                                                 }
@@ -10407,12 +10432,13 @@
                         // Filter by search query
                         const searchFiltered = sessionFiltered.filter(po => {
                             if (!pickupSearchQuery) return true;
-                            const q = pickupSearchQuery.toLowerCase();
-                            const studName = (po.studentName || '').toLowerCase();
+                            const q = pickupSearchQuery.toLowerCase().trim();
+                            const studName = (po.studentName || po.student_name || '').toLowerCase();
                             const studId = (po.studentId || po.student_id || '').toLowerCase();
-                            const itemName = (po.name || po.item || '').toLowerCase();
-                            const shelfStr = (po.shelf || '').toLowerCase();
-                            return studName.includes(q) || studId.includes(q) || itemName.includes(q) || shelfStr.includes(q);
+                            const studNum = (po.studentIdNumber || po.student_id_number || '').toLowerCase();
+                            const itemName = (po.name || po.item || po.item_name || '').toLowerCase();
+                            const shelfStr = (po.shelf || po.shelf_location || '').toLowerCase();
+                            return studName.includes(q) || studId.includes(q) || studNum.includes(q) || itemName.includes(q) || shelfStr.includes(q);
                         });
 
                         return (
@@ -12247,6 +12273,22 @@
             };
 
             const openEditStudent = openEditAccount; // Safe legacy alias
+
+            const openEditProduct = (prod) => {
+                if (!prod) return;
+                setSelectedProduct(prod);
+                setEditProdName(prod.name || '');
+                setEditProdPrice(String(prod.price !== undefined ? prod.price : ''));
+                setEditProdStock(String(prod.stock !== undefined ? prod.stock : '50'));
+                setEditProdCategory(prod.category || 'Meals & Mains');
+                setEditProdImg(prod.img || prod.image_url || '');
+                setEditProdAvailable(prod.available !== false && prod.is_available !== false);
+                setEditProdCalories(String(prod.calories || '0'));
+                setEditProdProtein(String(prod.protein || '0g'));
+                setEditProdAllergens(Array.isArray(prod.allergens) ? [...prod.allergens] : []);
+                setEditProductError('');
+                setEditProductModalOpen(true);
+            };
 
             const handleSaveAccountEdit = async (e) => {
                 if (e) e.preventDefault();
@@ -17302,52 +17344,96 @@
                 let connected = false;
                 if (supabaseClient) {
                     try {
-                        const { data: prodsData } = await supabaseClient.from('products').select('*, menu_categories(name)');
-                        if (prodsData && prodsData.length > 0) {
+                        const [prodsRes, profsRes, walletsRes] = await Promise.all([
+                            supabaseClient.from('products').select('*, menu_categories(name)'),
+                            supabaseClient.from('profiles').select('*'),
+                            supabaseClient.from('wallets').select('*')
+                        ]);
+
+                        const prodsData = prodsRes.data || [];
+                        const profsData = profsRes.data || [];
+                        const walletsData = walletsRes.data || [];
+
+                        if (prodsData.length > 0) {
                             const cloudProds = prodsData.map(p => ({
                                 id: p.id,
                                 name: p.name,
-                                category: p.menu_categories?.name || p.category?.name || p.category || "Meals & Mains",
+                                category: p.category || p.menu_categories?.name || "Meals & Mains",
                                 price: parseFloat(p.price) || 0,
-                                stock: p.stock_quantity ?? p.stock ?? 0,
-                                available: p.is_available ?? p.available ?? true,
+                                stock: p.stock ?? p.stock_quantity ?? 0,
+                                available: p.available ?? p.is_available ?? true,
                                 calories: parseInt(p.calories) || 0,
-                                protein: p.protein || "0g",
-                                allergens: p.allergens || [],
-                                img: p.image_url || p.img || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80"
+                                protein: p.protein || p.protein_grams || "0g",
+                                allergens: Array.isArray(p.allergens) ? p.allergens : [],
+                                img: p.img || p.image_url || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80"
                             }));
                             setMenuCatalog(prev => {
-                                const localOnly = prev.filter(lp => !cloudProds.some(cp => cp.id === lp.id || cp.name === lp.name));
+                                const cloudIds = new Set(cloudProds.map(cp => cp.id));
+                                const cloudNames = new Set(cloudProds.map(cp => cp.name.toLowerCase()));
+                                const localOnly = prev.filter(lp => !cloudIds.has(lp.id) && !cloudNames.has(lp.name.toLowerCase()));
                                 return [...cloudProds, ...localOnly];
                             });
                             connected = true;
                         }
 
-                        const { data: profsData } = await supabaseClient.from('profiles').select('*, wallets(*)');
-                        if (profsData && profsData.length > 0) {
+                        if (profsData.length > 0) {
+                            const walletMap = new Map();
+                            walletsData.forEach(w => {
+                                if (w.user_id) walletMap.set(w.user_id, w);
+                                if (w.id) walletMap.set(w.id, w);
+                            });
+
+                            const existingLocalUsers = (window.CanteenDB ? window.CanteenDB.loadLocal('novalunch_registered_users', []) : []);
+                            const localUserMap = new Map();
+                            existingLocalUsers.forEach(u => {
+                                if (u.id) localUserMap.set(u.id, u);
+                                if (u.email) localUserMap.set(u.email.toLowerCase(), u);
+                                if (u.studentId) localUserMap.set(u.studentId, u);
+                            });
+
                             const mappedUsers = profsData.map(u => {
-                                const w = Array.isArray(u.wallets) ? u.wallets[0] : u.wallets;
-                                const userBal = (w && w.balance !== null && w.balance !== undefined) ? parseFloat(w.balance) : (u.balance !== null && u.balance !== undefined ? parseFloat(u.balance) : 0.00);
-                                const userCap = (w && w.daily_limit !== null && w.daily_limit !== undefined) ? parseFloat(w.daily_limit) : (u.daily_limit !== null && u.daily_limit !== undefined ? parseFloat(u.daily_limit) : 200.00);
+                                const w = walletMap.get(u.id);
+                                const localU = localUserMap.get(u.id) || localUserMap.get((u.email || '').toLowerCase()) || localUserMap.get(u.student_id_number);
+
+                                let userBal = 0.00;
+                                if (w && w.balance !== null && w.balance !== undefined) {
+                                    userBal = parseFloat(w.balance);
+                                } else if (u.balance !== null && u.balance !== undefined) {
+                                    userBal = parseFloat(u.balance);
+                                } else if (localU && localU.balance !== null && localU.balance !== undefined) {
+                                    userBal = parseFloat(localU.balance);
+                                }
+
+                                let userCap = 200.00;
+                                if (w && w.daily_limit !== null && w.daily_limit !== undefined) {
+                                    userCap = parseFloat(w.daily_limit);
+                                } else if (u.daily_limit !== null && u.daily_limit !== undefined) {
+                                    userCap = parseFloat(u.daily_limit);
+                                } else if (localU && localU.dailyCap !== undefined) {
+                                    userCap = parseFloat(localU.dailyCap);
+                                }
+
                                 return {
                                     id: u.id,
                                     email: u.email,
-                                    studentId: u.student_id_number || "2026-00001",
-                                    name: u.full_name,
-                                    role: u.role ? (u.role.charAt(0).toUpperCase() + u.role.slice(1)) : 'Student',
-                                    rfidUid: u.rfid_uid || "",
+                                    studentId: u.student_id_number || localU?.studentId || "2026-00001",
+                                    name: u.full_name || localU?.name || "Student",
+                                    role: u.role ? (u.role.charAt(0).toUpperCase() + u.role.slice(1)) : (localU?.role || 'Student'),
+                                    rfidUid: u.rfid_uid || localU?.rfidUid || "",
                                     dailyCap: userCap,
+                                    daily_limit: userCap,
                                     balance: userBal,
-                                    status: u.status || 'active',
-                                    allergies: u.allergies || [],
-                                    pinCode: u.pin_code || '1234',
-                                    creditLiability: parseFloat(u.credit_liability) || 0,
-                                    creditLimit: parseFloat(u.credit_limit) || 500,
-                                    maxDailyCalories: u.max_daily_calories || 1800,
-                                    allergenMode: u.allergen_mode || 'SOFT_WARN',
-                                    managerPin: u.manager_pin || '1234'
+                                    status: u.status || localU?.status || 'active',
+                                    allergies: u.allergies || localU?.allergies || [],
+                                    pinCode: u.pin_code || localU?.pinCode || '1234',
+                                    creditLiability: parseFloat(w?.credit_liability ?? u.credit_liability ?? localU?.creditLiability ?? 0),
+                                    creditLimit: parseFloat(w?.credit_limit ?? u.credit_limit ?? localU?.creditLimit ?? 500),
+                                    maxDailyCalories: u.max_daily_calories || localU?.maxDailyCalories || 1800,
+                                    allergenMode: u.allergen_mode || localU?.allergenMode || 'SOFT_WARN',
+                                    managerPin: u.manager_pin || localU?.managerPin || '1234'
                                 };
                             });
+
                             setRegisteredUsers(prev => {
                                 const cloudIds = new Set(mappedUsers.map(m => m.id));
                                 const cloudEmails = new Set(mappedUsers.map(m => m.email?.toLowerCase()).filter(Boolean));
@@ -17533,18 +17619,19 @@
                         if (!updatedWallet) return;
                         const newBal = parseFloat(updatedWallet.balance) || 0;
                         const newLimit = (updatedWallet.daily_limit !== null && updatedWallet.daily_limit !== undefined) ? parseFloat(updatedWallet.daily_limit) : 200.0;
+                        const newLiability = (updatedWallet.credit_liability !== null && updatedWallet.credit_liability !== undefined) ? parseFloat(updatedWallet.credit_liability) : 0.0;
 
                         setRegisteredUsers((prev) => prev.map(u =>
-                            u.id === updatedWallet.user_id
-                                ? { ...u, balance: newBal, dailyCap: newLimit, daily_limit: newLimit }
+                            (u.id === updatedWallet.user_id || u.id === updatedWallet.id)
+                                ? { ...u, balance: newBal, dailyCap: newLimit, daily_limit: newLimit, creditLiability: newLiability }
                                 : u
                         ));
 
                         setCurrentStudent((prev) => {
-                            if (prev && prev.id === updatedWallet.user_id) {
+                            if (prev && (prev.id === updatedWallet.user_id || prev.id === updatedWallet.id)) {
                                 setStudentBalance(newBal);
                                 setDailyLimit(newLimit);
-                                return { ...prev, balance: newBal, dailyCap: newLimit, daily_limit: newLimit };
+                                return { ...prev, balance: newBal, dailyCap: newLimit, daily_limit: newLimit, creditLiability: newLiability };
                             }
                             return prev;
                         });
@@ -17554,17 +17641,18 @@
                         if (!updatedProf) return;
                         setRegisteredUsers((prev) => prev.map(u => {
                             if (u.id === updatedProf.id || (u.email && updatedProf.email && u.email.toLowerCase() === updatedProf.email.toLowerCase())) {
-                                const hasBal = updatedProf.balance !== undefined && updatedProf.balance !== null;
-                                const hasCap = updatedProf.daily_limit !== undefined && updatedProf.daily_limit !== null;
+                                const hasBal = typeof updatedProf.balance === 'number' && !isNaN(updatedProf.balance);
+                                const hasCap = typeof updatedProf.daily_limit === 'number' && !isNaN(updatedProf.daily_limit);
                                 return {
                                     ...u,
                                     name: updatedProf.full_name || u.name,
                                     studentId: updatedProf.student_id_number || u.studentId,
+                                    role: updatedProf.role ? (updatedProf.role.charAt(0).toUpperCase() + updatedProf.role.slice(1)) : u.role,
                                     rfidUid: updatedProf.rfid_uid ?? u.rfidUid,
                                     status: updatedProf.status || u.status,
                                     allergies: updatedProf.allergies || u.allergies,
-                                    creditLiability: parseFloat(updatedProf.credit_liability) || u.creditLiability,
-                                    creditLimit: parseFloat(updatedProf.credit_limit) || u.creditLimit,
+                                    creditLiability: updatedProf.credit_liability !== undefined ? parseFloat(updatedProf.credit_liability) : u.creditLiability,
+                                    creditLimit: updatedProf.credit_limit !== undefined ? parseFloat(updatedProf.credit_limit) : u.creditLimit,
                                     ...(hasBal ? { balance: parseFloat(updatedProf.balance) } : {}),
                                     ...(hasCap ? { dailyCap: parseFloat(updatedProf.daily_limit), daily_limit: parseFloat(updatedProf.daily_limit) } : {})
                                 };
@@ -17573,8 +17661,8 @@
                         }));
                         setCurrentStudent((prev) => {
                             if (prev && (prev.id === updatedProf.id || (prev.email && updatedProf.email && prev.email.toLowerCase() === updatedProf.email.toLowerCase()))) {
-                                const hasBal = updatedProf.balance !== undefined && updatedProf.balance !== null;
-                                const hasCap = updatedProf.daily_limit !== undefined && updatedProf.daily_limit !== null;
+                                const hasBal = typeof updatedProf.balance === 'number' && !isNaN(updatedProf.balance);
+                                const hasCap = typeof updatedProf.daily_limit === 'number' && !isNaN(updatedProf.daily_limit);
                                 if (hasBal) setStudentBalance(parseFloat(updatedProf.balance));
                                 if (hasCap) setDailyLimit(parseFloat(updatedProf.daily_limit));
                                 return {
@@ -17584,7 +17672,7 @@
                                     rfidUid: updatedProf.rfid_uid ?? prev.rfidUid,
                                     status: updatedProf.status || prev.status,
                                     allergies: updatedProf.allergies || prev.allergies,
-                                    creditLiability: parseFloat(updatedProf.credit_liability) || prev.creditLiability,
+                                    creditLiability: updatedProf.credit_liability !== undefined ? parseFloat(updatedProf.credit_liability) : prev.creditLiability,
                                     ...(hasBal ? { balance: parseFloat(updatedProf.balance) } : {}),
                                     ...(hasCap ? { dailyCap: parseFloat(updatedProf.daily_limit), daily_limit: parseFloat(updatedProf.daily_limit) } : {})
                                 };
@@ -17596,8 +17684,16 @@
                         const updatedProd = payload.new;
                         if (!updatedProd) return;
                         setMenuCatalog((prev) => prev.map(p =>
-                            p.id === updatedProd.id
-                                ? { ...p, stock: updatedProd.stock_quantity ?? p.stock, available: updatedProd.is_available ?? p.available, price: updatedProd.price ? parseFloat(updatedProd.price) : p.price }
+                            (p.id === updatedProd.id || (p.name && updatedProd.name && p.name.toLowerCase() === updatedProd.name.toLowerCase()))
+                                ? {
+                                    ...p,
+                                    name: updatedProd.name || p.name,
+                                    stock: updatedProd.stock ?? updatedProd.stock_quantity ?? p.stock,
+                                    available: updatedProd.available ?? updatedProd.is_available ?? p.available,
+                                    price: updatedProd.price !== undefined ? parseFloat(updatedProd.price) : p.price,
+                                    img: updatedProd.img || updatedProd.image_url || p.img,
+                                    category: updatedProd.category || p.category
+                                }
                                 : p
                         ));
                     })
@@ -17608,11 +17704,19 @@
                                 return [{
                                     id: payload.new.id,
                                     name: payload.new.item_name || payload.new.name,
+                                    item: payload.new.item_name || payload.new.name,
+                                    item_name: payload.new.item_name || payload.new.name,
                                     price: parseFloat(payload.new.price) || 0,
                                     token: payload.new.token || 'QR-PASS',
+                                    session: payload.new.session || 'Lunch Break (12:00 PM)',
+                                    shelf: payload.new.shelf_location || 'Shelf B2',
+                                    shelf_location: payload.new.shelf_location || 'Shelf B2',
                                     status: payload.new.status || 'Pending',
                                     studentId: payload.new.student_id,
-                                    studentName: payload.new.student_name
+                                    student_id: payload.new.student_id,
+                                    student_id_number: payload.new.student_id_number,
+                                    studentName: payload.new.student_name,
+                                    student_name: payload.new.student_name
                                 }, ...prev];
                             });
                         } else if (payload.eventType === 'UPDATE') {
@@ -17805,13 +17909,18 @@
                     showToast("⚠️ Select a pre-order to fulfill!", "danger");
                     return false;
                 }
-                const cleanId = String(identifier).trim();
+                const cleanId = String(identifier).trim().toLowerCase();
 
-                const targetPo = preorders.find(p => (
-                    p.id === cleanId ||
-                    (p.token && p.token.toUpperCase() === cleanId.toUpperCase()) ||
-                    ((p.studentId === cleanId || p.student_id === cleanId || p.studentName === cleanId) && p.status !== 'Claimed')
-                ) && p.status !== 'Claimed');
+                const targetPo = preorders.find(p => {
+                    if (p.status === 'Claimed' || p.status === 'Cancelled') return false;
+                    const pId = String(p.id || '').toLowerCase();
+                    const pToken = String(p.token || '').toLowerCase();
+                    const pStudId = String(p.studentId || p.student_id || '').toLowerCase();
+                    const pStudNum = String(p.studentIdNumber || p.student_id_number || '').toLowerCase();
+                    const pStudName = String(p.studentName || p.student_name || '').toLowerCase();
+
+                    return pId === cleanId || pToken === cleanId || pStudId === cleanId || pStudNum === cleanId || pStudName === cleanId || pStudName.includes(cleanId) || cleanId.includes(pStudName);
+                });
 
                 if (!targetPo) {
                     showToast(`⚠️ No pending pre-order found for "${cleanId}"!`, "danger");
@@ -18040,7 +18149,12 @@
                     return;
                 }
 
-                const targetUser = registeredUsers.find(u => u.id === queueItem.studentId || u.studentId === queueItem.studentIdNumber || (u.name && queueItem.student.includes(u.name)));
+                const targetUser = registeredUsers.find(u => 
+                    u.id === queueItem.studentId || 
+                    u.studentId === queueItem.studentId || 
+                    u.studentId === queueItem.studentIdNumber || 
+                    (u.name && queueItem.student && (queueItem.student.toLowerCase().includes(u.name.toLowerCase()) || u.name.toLowerCase().includes(queueItem.student.toLowerCase())))
+                );
                 const targetUserId = targetUser?.id || queueItem.studentId;
 
                 if (!targetUserId) {
@@ -18049,10 +18163,9 @@
                 }
 
                 try {
-                    let newCreditedBal = (targetUser?.balance || 0) + queueItem.amount;
+                    let newCreditedBal = (targetUser?.balance || 0) + (parseFloat(queueItem.amount) || 0);
                     if (window.CanteenDB) {
                         await window.CanteenDB.updateGcashReloadStatus(queueItem.id, 'Approved', adminNote);
-                        // FIX: Use atomic creditWalletBalance RPC rather than absolute state overwrite
                         const rpcBal = await window.CanteenDB.creditWalletBalance(targetUserId, queueItem.amount);
                         if (typeof rpcBal === 'number') newCreditedBal = rpcBal;
                     }
@@ -18061,14 +18174,15 @@
                     setReloadLogs(prev => prev.map(r => r.id === queueItem.id ? { ...r, status: 'Approved' } : r));
 
                     setRegisteredUsers(prev => prev.map(u => {
-                        if (u.id === targetUserId || u.studentId === queueItem.studentIdNumber) {
+                        if (u.id === targetUserId || (targetUser && u.id === targetUser.id) || u.studentId === queueItem.studentIdNumber || u.studentId === queueItem.studentId) {
                             return { ...u, balance: newCreditedBal };
                         }
                         return u;
                     }));
 
-                    if (currentStudent && (currentStudent.id === targetUserId || queueItem.student.includes(currentStudent.name))) {
+                    if (currentStudent && (currentStudent.id === targetUserId || (targetUser && currentStudent.id === targetUser.id) || (queueItem.student && currentStudent.name && (queueItem.student.toLowerCase().includes(currentStudent.name.toLowerCase()) || currentStudent.name.toLowerCase().includes(queueItem.student.toLowerCase()))))) {
                         setStudentBalance(newCreditedBal);
+                        setCurrentStudent(s => s ? { ...s, balance: newCreditedBal } : s);
                     }
 
                     const newNotif = {
@@ -18259,31 +18373,43 @@
                 setMenuCatalog(prev => prev.map(p => (p.id === updatedProd.id || p.name === updatedProd.name) ? { ...p, ...updatedProd } : p));
                 showToast(`Updated menu item ${updatedProd.name}!`);
 
+                const cleanStock = parseInt(updatedProd.stock ?? updatedProd.stock_quantity) || 0;
+                const cleanPrice = parseFloat(updatedProd.price) || 0;
+                const cleanCost = parseFloat(updatedProd.costPrice || updatedProd.cost_price) || 0;
+                const cleanAvail = updatedProd.available !== false && updatedProd.is_available !== false;
+                const cleanImg = updatedProd.img || updatedProd.image_url || '';
+
                 if (window.CanteenDB && updatedProd.id) {
                     await window.CanteenDB.updateProduct(updatedProd.id, {
                         name: updatedProd.name,
                         category: updatedProd.category,
-                        price: updatedProd.price,
-                        cost_price: updatedProd.costPrice || updatedProd.cost_price || 0,
-                        stock_quantity: updatedProd.stock,
-                        is_available: updatedProd.available !== false,
-                        image_url: updatedProd.img,
-                        calories: updatedProd.calories || 0,
+                        price: cleanPrice,
+                        cost_price: cleanCost,
+                        stock: cleanStock,
+                        stock_quantity: cleanStock,
+                        available: cleanAvail,
+                        is_available: cleanAvail,
+                        image_url: cleanImg,
+                        img: cleanImg,
+                        calories: parseInt(updatedProd.calories) || 0,
                         protein: updatedProd.protein || '0g',
-                        allergens: updatedProd.allergens || []
+                        allergens: Array.isArray(updatedProd.allergens) ? updatedProd.allergens : []
                     }).catch(err => console.warn("Cloud product update warning", err));
                 } else if (supabaseClient && updatedProd.id) {
                     await supabaseClient.from('products').update({
                         name: updatedProd.name,
                         category: updatedProd.category,
-                        price: updatedProd.price,
-                        cost_price: updatedProd.costPrice || updatedProd.cost_price || 0,
-                        stock_quantity: updatedProd.stock,
-                        is_available: updatedProd.available !== false,
-                        image_url: updatedProd.img,
-                        calories: updatedProd.calories || 0,
+                        price: cleanPrice,
+                        cost_price: cleanCost,
+                        stock: cleanStock,
+                        stock_quantity: cleanStock,
+                        available: cleanAvail,
+                        is_available: cleanAvail,
+                        image_url: cleanImg,
+                        img: cleanImg,
+                        calories: parseInt(updatedProd.calories) || 0,
                         protein: updatedProd.protein || '0g',
-                        allergens: updatedProd.allergens || []
+                        allergens: Array.isArray(updatedProd.allergens) ? updatedProd.allergens : []
                     }).eq('id', updatedProd.id).catch(err => console.warn("Supabase direct update warning", err));
                 }
             };
@@ -18478,12 +18604,19 @@
 
                                         const preorderRecord = {
                                             student_id: currentStudent ? currentStudent.id : 'u101',
+                                            studentId: currentStudent?.studentId || currentStudent?.id,
+                                            student_id_number: currentStudent?.studentId,
+                                            studentIdNumber: currentStudent?.studentId,
                                             student_name: currentStudent ? currentStudent.name : 'Student',
+                                            studentName: currentStudent ? currentStudent.name : 'Student',
                                             product_id: matchedProd ? matchedProd.id : null,
                                             item_name: item.name,
+                                            name: item.name,
+                                            item: item.name,
                                             price: item.price,
                                             session: item.session || 'Lunch Break (12:00 PM)',
                                             shelf_location: item.shelf || 'Shelf B2',
+                                            shelf: item.shelf || 'Shelf B2',
                                             status: 'Pending',
                                             created_at: new Date().toISOString()
                                         };
@@ -18503,7 +18636,7 @@
 
                                             // 6. Deduct FIFO Stock
                                             if (matchedProd && matchedProd.id && window.CanteenDB) {
-                                                await window.CanteenDB.deductCartStockFifo([{ id: matchedProd.id, qty: 1 }]);
+                                                await window.CanteenDB.deductCartStockFifo([{ id: matchedProd.id, qty: 1, name: matchedProd.name }]);
                                             }
 
                                             // 7. Persist Pre-Order Ticket
@@ -18517,16 +18650,22 @@
                                                 id: createdResult?.id || ('po_' + Date.now()),
                                                 name: item.name,
                                                 item: item.name,
+                                                item_name: item.name,
                                                 price: item.price,
                                                 session: item.session || 'Lunch Break (12:00 PM)',
                                                 shelf: item.shelf || 'Shelf B2',
                                                 shelf_location: item.shelf || 'Shelf B2',
                                                 status: 'Pending',
-                                                studentId: currentStudent?.id,
+                                                student_id: currentStudent?.id,
+                                                studentId: currentStudent?.studentId || currentStudent?.id,
+                                                student_id_number: currentStudent?.studentId,
+                                                studentIdNumber: currentStudent?.studentId,
+                                                student_name: currentStudent?.name,
                                                 studentName: currentStudent?.name
                                             };
                                             setPreorders(prev => [newPoObj, ...prev]);
                                             setStudentBalance(updatedBal);
+                                            setCurrentStudent(s => s ? { ...s, balance: updatedBal } : s);
                                             setRegisteredUsers(prev => prev.map(u => (u.id === currentStudent?.id || u.studentId === currentStudent?.studentId) ? { ...u, balance: updatedBal } : u));
 
                                             if (matchedProd) {
@@ -18648,24 +18787,41 @@
                                         }));
 
                                         // 2. Refund student's RFID wallet balance or reverse Pay Later liability in state & DB
-                                        if (orderToVoid.paymentMethod === 'RFID') {
-                                            const matchedStud = registeredUsers.find(u => u.rfidUid === orderToVoid.rfidUid || u.name === orderToVoid.student || u.studentId === orderToVoid.studentId);
+                                        const isRfid = String(orderToVoid.paymentMethod || '').toUpperCase() === 'RFID';
+                                        const isPayLater = String(orderToVoid.paymentMethod || '').toUpperCase() === 'PAY_LATER';
+
+                                        if (isRfid) {
+                                            const matchedStud = registeredUsers.find(u => 
+                                                (orderToVoid.rfidUid && u.rfidUid === orderToVoid.rfidUid) || 
+                                                (orderToVoid.student && u.name && u.name.toLowerCase() === orderToVoid.student.toLowerCase()) || 
+                                                (orderToVoid.studentId && (u.studentId === orderToVoid.studentId || u.id === orderToVoid.studentId))
+                                            );
                                             if (matchedStud) {
-                                                const refundedBal = matchedStud.balance + orderToVoid.total;
-                                                setRegisteredUsers(prevUsers => prevUsers.map(user => user.id === matchedStud.id ? { ...user, balance: refundedBal } : user));
-                                                if (currentStudent && currentStudent.id === matchedStud.id) {
-                                                    setStudentBalance(refundedBal);
-                                                }
+                                                let refundedBal = (matchedStud.balance || 0) + (parseFloat(orderToVoid.total) || 0);
                                                 if (window.CanteenDB && matchedStud.id) {
-                                                    await window.CanteenDB.updateStudentBalance(matchedStud.id, refundedBal).catch(e => console.warn("Cloud DB wallet refund error", e));
+                                                    try {
+                                                        const rpcBal = await window.CanteenDB.creditWalletBalance(matchedStud.id, orderToVoid.total);
+                                                        if (typeof rpcBal === 'number') refundedBal = rpcBal;
+                                                    } catch (e) {
+                                                        console.warn("Cloud DB wallet refund error", e);
+                                                    }
+                                                }
+                                                setRegisteredUsers(prevUsers => prevUsers.map(user => user.id === matchedStud.id ? { ...user, balance: refundedBal } : user));
+                                                if (currentStudent && (currentStudent.id === matchedStud.id || currentStudent.studentId === matchedStud.studentId)) {
+                                                    setStudentBalance(refundedBal);
+                                                    setCurrentStudent(s => s ? { ...s, balance: refundedBal } : s);
                                                 }
                                             }
-                                        } else if (orderToVoid.paymentMethod === 'PAY_LATER') {
-                                            const matchedStud = registeredUsers.find(u => u.rfidUid === orderToVoid.rfidUid || u.name === orderToVoid.student || u.studentId === orderToVoid.studentId);
+                                        } else if (isPayLater) {
+                                            const matchedStud = registeredUsers.find(u => 
+                                                (orderToVoid.rfidUid && u.rfidUid === orderToVoid.rfidUid) || 
+                                                (orderToVoid.student && u.name && u.name.toLowerCase() === orderToVoid.student.toLowerCase()) || 
+                                                (orderToVoid.studentId && (u.studentId === orderToVoid.studentId || u.id === orderToVoid.studentId))
+                                            );
                                             if (matchedStud) {
-                                                const reducedLiability = Math.max(0, (matchedStud.creditLiability || 0.0) - orderToVoid.total);
+                                                const reducedLiability = Math.max(0, (matchedStud.creditLiability || 0.0) - (parseFloat(orderToVoid.total) || 0));
                                                 setRegisteredUsers(prevUsers => prevUsers.map(user => user.id === matchedStud.id ? { ...user, creditLiability: reducedLiability } : user));
-                                                if (currentStudent && currentStudent.id === matchedStud.id) {
+                                                if (currentStudent && (currentStudent.id === matchedStud.id || currentStudent.studentId === matchedStud.studentId)) {
                                                     setCurrentStudent(prev => ({ ...prev, creditLiability: reducedLiability }));
                                                 }
                                                 if (window.CanteenDB && matchedStud.id) {

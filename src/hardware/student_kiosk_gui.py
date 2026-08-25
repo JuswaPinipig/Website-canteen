@@ -263,7 +263,13 @@ class DatabaseManager:
     def get_active_preorders(self, student_id, student_name=None):
         try:
             quoted_id = urllib.parse.quote(str(student_id))
-            url = f"{SUPABASE_URL}/rest/v1/preorders?or=(student_id.eq.{quoted_id},student_name.eq.{quoted_id})&status=neq.Claimed&select=*"
+            or_parts = [f"student_id.eq.{quoted_id}", f"student_name.eq.{quoted_id}"]
+            if student_name:
+                quoted_name = urllib.parse.quote(str(student_name))
+                or_parts.append(f"student_name.eq.{quoted_name}")
+                or_parts.append(f"student_name.ilike.*{quoted_name}*")
+            or_filter = ",".join(or_parts)
+            url = f"{SUPABASE_URL}/rest/v1/preorders?or=({or_filter})&status=neq.Claimed&select=*"
             req = urllib.request.Request(url, headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {SUPABASE_ANON_KEY}"})
             with urllib.request.urlopen(req, timeout=3) as resp:
                 if resp.status == 200:
@@ -281,7 +287,16 @@ class DatabaseManager:
             try:
                 with open(po_path, "r", encoding="utf-8") as f:
                     pos = json.load(f).get("preorders", [])
-                    matched = [p for p in pos if (p.get("student_id") == student_id or p.get("studentId") == student_id or (student_name and p.get("student_name") == student_name)) and p.get("status") != "Claimed"]
+                    matched = [
+                        p for p in pos 
+                        if (
+                            p.get("student_id") == student_id or 
+                            p.get("studentId") == student_id or 
+                            p.get("student_id_number") == student_id or 
+                            p.get("studentIdNumber") == student_id or 
+                            (student_name and (p.get("student_name") == student_name or p.get("studentName") == student_name))
+                        ) and p.get("status") != "Claimed"
+                    ]
                     if matched:
                         return matched
             except Exception:

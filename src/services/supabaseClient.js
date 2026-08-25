@@ -179,34 +179,62 @@
             if (updatePayload.name !== undefined) cleanPayload.name = updatePayload.name;
             if (updatePayload.price !== undefined) cleanPayload.price = parseFloat(updatePayload.price) || 0;
             if (updatePayload.cost_price !== undefined || updatePayload.costPrice !== undefined) cleanPayload.cost_price = parseFloat(updatePayload.cost_price || updatePayload.costPrice) || 0;
-            if (updatePayload.stock_quantity !== undefined) cleanPayload.stock_quantity = parseInt(updatePayload.stock_quantity);
-            else if (updatePayload.stock !== undefined) cleanPayload.stock_quantity = parseInt(updatePayload.stock);
-            if (updatePayload.is_available !== undefined) cleanPayload.is_available = Boolean(updatePayload.is_available);
-            else if (updatePayload.available !== undefined) cleanPayload.is_available = Boolean(updatePayload.available);
-            if (updatePayload.image_url !== undefined) cleanPayload.image_url = updatePayload.image_url;
-            else if (updatePayload.img !== undefined) cleanPayload.image_url = updatePayload.img;
+            
+            const stockVal = updatePayload.stock !== undefined ? parseInt(updatePayload.stock) : (updatePayload.stock_quantity !== undefined ? parseInt(updatePayload.stock_quantity) : undefined);
+            if (stockVal !== undefined) {
+                cleanPayload.stock = stockVal;
+                cleanPayload.stock_quantity = stockVal;
+            }
+            
+            const availVal = updatePayload.available !== undefined ? Boolean(updatePayload.available) : (updatePayload.is_available !== undefined ? Boolean(updatePayload.is_available) : undefined);
+            if (availVal !== undefined) {
+                cleanPayload.available = availVal;
+                cleanPayload.is_available = availVal;
+            }
+            
+            const imgVal = updatePayload.img || updatePayload.image_url;
+            if (imgVal !== undefined) {
+                cleanPayload.img = imgVal;
+                cleanPayload.image_url = imgVal;
+            }
+            
             if (updatePayload.category !== undefined) cleanPayload.category = updatePayload.category;
-            if (updatePayload.ai_label !== undefined) cleanPayload.ai_label = updatePayload.ai_label;
-            else if (updatePayload.aiLabel !== undefined) cleanPayload.ai_label = updatePayload.aiLabel;
+            if (updatePayload.ai_label !== undefined || updatePayload.aiLabel !== undefined) cleanPayload.ai_label = updatePayload.ai_label || updatePayload.aiLabel;
             if (updatePayload.calories !== undefined) cleanPayload.calories = parseInt(updatePayload.calories) || 0;
             if (updatePayload.protein !== undefined) cleanPayload.protein = updatePayload.protein;
             if (updatePayload.allergens !== undefined) cleanPayload.allergens = Array.isArray(updatePayload.allergens) ? updatePayload.allergens : [];
             if (updatePayload.status !== undefined) cleanPayload.status = updatePayload.status;
             cleanPayload.updated_at = new Date().toISOString();
 
-            // Always update local cache
+            // 1. Always update local cache immediately
             const currentProducts = this.loadLocal('novalunch_products_catalog', []);
-            const updatedLocal = currentProducts.map(p => p.id === productId ? { ...p, ...cleanPayload } : p);
+            const updatedLocal = currentProducts.map(p => (p.id === productId || (p.name && updatePayload.name && p.name.toLowerCase() === updatePayload.name.toLowerCase())) ? { ...p, ...cleanPayload } : p);
             this.saveLocal('novalunch_products_catalog', updatedLocal);
 
             if (this.isUUID(productId)) {
                 if (supabase) {
                     try {
                         const { data, error } = await supabase.from('products').update(cleanPayload).eq('id', productId).select();
-                        if (error) console.warn("Supabase updateProduct warning:", error);
-                        return data;
+                        if (!error && data) return data;
+                        if (error) {
+                            console.warn("[CanteenDB] updateProduct standard update notice, attempting alternate schema:", error.message);
+                            // Fallback with standardized columns
+                            const fallbackPayload = {
+                                name: cleanPayload.name,
+                                price: cleanPayload.price,
+                                stock: cleanPayload.stock,
+                                available: cleanPayload.available,
+                                img: cleanPayload.img,
+                                calories: cleanPayload.calories,
+                                protein: cleanPayload.protein,
+                                allergens: cleanPayload.allergens,
+                                updated_at: cleanPayload.updated_at
+                            };
+                            const { data: fbData, error: fbErr } = await supabase.from('products').update(fallbackPayload).eq('id', productId).select();
+                            if (!fbErr && fbData) return fbData;
+                        }
                     } catch (e) {
-                        console.warn("Supabase updateProduct exception:", e);
+                        console.warn("[CanteenDB] Supabase updateProduct exception:", e);
                     }
                 } else {
                     try {
@@ -300,9 +328,40 @@
                 name: item.name || item.product_name
             }));
 
+            // 1. Deduct immediately from local products catalog
+            const localProds = this.loadLocal('novalunch_products_catalog', []);
+            const updatedProds = localProds.map(p => {
+                const match = cleanItems.find(i => (i.id && (i.id === p.id)) || (i.name && p.name && i.name.toLowerCase() === p.name.toLowerCase()));
+                if (match) {
+                    return { ...p, stock: Math.max(0, (p.stock || 0) - match.qty) };
+                }
+                return p;
+            });
+            this.saveLocal('novalunch_products_catalog', updatedProds);
+
+            // 2. Deduct FIFO remaining from local batches
+            const localBatches = this.loadLocal('novalunch_inventory_batches', []);
+            if (localBatches && localBatches.length > 0) {
+                let batchCopy = JSON.parse(JSON.stringify(localBatches));
+                for (const item of cleanItems) {
+                    let rem = item.qty;
+                    for (let b of batchCopy) {
+                        const isMatch = (item.id && b.product_id === item.id) || 
+                                        (item.name && (b.product_name || '').toLowerCase() === item.name.toLowerCase()) || 
+                                        (b.products?.name && item.name && b.products.name.toLowerCase() === item.name.toLowerCase());
+                        if (isMatch && rem > 0 && b.quantity_remaining > 0) {
+                            const d = Math.min(b.quantity_remaining, rem);
+                            rem -= d;
+                            b.quantity_remaining -= d;
+                            if (b.quantity_remaining === 0) b.status = 'DEPLETED';
+                        }
+                    }
+                }
+                this.saveLocal('novalunch_inventory_batches', batchCopy);
+            }
+
             // If all items are valid UUIDs, attempt RPC
             const allUUIDs = cleanItems.every(i => this.isUUID(i.id));
-
             if (supabase && allUUIDs) {
                 try {
                     const { data, error } = await supabase.rpc('fn_deduct_cart_stock_fifo', { p_items: cleanItems });
@@ -312,25 +371,42 @@
                 }
             }
 
-            // Fallback: Deduct items concurrently with UUID check
-            return await Promise.all(cleanItems.map(i => this.deductStockFifo(i.id, i.qty)));
+            // Fallback: Deduct items individually
+            return await Promise.all(cleanItems.map(i => this.deductStockFifo(i.id, i.qty, i.name)));
         },
 
-        async deductStockFifo(productId, quantity) {
-            if (!this.isUUID(productId)) {
-                // Mock / Non-UUID product: safely update local catalog stock
-                const localProds = this.loadLocal('novalunch_products_catalog', []);
-                const updated = localProds.map(p => {
-                    if (p.id === productId) {
-                        return { ...p, stock: Math.max(0, (p.stock || 0) - quantity) };
+        async deductStockFifo(productId, quantity, productName = null) {
+            // 1. Update local catalog stock immediately
+            const localProds = this.loadLocal('novalunch_products_catalog', []);
+            const updated = localProds.map(p => {
+                const isMatch = (productId && p.id === productId) || (productName && p.name && p.name.toLowerCase() === productName.toLowerCase());
+                if (isMatch) {
+                    return { ...p, stock: Math.max(0, (p.stock || 0) - quantity) };
+                }
+                return p;
+            });
+            this.saveLocal('novalunch_products_catalog', updated);
+
+            // 2. Deduct from local batches if matching
+            const localBatches = this.loadLocal('novalunch_inventory_batches', []);
+            if (localBatches && localBatches.length > 0) {
+                let remainingToDeduct = quantity;
+                const updatedBatches = localBatches.map(b => {
+                    const isMatch = (productId && b.product_id === productId) || 
+                                    (productName && (b.product_name || '').toLowerCase() === productName.toLowerCase()) || 
+                                    (b.products?.name && productName && b.products.name.toLowerCase() === productName.toLowerCase());
+                    if (isMatch && remainingToDeduct > 0 && b.quantity_remaining > 0) {
+                        const d = Math.min(b.quantity_remaining, remainingToDeduct);
+                        remainingToDeduct -= d;
+                        const newRem = b.quantity_remaining - d;
+                        return { ...b, quantity_remaining: newRem, status: newRem === 0 ? 'DEPLETED' : b.status };
                     }
-                    return p;
+                    return b;
                 });
-                this.saveLocal('novalunch_products_catalog', updated);
-                return { success: true, localOnly: true };
+                this.saveLocal('novalunch_inventory_batches', updatedBatches);
             }
 
-            if (supabase) {
+            if (supabase && this.isUUID(productId)) {
                 try {
                     const { data, error } = await supabase.rpc('fn_deduct_stock_fifo', { p_product_id: productId, p_quantity: quantity });
                     if (!error && data !== null) return data;
@@ -405,13 +481,25 @@
         },
 
         async getWalletByUserId(userId) {
-            if (!supabase) {
-                const res = await this._fetchREST(`wallets?select=*&user_id=eq.${userId}`);
-                return res.length > 0 ? res[0] : null;
+            if (supabase && this.isUUID(userId)) {
+                try {
+                    const { data, error } = await supabase.from('wallets').select('*').eq('user_id', userId).maybeSingle();
+                    if (!error && data) return data;
+                } catch (e) {
+                    console.warn('[CanteenDB] getWalletByUserId cloud warn:', e);
+                }
             }
-            const { data, error } = await supabase.from('wallets').select('*').eq('user_id', userId).single();
-            if (error) throw error;
-            return data;
+            // Local fallback for demo / non-UUID or offline
+            const users = this.loadLocal('novalunch_registered_users', []);
+            const matched = users.find(u => u.id === userId || u.studentId === userId || (u.email && u.email.toLowerCase() === String(userId).toLowerCase()) || (u.name && u.name.toLowerCase() === String(userId).toLowerCase()));
+            if (matched) {
+                return {
+                    user_id: matched.id,
+                    balance: typeof matched.balance === 'number' ? matched.balance : (parseFloat(matched.balance) || 0),
+                    daily_limit: typeof matched.dailyCap === 'number' ? matched.dailyCap : (parseFloat(matched.dailyCap) || 200.0)
+                };
+            }
+            return null;
         },
 
         /**
@@ -423,7 +511,12 @@
             const cleanAmount = parseFloat(amount);
             if (!cleanAmount || cleanAmount <= 0) throw new Error('Deduction amount must be a positive number.');
 
-            if (supabase) {
+            // Read local balance for non-UUID / demo student fallback
+            const users = this.loadLocal('novalunch_registered_users', []);
+            const localUser = users.find(u => u.id === userId || u.studentId === userId || (u.email && u.email.toLowerCase() === String(userId).toLowerCase()) || (u.name && u.name.toLowerCase() === String(userId).toLowerCase()));
+            const localBal = localUser ? (typeof localUser.balance === 'number' ? localUser.balance : (parseFloat(localUser.balance) || 0)) : 0;
+
+            if (supabase && this.isUUID(userId)) {
                 // Primary path: atomic delta RPC (deployed via security_hardening.sql)
                 try {
                     const { data, error: rpcError } = await supabase.rpc('fn_deduct_wallet_balance', {
@@ -435,10 +528,11 @@
                         if (rpcError.message && (rpcError.message.includes('INSUFFICIENT_FUNDS') || rpcError.message.includes('WALLET_NOT_FOUND'))) {
                             throw new Error(rpcError.message);
                         }
-                        // Fall through to safe fallback for schema errors (42703, etc.)
                         console.warn('[CanteenDB] fn_deduct_wallet_balance RPC error, using safe fallback:', rpcError.message);
                     } else if (data !== null && data !== undefined) {
-                        return typeof data === 'number' ? data : (data.new_balance ?? data);
+                        const newBal = typeof data === 'number' ? data : (data.new_balance ?? data);
+                        this.saveLocal('novalunch_registered_users', users.map(u => (u.id === userId || u.studentId === userId) ? { ...u, balance: newBal } : u));
+                        return { success: true, new_balance: newBal };
                     }
                 } catch (rpcErr) {
                     if (rpcErr.message && (rpcErr.message.includes('INSUFFICIENT_FUNDS') || rpcErr.message.includes('WALLET_NOT_FOUND'))) {
@@ -448,29 +542,12 @@
                 }
 
                 // Safe fallback: read-check-update directly on wallets table
-                let walletBal = 0;
+                let walletBal = localBal;
                 try {
                     const { data: walletData, error: fetchErr } = await supabase
                         .from('wallets').select('balance').eq('user_id', userId).maybeSingle();
 
-                    if (fetchErr || !walletData) {
-                        // Auto-initialize wallet from local cache if missing
-                        const users = this.loadLocal('novalunch_registered_users', []);
-                        const u = users.find(x => x.id === userId || x.studentId === userId);
-                        const initBal = u?.balance !== undefined ? parseFloat(u.balance) : 0;
-                        const initCap = u?.dailyCap !== undefined ? parseFloat(u.dailyCap) : 200.00;
-                        if (this.isUUID(userId)) {
-                            try {
-                                await supabase.from('wallets').upsert({
-                                    user_id: userId,
-                                    balance: initBal,
-                                    daily_limit: initCap,
-                                    updated_at: new Date().toISOString()
-                                }, { onConflict: 'user_id' });
-                            } catch (initErr) { console.warn('[CanteenDB] Wallet init warn:', initErr); }
-                        }
-                        walletBal = initBal;
-                    } else {
+                    if (!fetchErr && walletData && walletData.balance !== undefined) {
                         walletBal = parseFloat(walletData.balance) || 0;
                     }
                 } catch (fetchEx) {
@@ -478,37 +555,26 @@
                 }
 
                 if (walletBal < cleanAmount) {
-                    throw new Error(`INSUFFICIENT_FUNDS: Required \u20b1${cleanAmount.toFixed(2)}, Available \u20b1${walletBal.toFixed(2)}`);
+                    throw new Error(`INSUFFICIENT_FUNDS: Required ₱${cleanAmount.toFixed(2)}, Available ₱${walletBal.toFixed(2)}`);
                 }
                 const newBalance = parseFloat((walletBal - cleanAmount).toFixed(2));
-                if (this.isUUID(userId)) {
-                    try {
-                        const { error: wErr } = await supabase.from('wallets')
-                            .upsert({ user_id: userId, balance: newBalance, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
-                        if (wErr) throw new Error(`Database error deducting wallet: ${wErr.message}`);
-                    } catch (upErr) { throw upErr; }
-                    try {
-                        await supabase.from('profiles').update({ updated_at: new Date().toISOString() }).eq('id', userId);
-                    } catch (e) { /* non-critical touch */ }
+                try {
+                    await supabase.from('wallets')
+                        .upsert({ user_id: userId, balance: newBalance, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+                    await supabase.from('profiles').update({ updated_at: new Date().toISOString() }).eq('id', userId).catch(() => {});
+                } catch (upErr) {
+                    console.warn('[CanteenDB] Cloud wallet deduction sync warning:', upErr);
                 }
+                this.saveLocal('novalunch_registered_users', users.map(u => (u.id === userId || u.studentId === userId) ? { ...u, balance: newBalance } : u));
                 return { success: true, new_balance: newBalance };
             }
 
-            // REST fallback (offline mode)
-            const chkRes = await fetch(`${SUPABASE_URL}/rest/v1/wallets?user_id=eq.${userId}&select=balance`, {
-                headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}` }
-            });
-            const [walletRow] = await chkRes.json();
-            if (!walletRow) throw new Error('WALLET_NOT_FOUND');
-            if (walletRow.balance < cleanAmount) {
-                throw new Error(`INSUFFICIENT_FUNDS: Required ₱${cleanAmount.toFixed(2)}, Available ₱${walletRow.balance.toFixed(2)}`);
+            // Local fallback (offline or demo user like u101)
+            if (localBal < cleanAmount) {
+                throw new Error(`INSUFFICIENT_FUNDS: Required ₱${cleanAmount.toFixed(2)}, Available ₱${localBal.toFixed(2)}`);
             }
-            const newBal = parseFloat((walletRow.balance - cleanAmount).toFixed(2));
-            await fetch(`${SUPABASE_URL}/rest/v1/wallets?user_id=eq.${userId}`, {
-                method: 'PATCH',
-                headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json" },
-                body: JSON.stringify({ balance: newBal })
-            });
+            const newBal = parseFloat((localBal - cleanAmount).toFixed(2));
+            this.saveLocal('novalunch_registered_users', users.map(u => (u.id === userId || u.studentId === userId) ? { ...u, balance: newBal } : u));
             return { success: true, new_balance: newBal };
         },
 
@@ -520,50 +586,54 @@
             const cleanAmount = parseFloat(amount);
             if (!cleanAmount || cleanAmount <= 0) throw new Error('Credit amount must be a positive number.');
 
-            if (supabase) {
+            // 1. Always update local registered users cache immediately
+            const users = this.loadLocal('novalunch_registered_users', []);
+            let updatedLocalBal = 0;
+            const updatedUsers = users.map(u => {
+                const isMatch = u.id === userId || u.studentId === userId || 
+                               (u.email && u.email.toLowerCase() === String(userId).toLowerCase()) ||
+                               (u.name && u.name.toLowerCase() === String(userId).toLowerCase());
+                if (isMatch) {
+                    const curBal = typeof u.balance === 'number' ? u.balance : (parseFloat(u.balance) || 0);
+                    const newBal = parseFloat((curBal + cleanAmount).toFixed(2));
+                    updatedLocalBal = newBal;
+                    return { ...u, balance: newBal };
+                }
+                return u;
+            });
+            this.saveLocal('novalunch_registered_users', updatedUsers);
+
+            if (supabase && this.isUUID(userId)) {
                 try {
                     const { data, error } = await supabase.rpc('fn_credit_wallet_balance', {
                         p_user_id: userId,
                         p_amount: cleanAmount
                     });
                     if (!error && data !== null) {
-                        return typeof data === 'number' ? data : (data.new_balance || cleanAmount);
+                        return typeof data === 'number' ? data : (data.new_balance || (updatedLocalBal || cleanAmount));
                     }
                 } catch (rpcErr) {
                     console.warn('[CanteenDB] fn_credit_wallet_balance RPC fallback', rpcErr);
                 }
 
                 // Safe fallback: fetch-add-update
-                const { data: walletData, error: fetchErr } = await supabase
-                    .from('wallets').select('balance').eq('user_id', userId).maybeSingle();
+                try {
+                    const { data: walletData } = await supabase
+                        .from('wallets').select('balance').eq('user_id', userId).maybeSingle();
 
-                const currentBal = walletData ? (parseFloat(walletData.balance) || 0) : 0;
-                const newBalance = parseFloat((currentBal + cleanAmount).toFixed(2));
+                    const currentBal = walletData ? (parseFloat(walletData.balance) || 0) : (updatedLocalBal - cleanAmount);
+                    const newBalance = parseFloat((currentBal + cleanAmount).toFixed(2));
 
-                if (this.isUUID(userId)) {
-                    const { error: wErr } = await supabase.from('wallets')
+                    await supabase.from('wallets')
                         .upsert({ user_id: userId, balance: newBalance, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
-                    if (wErr) throw new Error(`Database error crediting wallet: ${wErr.message}`);
-
                     await supabase.from('profiles').update({ updated_at: new Date().toISOString() }).eq('id', userId).catch(() => {});
+                    return newBalance;
+                } catch (wErr) {
+                    console.warn('[CanteenDB] Cloud credit wallet error:', wErr);
                 }
-                return newBalance;
             }
 
-            // REST fallback
-            const chkRes = await fetch(`${SUPABASE_URL}/rest/v1/wallets?user_id=eq.${userId}&select=balance`, {
-                headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}` }
-            });
-            const [walletRow] = await chkRes.json();
-            const currentBal = walletRow ? (parseFloat(walletRow.balance) || 0) : 0;
-            const newBal = parseFloat((currentBal + cleanAmount).toFixed(2));
-
-            await fetch(`${SUPABASE_URL}/rest/v1/wallets?user_id=eq.${userId}`, {
-                method: 'PATCH',
-                headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json" },
-                body: JSON.stringify({ balance: newBal })
-            });
-            return newBal;
+            return updatedLocalBal || cleanAmount;
         },
 
         /**
@@ -963,37 +1033,82 @@
         async getAllUsers() {
             const cached = this.loadLocal('novalunch_registered_users', null);
             let cloudProfiles = [];
+            let cloudWallets = [];
             try {
                 if (!supabase) {
-                    cloudProfiles = await this._fetchREST('profiles?select=*,wallets(*)&order=created_at.desc');
+                    const [profs, walls] = await Promise.all([
+                        this._fetchREST('profiles?order=created_at.desc'),
+                        this._fetchREST('wallets')
+                    ]);
+                    cloudProfiles = profs || [];
+                    cloudWallets = walls || [];
                 } else {
-                    const { data, error } = await supabase.from('profiles').select('*, wallets(*)').order('created_at', { ascending: false });
-                    if (!error && data) cloudProfiles = data;
+                    const [profsRes, wallsRes] = await Promise.all([
+                        supabase.from('profiles').select('*').order('created_at', { ascending: false }),
+                        supabase.from('wallets').select('*')
+                    ]);
+                    if (!profsRes.error && profsRes.data) cloudProfiles = profsRes.data;
+                    if (!wallsRes.error && wallsRes.data) cloudWallets = wallsRes.data;
                 }
             } catch (e) {
                 console.warn("getAllUsers cloud fetch fallback to cache:", e);
             }
 
             if (cloudProfiles && cloudProfiles.length > 0) {
+                const walletMap = new Map();
+                cloudWallets.forEach(w => {
+                    if (w.user_id) walletMap.set(w.user_id, w);
+                    if (w.id) walletMap.set(w.id, w);
+                });
+
+                const existingLocalUsers = this.loadLocal('novalunch_registered_users', []);
+                const localUserMap = new Map();
+                existingLocalUsers.forEach(u => {
+                    if (u.id) localUserMap.set(u.id, u);
+                    if (u.email) localUserMap.set(u.email.toLowerCase(), u);
+                    if (u.studentId) localUserMap.set(u.studentId, u);
+                });
+
                 const mapped = cloudProfiles.map(u => {
-                    const w = Array.isArray(u.wallets) ? u.wallets[0] : u.wallets;
+                    const w = walletMap.get(u.id);
+                    const localU = localUserMap.get(u.id) || localUserMap.get((u.email || '').toLowerCase()) || localUserMap.get(u.student_id_number);
+
+                    let userBal = 0.00;
+                    if (w && w.balance !== null && w.balance !== undefined) {
+                        userBal = parseFloat(w.balance);
+                    } else if (u.balance !== null && u.balance !== undefined) {
+                        userBal = parseFloat(u.balance);
+                    } else if (localU && localU.balance !== null && localU.balance !== undefined) {
+                        userBal = parseFloat(localU.balance);
+                    }
+
+                    let userCap = 200.00;
+                    if (w && w.daily_limit !== null && w.daily_limit !== undefined) {
+                        userCap = parseFloat(w.daily_limit);
+                    } else if (u.daily_limit !== null && u.daily_limit !== undefined) {
+                        userCap = parseFloat(u.daily_limit);
+                    } else if (localU && localU.dailyCap !== undefined) {
+                        userCap = parseFloat(localU.dailyCap);
+                    }
+
                     return {
                         id: u.id,
                         email: u.email,
-                        studentId: u.student_id_number || "2026-00001",
-                        name: u.full_name,
-                        role: u.role ? (u.role.charAt(0).toUpperCase() + u.role.slice(1)) : 'Student',
-                        rfidUid: u.rfid_uid || "1A-2B-3C-4D",
-                        dailyCap: w?.daily_limit ? parseFloat(w.daily_limit) : (u.daily_limit ? parseFloat(u.daily_limit) : 200.00),
-                        balance: w?.balance ? parseFloat(w.balance) : (u.balance ? parseFloat(u.balance) : 0.00),
-                        status: u.status || 'active',
-                        allergies: u.allergies || [],
-                        pinCode: u.pin_code || '1234',
-                        creditLiability: u.credit_liability || 0,
-                        creditLimit: u.credit_limit || 500,
-                        maxDailyCalories: u.max_daily_calories || 1800,
-                        allergenMode: u.allergen_mode || 'SOFT_WARN',
-                        managerPin: u.manager_pin || '1234'
+                        studentId: u.student_id_number || localU?.studentId || "2026-00001",
+                        name: u.full_name || localU?.name || "Student",
+                        role: u.role ? (u.role.charAt(0).toUpperCase() + u.role.slice(1)) : (localU?.role || 'Student'),
+                        rfidUid: u.rfid_uid || localU?.rfidUid || "1A-2B-3C-4D",
+                        dailyCap: userCap,
+                        daily_limit: userCap,
+                        balance: userBal,
+                        status: u.status || localU?.status || 'active',
+                        allergies: u.allergies || localU?.allergies || [],
+                        pinCode: u.pin_code || localU?.pinCode || '1234',
+                        creditLiability: parseFloat(w?.credit_liability ?? u.credit_liability ?? localU?.creditLiability ?? 0),
+                        creditLimit: parseFloat(w?.credit_limit ?? u.credit_limit ?? localU?.creditLimit ?? 500),
+                        maxDailyCalories: u.max_daily_calories || localU?.maxDailyCalories || 1800,
+                        allergenMode: u.allergen_mode || localU?.allergenMode || 'SOFT_WARN',
+                        managerPin: u.manager_pin || localU?.managerPin || '1234'
                     };
                 });
                 this.saveLocal('novalunch_registered_users', mapped);
@@ -1009,7 +1124,7 @@
                 'first_name', 'last_name', 'employee_id', 'weekly_limit', 'monthly_allowance',
                 'credit_liability', 'credit_limit', 'pay_later_count', 'pay_later_pre_authorized',
                 'max_daily_calories', 'allergen_mode', 'allergies', 'restricted_categories',
-                'manager_pin', 'accumulated_salary_deduction', 'balance', 'daily_limit', 'updated_at'
+                'manager_pin', 'accumulated_salary_deduction', 'updated_at'
             ]);
 
             const profileFields = {};
@@ -1041,8 +1156,6 @@
             const cleanDailyCap = updatePayload.daily_limit !== undefined ? (parseFloat(updatePayload.daily_limit) || 200.0) : (updatePayload.dailyCap !== undefined ? (parseFloat(updatePayload.dailyCap) || 200.0) : undefined);
             const cleanLiability = updatePayload.credit_liability !== undefined ? (parseFloat(updatePayload.credit_liability) || 0.0) : (updatePayload.creditLiability !== undefined ? (parseFloat(updatePayload.creditLiability) || 0.0) : undefined);
 
-            if (cleanBalance !== undefined) profileFields.balance = cleanBalance;
-            if (cleanDailyCap !== undefined) profileFields.daily_limit = cleanDailyCap;
             profileFields.updated_at = new Date().toISOString();
 
             // 1. Update local cache immediately
@@ -1138,28 +1251,40 @@
                 }
 
                 // B. Update profiles table
+                const profileUpdatePayload = { ...sanitizedFields };
+                delete profileUpdatePayload.balance;
+                delete profileUpdatePayload.daily_limit;
+
                 if (supabase) {
                     try {
-                        const { data, error } = await supabase.from('profiles').update(sanitizedFields).eq('id', userId).select().single();
+                        const { data, error } = await supabase.from('profiles').update(profileUpdatePayload).eq('id', userId).select().single();
                         if (!error && data) {
                             updatedProfile = data;
-                        } else {
-                            // If error occurred (e.g. balance or daily_limit column not yet in profiles schema), retry without mirror columns
-                            if (error && (error.code === '42703' || (error.message && error.message.includes('column')))) {
-                                const profileFallback = { ...sanitizedFields };
-                                delete profileFallback.balance;
-                                delete profileFallback.daily_limit;
-                                const { data: fbData } = await supabase.from('profiles').update(profileFallback).eq('id', userId).select().single();
-                                if (fbData) updatedProfile = fbData;
+                        } else if (error) {
+                            console.warn("[CanteenDB] Supabase profile update notice:", error.message);
+                            // Fallback with minimal core profile columns
+                            const coreFields = {
+                                full_name: profileUpdatePayload.full_name,
+                                student_id_number: profileUpdatePayload.student_id_number,
+                                email: profileUpdatePayload.email,
+                                role: profileUpdatePayload.role,
+                                rfid_uid: profileUpdatePayload.rfid_uid,
+                                status: profileUpdatePayload.status,
+                                updated_at: new Date().toISOString()
+                            };
+                            const cleanCore = {};
+                            for (const [k, v] of Object.entries(coreFields)) {
+                                if (v !== undefined) cleanCore[k] = v;
                             }
-                            console.warn("Supabase profile update notice:", error?.message);
+                            const { data: fbData } = await supabase.from('profiles').update(cleanCore).eq('id', userId).select().single();
+                            if (fbData) updatedProfile = fbData;
                         }
                     } catch (e) {
-                        console.warn("Supabase profile update exception:", e);
+                        console.warn("[CanteenDB] Supabase profile update exception:", e);
                     }
                 } else {
                     try {
-                        const res = await this._patchREST(`profiles?id=eq.${userId}`, sanitizedFields);
+                        const res = await this._patchREST(`profiles?id=eq.${userId}`, profileUpdatePayload);
                         if (res && res[0]) updatedProfile = res[0];
                     } catch (e) { }
                 }
@@ -1398,59 +1523,101 @@
         // PRE-ORDERS (TOKENLESS DIRECT RFID CONFIRMATION)
         // -------------------------------------------------------------------------
         async createPreorder(payload) {
-            const fallbackId = `po_${Date.now()}`;
+            const fallbackId = payload.id || `po_${Date.now()}`;
             const cleanPayload = {
+                id: payload.id || fallbackId,
                 student_id: payload.student_id || payload.studentId || null,
+                studentId: payload.studentId || payload.student_id || null,
+                student_id_number: payload.student_id_number || payload.studentIdNumber || null,
+                studentIdNumber: payload.studentIdNumber || payload.student_id_number || null,
                 student_name: payload.student_name || payload.studentName || 'Student',
+                studentName: payload.studentName || payload.student_name || 'Student',
                 product_id: (payload.product_id && this.isUUID(payload.product_id)) ? payload.product_id : ((payload.productId && this.isUUID(payload.productId)) ? payload.productId : null),
                 item_name: payload.item_name || payload.name || payload.item || 'Meal Pre-Order',
+                name: payload.name || payload.item_name || payload.item || 'Meal Pre-Order',
+                item: payload.item || payload.item_name || payload.name || 'Meal Pre-Order',
                 price: parseFloat(payload.price) || 0.0,
                 session: payload.session || 'Lunch Break (12:00 PM)',
                 shelf_location: payload.shelf_location || payload.shelf || 'Shelf B2',
+                shelf: payload.shelf || payload.shelf_location || 'Shelf B2',
                 status: payload.status || 'Pending',
                 created_at: payload.created_at || new Date().toISOString()
             };
 
+            // Save to local cache immediately
+            const localPos = this.loadLocal('novalunch_preorders', []);
+            if (!localPos.some(p => p.id === cleanPayload.id)) {
+                this.saveLocal('novalunch_preorders', [cleanPayload, ...localPos]);
+            }
+
             if (supabase && cleanPayload.student_id && this.isUUID(cleanPayload.student_id)) {
                 try {
-                    const { data, error } = await supabase.from('preorders').insert([cleanPayload]).select().single();
+                    const dbPayload = {
+                        student_id: cleanPayload.student_id,
+                        student_name: cleanPayload.student_name,
+                        product_id: cleanPayload.product_id,
+                        item_name: cleanPayload.item_name,
+                        price: cleanPayload.price,
+                        session: cleanPayload.session,
+                        shelf_location: cleanPayload.shelf_location,
+                        status: cleanPayload.status,
+                        created_at: cleanPayload.created_at
+                    };
+                    const { data, error } = await supabase.from('preorders').insert([dbPayload]).select().single();
                     if (!error && data) {
-                        return data;
+                        const combined = { ...cleanPayload, id: data.id };
+                        this.saveLocal('novalunch_preorders', [combined, ...localPos.filter(p => p.id !== cleanPayload.id && p.id !== data.id)]);
+                        return combined;
                     }
                     console.warn("[CanteenDB Notice] Supabase 'preorders' table write notice:", error?.message);
                 } catch (err) {
                     console.warn("[CanteenDB Notice] Supabase 'preorders' table exception:", err.message);
                 }
-            } else {
-                try {
-                    const res = await this._postREST('preorders', cleanPayload);
-                    if (res && res.length) return res[0];
-                } catch (e) {
-                    console.warn("[CanteenDB Notice] REST preorders fallback:", e);
-                }
             }
-            return {
-                id: payload.id || fallbackId,
-                ...cleanPayload
-            };
+            return cleanPayload;
         },
 
         async getPreorders(studentId) {
+            const localPos = this.loadLocal('novalunch_preorders', []);
+            let cloudPos = [];
             if (supabase) {
                 try {
                     let query = supabase.from('preorders').select('*').order('created_at', { ascending: false });
                     if (studentId) query = query.or(`student_id.eq.${studentId},student_name.eq.${studentId}`);
                     const { data, error } = await query;
-                    if (!error && data && data.length > 0) return data;
+                    if (!error && data && data.length > 0) cloudPos = data;
                 } catch (e) {
                     console.warn("[CanteenDB Notice] getPreorders fallback:", e);
                 }
-            } else {
-                try {
-                    return await this._fetchREST(`preorders?select=*${studentId ? `&student_id=eq.${studentId}` : ''}&order=created_at.desc`);
-                } catch (e) { return []; }
             }
-            return [];
+            if (cloudPos.length > 0) {
+                const mapped = cloudPos.map(p => ({
+                    id: p.id,
+                    name: p.item_name || p.name || 'Meal Item',
+                    item: p.item_name || p.name || 'Meal Item',
+                    item_name: p.item_name || p.name || 'Meal Item',
+                    price: parseFloat(p.price) || 0,
+                    token: p.token || 'QR-PASS',
+                    status: p.status || 'Pending',
+                    studentId: p.student_id,
+                    student_id: p.student_id,
+                    studentName: p.student_name,
+                    student_name: p.student_name,
+                    shelf: p.shelf_location || 'Shelf B2',
+                    shelf_location: p.shelf_location || 'Shelf B2',
+                    session: p.session || 'Lunch Break (12:00 PM)'
+                }));
+                const merged = [...mapped, ...localPos.filter(lp => !mapped.some(mp => mp.id === lp.id))];
+                this.saveLocal('novalunch_preorders', merged);
+                if (studentId) {
+                    return merged.filter(p => p.studentId === studentId || p.student_id === studentId || p.studentName === studentId || p.student_id_number === studentId);
+                }
+                return merged;
+            }
+            if (studentId) {
+                return localPos.filter(p => p.studentId === studentId || p.student_id === studentId || p.studentName === studentId || p.student_id_number === studentId);
+            }
+            return localPos;
         },
 
         async claimPreorderByStudent(studentId, preorderId = null) {
@@ -1473,6 +1640,8 @@
         },
 
         async updatePreorderStatus(preorderId, status) {
+            const localPos = this.loadLocal('novalunch_preorders', []);
+            this.saveLocal('novalunch_preorders', localPos.map(p => p.id === preorderId ? { ...p, status } : p));
             if (supabase) {
                 try {
                     await supabase.from('preorders').update({ status, updated_at: new Date().toISOString() }).eq('id', preorderId);
@@ -2025,6 +2194,10 @@
             }
         },
 
+        async createMealDispute(payload) {
+            return await this.submitMealDispute(payload);
+        },
+
         async fetchMealDisputes(parentId = null) {
             if (!supabase) {
                 try { return await this._fetchREST(`meal_disputes?select=*${parentId ? `&parent_id=eq.${parentId}` : ''}`); } catch (e) { return []; }
@@ -2034,6 +2207,10 @@
             const { data, error } = await query;
             if (error) return [];
             return data || [];
+        },
+
+        async getMealDisputes(parentId = null) {
+            return await this.fetchMealDisputes(parentId);
         },
 
         async resolveMealDispute(disputeId, action, adminNotes = '', adminId = null, refundAmount = 0, studentId = null) {

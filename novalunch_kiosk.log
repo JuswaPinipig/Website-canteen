@@ -84,3 +84,52 @@ Hello from the pygame community. https://www.pygame.org/contribute.html
 [EDGE SYNC NOTICE] Offline sync pending connection for TXN_1787466026_202301900: HTTP Error 400: Bad Request
 [EDGE SYNC NOTICE] Offline sync pending connection for TXN_1787466026_202301900: HTTP Error 400: Bad Request
 [EDGE SYNC NOTICE] Offline sync pending connection for TXN_1787466026_202301900: HTTP Error 400: Bad Request
+
+--- Launching Kiosk GUI at Mon Aug 24 17:20:20 2026 ---
+objc[24438]: Class SDLApplication is implemented in both /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/cv2/.dylibs/libSDL2-2.0.0.dylib (0x1108f8890) and /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/pygame/.dylibs/libSDL2-2.0.0.dylib (0x1121652c8). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+objc[24438]: Class SDLAppDelegate is implemented in both /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/cv2/.dylibs/libSDL2-2.0.0.dylib (0x1108f88e0) and /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/pygame/.dylibs/libSDL2-2.0.0.dylib (0x112165318). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+objc[24438]: Class SDLTranslatorResponder is implemented in both /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/cv2/.dylibs/libSDL2-2.0.0.dylib (0x1108f8958) and /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/pygame/.dylibs/libSDL2-2.0.0.dylib (0x112165390). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+objc[24438]: Class SDLMessageBoxPresenter is implemented in both /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/cv2/.dylibs/libSDL2-2.0.0.dylib (0x1108f8980) and /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/pygame/.dylibs/libSDL2-2.0.0.dylib (0x1121653b8). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+objc[24438]: Class SDL_cocoametalview is implemented in both /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/cv2/.dylibs/libSDL2-2.0.0.dylib (0x1108f89d0) and /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/pygame/.dylibs/libSDL2-2.0.0.dylib (0x112165408). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+objc[24438]: Class SDLOpenGLContext is implemented in both /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/cv2/.dylibs/libSDL2-2.0.0.dylib (0x1108f8a20) and /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/pygame/.dylibs/libSDL2-2.0.0.dylib (0x112165458). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+objc[24438]: Class SDL_ShapeData is implemented in both /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/cv2/.dylibs/libSDL2-2.0.0.dylib (0x1108f8a98) and /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/pygame/.dylibs/libSDL2-2.0.0.dylib (0x1121654d0). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+objc[24438]: Class SDL_CocoaClosure is implemented in both /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/cv2/.dylibs/libSDL2-2.0.0.dylib (0x1108f8ae8) and /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/pygame/.dylibs/libSDL2-2.0.0.dylib (0x112165520). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+objc[24438]: Class SDL_VideoData is implemented in both /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/cv2/.dylibs/libSDL2-2.0.0.dylib (0x1108f8b38) and /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/pygame/.dylibs/libSDL2-2.0.0.dylib (0x112165570). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+objc[24438]: Class SDL_WindowData is implemented in both /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/cv2/.dylibs/libSDL2-2.0.0.dylib (0x1108f8b88) and /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/pygame/.dylibs/libSDL2-2.0.0.dylib (0x1121655c0). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+objc[24438]: Class SDLWindow is implemented in both /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/cv2/.dylibs/libSDL2-2.0.0.dylib (0x1108f8bb0) and /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/pygame/.dylibs/libSDL2-2.0.0.dylib (0x1121655e8). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+objc[24438]: Class Cocoa_WindowListener is implemented in both /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/cv2/.dylibs/libSDL2-2.0.0.dylib (0x1108f8bd8) and /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/pygame/.dylibs/libSDL2-2.0.0.dylib (0x112165610). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+objc[24438]: Class SDLView is implemented in both /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/cv2/.dylibs/libSDL2-2.0.0.dylib (0x1108f8c50) and /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/pygame/.dylibs/libSDL2-2.0.0.dylib (0x112165688). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+objc[24438]: Class METAL_RenderData is implemented in both /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/cv2/.dylibs/libSDL2-2.0.0.dylib (0x1108f8cc8) and /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/pygame/.dylibs/libSDL2-2.0.0.dylib (0x112165700). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+objc[24438]: Class METAL_TextureData is implemented in both /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/cv2/.dylibs/libSDL2-2.0.0.dylib (0x1108f8d18) and /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/pygame/.dylibs/libSDL2-2.0.0.dylib (0x112165750). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+objc[24438]: Class SDL_RumbleMotor is implemented in both /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/cv2/.dylibs/libSDL2-2.0.0.dylib (0x1108f8d40) and /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/pygame/.dylibs/libSDL2-2.0.0.dylib (0x112165778). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+objc[24438]: Class SDL_RumbleContext is implemented in both /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/cv2/.dylibs/libSDL2-2.0.0.dylib (0x1108f8d90) and /Users/louiseadrianvnonog/Library/Python/3.9/lib/python/site-packages/pygame/.dylibs/libSDL2-2.0.0.dylib (0x1121657c8). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 52251)
+Traceback (most recent call last):
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/socketserver.py", line 683, in process_request_thread
+    self.finish_request(request, client_address)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/socketserver.py", line 360, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/socketserver.py", line 747, in __init__
+    self.handle()
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/http/server.py", line 436, in handle
+    self.handle_one_request()
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/http/server.py", line 402, in handle_one_request
+    self.raw_requestline = self.rfile.readline(65537)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/socket.py", line 704, in readinto
+    return self._sock.recv_into(b)
+ConnectionResetError: [Errno 54] Connection reset by peer
+----------------------------------------
+pygame 2.6.1 (SDL 2.28.4, Python 3.9.6)
+Hello from the pygame community. https://www.pygame.org/contribute.html
+[CAMERA] 🟢 Hardware stream initialized on index 0.
+=============================================================
+  NOVALUNCH STUDENT-FACING DISPLAY (CFD) MONITOR INITIALIZED 
+  Live Real-Time Cashier POS Bridge Active on Port 8085
+=============================================================
+[KIOSK API SERVER] 🟢 Live Real-Time Multi-Threaded Bridge listening on http://127.0.0.1:8085
+[DB MANAGER] ☁️ Synced 5 accounts from Supabase cloud.
+[AI VISION] 🟢 Ultralytics YOLO model loaded: src/assets/models/novalunch_yolo.pt
+[EDGE SYNC NOTICE] Offline sync pending connection for TXN_1787466026_202301900: HTTP Error 400: Bad Request
+[EDGE SYNC NOTICE] Offline sync pending connection for TXN_1787466026_202301900: HTTP Error 400: Bad Request
+[EDGE SYNC NOTICE] Offline sync pending connection for TXN_1787466026_202301900: HTTP Error 400: Bad Request
