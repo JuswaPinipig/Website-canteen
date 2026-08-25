@@ -7643,7 +7643,7 @@
                                                 return (
                                                     <div key={item.id} className={`enterprise-card p-4 rounded-2xl space-y-3 flex flex-col justify-between relative group ${isAllergic ? 'border-2 border-rose-300 bg-rose-50/30' : isNearExpiry ? 'border-2 border-amber-300 bg-amber-50/20' : isLowStock ? 'border-2 border-amber-300 bg-amber-50/20' : ''}`}>
                                                         <div className="relative">
-                                                            <img src={item.img} alt={item.name} className="h-36 w-full object-cover rounded-2xl border border-slate-100/80" />
+                                                            <img src={item.img} alt={item.name} onError={(e) => { e.target.src = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80"; }} className="h-36 w-full object-cover rounded-2xl border border-slate-100/80" />
                                                             <button onClick={() => toggleFavorite(item.id)} className="absolute top-2.5 left-2.5 p-1.5 bg-white/90 backdrop-blur-sm rounded-full shadow-sm text-rose-600 hover:scale-110 transition-transform">
                                                                 <Icon.Heart className="w-4 h-4" fill={favorites.includes(item.id) ? "currentColor" : "none"} />
                                                             </button>
