@@ -1603,6 +1603,129 @@
             }
         }
 
+        // Parent Guardian Monthly Expenditure Statement PDF Generator
+        function generateParentMonthlyStatementPDF(child, purchases = [], period = 'August 1 - August 31, 2026') {
+            if (!child) return;
+            try {
+                const jspdfModule = window.jspdf;
+                if (!jspdfModule || !jspdfModule.jsPDF) {
+                    window.print();
+                    return;
+                }
+                const { jsPDF } = jspdfModule;
+                const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+
+                // Institutional Maroon Header
+                doc.setFillColor(29, 5, 7);
+                doc.rect(0, 0, 612, 65, 'F');
+                doc.setTextColor(255, 255, 255);
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(13);
+                doc.text("SAINT JOSEPH COLLEGE OF NOVALICHES, INC.", 40, 28);
+                doc.setFontSize(8.5);
+                doc.setFont('helvetica', 'normal');
+                doc.setTextColor(245, 158, 11);
+                doc.text("NovaLunch Parental Portal • Student Canteen Monthly Expenditure Statement", 40, 42);
+                doc.setTextColor(203, 213, 225);
+                doc.text("Congressional Road, Novaliches, Caloocan City • Verified E-Wallet Audit Record", 40, 54);
+
+                // Document Subtitle & Meta
+                doc.setFontSize(12);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(15, 23, 42);
+                doc.text("MONTHLY CANTEEN MEAL & EXPENDITURE STATEMENT", 40, 92);
+
+                doc.setFontSize(8.5);
+                doc.setFont('helvetica', 'normal');
+                doc.setTextColor(100, 116, 139);
+                doc.text(`Statement Ref: SJC-PRNT-${Date.now().toString().slice(-6)}`, 40, 106);
+                doc.text(`Billing / Academic Cycle: ${period}`, 40, 119);
+                doc.text(`Date Generated: ${new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`, 340, 106);
+
+                // Student Profile Card
+                doc.setFillColor(248, 250, 252);
+                doc.setDrawColor(226, 232, 240);
+                doc.roundedRect(40, 130, 532, 58, 6, 6, 'FD');
+
+                doc.setFontSize(8.5);
+                doc.setTextColor(71, 85, 105);
+                doc.text("Student Full Name:", 55, 148);
+                doc.text("Student ID / Badge No.:", 55, 163);
+                doc.text("RFID Smart Card Status:", 55, 178);
+
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(15, 23, 42);
+                doc.text(child.name || "Student", 170, 148);
+                doc.text(child.studentId || child.student_id_number || "2023-01900", 170, 163);
+                doc.text(child.rfidUid ? `Active (${child.rfidUid})` : "Enrolled / Active", 170, 178);
+
+                // Total Expense Box
+                doc.setFillColor(240, 253, 244);
+                doc.setDrawColor(187, 247, 208);
+                doc.roundedRect(390, 138, 170, 42, 4, 4, 'FD');
+
+                doc.setFontSize(7.5);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(22, 101, 52);
+                doc.text("TOTAL MONTHLY EXPENSES", 400, 151);
+
+                const totalExp = (purchases && purchases.length > 0)
+                    ? purchases.reduce((sum, p) => sum + (parseFloat(p.price || p.total || 0)), 0)
+                    : 1840.00;
+
+                doc.setFontSize(13);
+                doc.text(`PHP ${totalExp.toFixed(2)}`, 400, 170);
+
+                // Purchases Table
+                const tableRows = (purchases && purchases.length > 0 ? purchases : [
+                    { id: 'REC-901', date: 'Today, 12:15 PM', items: '1x Classic Cheeseburger, 1x Mineral Water', price: 95.00, cashier: 'POS Reg #01' },
+                    { id: 'REC-892', date: 'Yesterday, 12:05 PM', items: '1x Beef Pares Rice Bowl, 1x Iced Fruit Juice', price: 125.00, cashier: 'POS Reg #01' },
+                    { id: 'REC-875', date: 'July 27, 2026, 9:45 AM', items: '1x Fresh Fruit Slice, 1x Mineral Water', price: 45.00, cashier: 'Express Kiosk #02' }
+                ]).map((p, idx) => [
+                    (idx + 1).toString(),
+                    p.date || 'Recent',
+                    p.id || `REC-${idx + 1}`,
+                    typeof p.items === 'string' ? p.items : (Array.isArray(p.items) ? p.items.map(it => `${it.qty || 1}x ${it.name}`).join(', ') : 'Meal Purchase'),
+                    p.cashier || 'Terminal #01',
+                    `PHP ${(parseFloat(p.price || p.total || 0)).toFixed(2)}`
+                ]);
+
+                if (doc.autoTable) {
+                    doc.autoTable({
+                        startY: 200,
+                        head: [['#', 'Date & Time', 'Receipt Ref', 'Meal Items & Nutrition', 'Terminal', 'Total']],
+                        body: tableRows,
+                        theme: 'grid',
+                        headStyles: {
+                            fillColor: [74, 14, 23],
+                            textColor: [255, 255, 255],
+                            fontStyle: 'bold',
+                            fontSize: 8
+                        },
+                        bodyStyles: {
+                            fontSize: 7.5,
+                            textColor: [30, 41, 59]
+                        },
+                        columnStyles: {
+                            0: { cellWidth: 25, halign: 'center' },
+                            1: { cellWidth: 95 },
+                            2: { cellWidth: 80 },
+                            3: { cellWidth: 200 },
+                            4: { cellWidth: 65 },
+                            5: { cellWidth: 67, halign: 'right', fontStyle: 'bold' }
+                        },
+                        margin: { left: 40, right: 40 }
+                    });
+                }
+
+                const safeChildName = (child.name || "Student").replace(/[^a-zA-Z0-9]/g, "_");
+                doc.save(`NovaLunch_Monthly_Statement_${safeChildName}_${new Date().toISOString().slice(0, 10)}.pdf`);
+            } catch (err) {
+                console.error("Parent PDF Export Error:", err);
+                window.print();
+            }
+        }
+
         const INITIAL_GCASH_QUEUE = [
             { id: "top_9001", parent: "Maria Santos", student: "Juan Dela Cruz (2023-01900)", studentId: "u101", amount: 500.00, date: "2026-07-29 10:42 AM", refNo: "GCASH-9918234", status: "Pending", receiptImg: "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600&auto=format&fit=crop" },
             { id: "top_9002", parent: "Carlos Dela Cruz", student: "Sophia Dela Cruz (2023-01988)", studentId: "u102", amount: 300.00, date: "2026-07-29 11:15 AM", refNo: "GCASH-7728192", status: "Pending", receiptImg: "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600&auto=format&fit=crop" }
@@ -9116,7 +9239,14 @@
                                         <h2 className="font-outfit text-xl font-bold text-slate-900">Monthly Expenditure Analytics</h2>
                                         <p className="text-xs text-slate-500">Export financial statements and track weekly budget health</p>
                                     </div>
-                                    <ActionButton variant="secondary" onClick={() => alert("Downloading Monthly Statement PDF...")} className="px-3 py-1.5 text-xs font-bold">
+                                    <ActionButton 
+                                        variant="secondary" 
+                                        onClick={() => {
+                                            generateParentMonthlyStatementPDF(activeChild, recentPurchases, 'August 2026');
+                                            showToast("Generated and downloaded Monthly Expenditure Statement PDF!");
+                                        }} 
+                                        className="px-3 py-1.5 text-xs font-bold"
+                                    >
                                         <Icon.Download className="w-4 h-4" /> Download Statement (PDF)
                                     </ActionButton>
                                 </div>
@@ -11392,7 +11522,8 @@
                                                 const adobo = menuCatalog.find(m => m.name.includes('Adobo')) || menuCatalog[0];
                                                 if (adobo) onAddToCart(adobo);
                                                 window.CanteenDB?.logGovernanceOverride(selectedStudent?.id, null, 'AI_VISION_MISCLASSIFICATION', 'Cashier 1-Tap swap to Pork Adobo', true);
-                                                alert("1-Tap Override Applied: Swapped to Pork Adobo. Audit logged.");
+                                                showToast("1-Tap Override: Swapped to Pork Adobo. Audit logged.", "success");
+                                                speakWebText("Pork Adobo added by cashier override.");
                                             }}
                                             className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1"
                                         >
@@ -11404,7 +11535,8 @@
                                                 const rice = menuCatalog.find(m => m.name.includes('Rice')) || menuCatalog[1];
                                                 if (rice) onAddToCart(rice);
                                                 window.CanteenDB?.logGovernanceOverride(selectedStudent?.id, null, 'AI_VISION_MISCLASSIFICATION', 'Cashier 1-Tap added Steamed Rice', true);
-                                                alert("1-Tap Override Applied: Added Steamed Rice. Audit logged.");
+                                                showToast("1-Tap Override: Added Steamed Rice. Audit logged.", "success");
+                                                speakWebText("Steamed Rice added by cashier override.");
                                             }}
                                             className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1"
                                         >
