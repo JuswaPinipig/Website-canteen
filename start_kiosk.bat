@@ -27,6 +27,12 @@ exit /b 1
 echo   [OK] Python detected:
 %PYTHON_CMD% --version
 
+:: Free port 8085 if occupied by stale process
+for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr ":8085" ^| findstr "LISTENING"') do (
+    echo   [INFO] Freeing occupied Kiosk Port 8085 (PID %%a)...
+    taskkill /F /PID %%a >nul 2>&1
+)
+
 echo.
 echo   [1/1] Launching Student Kiosk GUI (Port 8085)...
 echo   (No extra web browser windows will be opened)
@@ -44,3 +50,4 @@ if exist "src\hardware\student_kiosk_gui.py" (
 echo.
 echo Kiosk process finished.
 pause
+
