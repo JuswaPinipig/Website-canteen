@@ -310,12 +310,18 @@
         },
 
         async addInventoryBatch(batchPayload) {
+            const cleanPayload = {
+                ...batchPayload,
+                quantity: Math.max(1, parseInt(batchPayload.quantity ?? batchPayload.quantity_received) || 1),
+                quantity_remaining: Math.max(0, parseInt(batchPayload.quantity_remaining ?? batchPayload.quantity) || 1),
+                unit_cost: Math.max(0, parseFloat(batchPayload.unit_cost) || 0)
+            };
             if (supabase) {
-                const { data, error } = await supabase.from('inventory_batches').insert([batchPayload]).select().single();
+                const { data, error } = await supabase.from('inventory_batches').insert([cleanPayload]).select().single();
                 if (error) throw error;
                 return data;
             } else {
-                const res = await this._postREST('inventory_batches', batchPayload);
+                const res = await this._postREST('inventory_batches', cleanPayload);
                 return res[0];
             }
         },
@@ -376,12 +382,15 @@
         },
 
         async deductStockFifo(productId, quantity, productName = null) {
+            const cleanQty = Math.max(1, parseInt(quantity) || 1);
             // 1. Update local catalog stock immediately
             const localProds = this.loadLocal('novalunch_products_catalog', []);
+            let wasInStock = true;
             const updated = localProds.map(p => {
                 const isMatch = (productId && p.id === productId) || (productName && p.name && p.name.toLowerCase() === productName.toLowerCase());
                 if (isMatch) {
-                    return { ...p, stock: Math.max(0, (p.stock || 0) - quantity) };
+                    if ((p.stock || 0) < cleanQty) wasInStock = false;
+                    return { ...p, stock: Math.max(0, (p.stock || 0) - cleanQty) };
                 }
                 return p;
             });
@@ -390,7 +399,7 @@
             // 2. Deduct from local batches if matching
             const localBatches = this.loadLocal('novalunch_inventory_batches', []);
             if (localBatches && localBatches.length > 0) {
-                let remainingToDeduct = quantity;
+                let remainingToDeduct = cleanQty;
                 const updatedBatches = localBatches.map(b => {
                     const isMatch = (productId && b.product_id === productId) || 
                                     (productName && (b.product_name || '').toLowerCase() === productName.toLowerCase()) || 
@@ -408,7 +417,7 @@
 
             if (supabase && this.isUUID(productId)) {
                 try {
-                    const { data, error } = await supabase.rpc('fn_deduct_stock_fifo', { p_product_id: productId, p_quantity: quantity });
+                    const { data, error } = await supabase.rpc('fn_deduct_stock_fifo', { p_product_id: productId, p_quantity: cleanQty });
                     if (!error && data !== null) return data;
                 } catch (e) {
                     console.warn("RPC fn_deduct_stock_fifo notice:", e);
@@ -418,14 +427,17 @@
                     const { data: prod, error: prodErr } = await supabase.from('products').select('stock_quantity').eq('id', productId).single();
                     if (prod && !prodErr) {
                         const currentStock = prod.stock_quantity || 0;
-                        const newStock = Math.max(0, currentStock - quantity);
+                        if (currentStock < cleanQty) {
+                            return { success: false, error: 'OUT_OF_STOCK', remaining: currentStock };
+                        }
+                        const newStock = Math.max(0, currentStock - cleanQty);
                         await supabase.from('products').update({ stock_quantity: newStock }).eq('id', productId);
                     }
                 } catch (e) {
                     console.warn("Direct product stock update notice:", e);
                 }
             }
-            return { success: true };
+            return { success: wasInStock, remaining: 0 };
         },
 
         async logSpoilage(batchId, quantity, reason, loggedBy) {

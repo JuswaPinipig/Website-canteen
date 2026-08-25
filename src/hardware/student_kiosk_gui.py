@@ -166,8 +166,10 @@ class DatabaseManager:
     def _init_sqlite(self):
         try:
             os.makedirs(os.path.dirname(self.sqlite_path), exist_ok=True)
-            conn = sqlite3.connect(self.sqlite_path)
+            conn = sqlite3.connect(self.sqlite_path, timeout=10.0)
             c = conn.cursor()
+            c.execute("PRAGMA journal_mode=WAL;")
+            c.execute("PRAGMA busy_timeout=5000;")
             c.execute("""
                 CREATE TABLE IF NOT EXISTS pending_transactions (
                     transaction_id TEXT PRIMARY KEY,
@@ -268,7 +270,9 @@ class DatabaseManager:
                     "email": s.get("email"),
                     "rfidUid": s.get("rfid_uid"),
                     "balance": float(s.get("balance", 0.0)),
-                    "daily_limit": float(s.get("daily_limit", 200.0))
+                    "daily_limit": float(s.get("daily_limit", 200.0)),
+                    "pay_later_count": int(s.get("pay_later_count", 0)),
+                    "pay_later_balance": float(s.get("pay_later_balance", 0.0))
                 }
         return None
 
@@ -329,24 +333,32 @@ class DatabaseManager:
         return rem_bal
 
     def record_transaction(self, tx_id, student_id, cart_items, total_amt, tray_img="", payment_method="rfid"):
-        try:
-            conn = sqlite3.connect(self.sqlite_path)
-            c = conn.cursor()
-            items_json = json.dumps([{
-                "name": i["name"],
-                "qty": i["qty"],
-                "price": i["price"],
-                "category": i.get("category", "ITEM")
-            } for i in cart_items])
-            c.execute("""
-                INSERT INTO pending_transactions 
-                (transaction_id, student_id, items_purchased, total_amount, payment_method, tray_image_url, sync_status)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (tx_id, student_id, items_json, total_amt, payment_method, tray_img, "EDGE_CACHED"))
-            conn.commit()
-            conn.close()
-        except Exception as e:
-            print(f"[DB ERROR] record_transaction: {e}")
+        items_json = json.dumps([{
+            "name": i.get("name", "Item"),
+            "qty": i.get("qty", 1),
+            "price": i.get("price", 0.0),
+            "category": i.get("category", "ITEM")
+        } for i in cart_items])
+
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                conn = sqlite3.connect(self.sqlite_path, timeout=10.0)
+                c = conn.cursor()
+                c.execute("PRAGMA busy_timeout=5000;")
+                c.execute("""
+                    INSERT INTO pending_transactions 
+                    (transaction_id, student_id, items_purchased, total_amount, payment_method, tray_image_url, sync_status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (tx_id, student_id, items_json, total_amt, payment_method, tray_img, "EDGE_CACHED"))
+                conn.commit()
+                conn.close()
+                return True
+            except Exception as e:
+                print(f"[DB ERROR] record_transaction (attempt {attempt + 1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(0.1 * (2 ** attempt))
+        return False
 
     def get_student_daily_spent(self, student_id):
         try:
@@ -655,10 +667,21 @@ class CameraThread(threading.Thread):
                                 })
 
                         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        self.null_frame_count = 0
                         with self.lock:
                             self.current_frame = rgb
                             self.latest_detections = detections
                     else:
+                        self.null_frame_count = getattr(self, 'null_frame_count', 0) + 1
+                        if self.null_frame_count >= 15:
+                            print("[CAMERA] ⚠️ Hardware stream dropped. Attempting auto-reconnect cycle...")
+                            try:
+                                if self.cap:
+                                    self.cap.release()
+                            except Exception:
+                                pass
+                            self._init_camera()
+                            self.null_frame_count = 0
                         time.sleep(0.05)
                 else:
                     synth_angle = (synth_angle + 4) % 360
@@ -1264,12 +1287,22 @@ class NovaLunchKioskGUI:
             speak_text("Pay later limit reached. Please settle existing balance at cashier.")
             return
 
-        student_id = self.active_student["id"]
-        st_name = self.active_student["name"]
+        student_id = str(self.active_student.get("id", "") or self.active_student.get("student_id_number", "STU"))
+        st_name = self.active_student.get("name", "Student")
         tx_id = f"TXN_PAYLATER_{int(time.time())}_{student_id.replace('-', '')}"
 
         self.active_student["pay_later_count"] = current_pay_later_count + 1
         self.active_student["pay_later_balance"] = self.active_student.get("pay_later_balance", 0.0) + self.total_amount
+
+        # Persist updated pay-later count & liability to accounts cache
+        students = self.db_manager.load_accounts()
+        for s in students:
+            if s.get("student_id_number") == student_id or s.get("id") == student_id:
+                s["pay_later_count"] = self.active_student["pay_later_count"]
+                s["pay_later_balance"] = self.active_student["pay_later_balance"]
+                break
+        self.db_manager.save_accounts(students)
+
         self.db_manager.record_transaction(tx_id, student_id, self.cart_items, self.total_amount, self.latest_tray_image, payment_method="pay_later")
         self.status_message = f"🟢 SAFETY NET APPROVED: ₱{self.total_amount:.2f} Charged to Pay Later ({st_name}) [{self.active_student['pay_later_count']}/5]"
         if self.sounds.get("success"):

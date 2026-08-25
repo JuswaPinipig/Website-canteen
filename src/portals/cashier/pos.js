@@ -247,11 +247,18 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     async function handleRfidTap(rfidCode) {
-        const student = await getStudentByRfid(rfidCode);
-        if (student) {
-            state.currentStudent = student;
-            updateStudentUI();
-            alert(`💳 RFID Tag Read: ${student.full_name} (${student.student_id}) authenticated! Balance: ₱${student.credit_balance.toFixed(2)}`);
+        try {
+            const student = await getStudentByRfid(rfidCode);
+            if (student) {
+                state.currentStudent = student;
+                updateStudentUI();
+                alert(`💳 RFID Tag Read: ${student.full_name} (${student.student_id}) authenticated! Balance: ₱${student.credit_balance.toFixed(2)}`);
+            } else {
+                alert(`⚠️ Unregistered RFID badge: "${rfidCode}". Please verify registration.`);
+            }
+        } catch (err) {
+            console.error('[POS RFID Lookup Error]:', err);
+            alert(`⚠️ Error looking up RFID tag "${rfidCode}". Please check network connection.`);
         }
     }
 
@@ -360,8 +367,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // 10. Checkout & Firebase Record Processing
+    let isCheckoutProcessing = false;
     if (checkoutBtn) {
         checkoutBtn.addEventListener('click', async () => {
+            if (isCheckoutProcessing) return;
             if (state.cart.length === 0) {
                 alert('Please add items to the cart before processing payment.');
                 return;
@@ -370,64 +379,90 @@ document.addEventListener('DOMContentLoaded', () => {
             const grandTotal = state.cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
             let payMethodEnum = "RFID_CREDIT";
 
-            if (state.selectedPayment === 'rfid') {
-                payMethodEnum = "RFID_CREDIT";
-                if (state.currentStudent.credit_balance < grandTotal) {
-                    alert(`Insufficient RFID wallet balance! Current balance: ₱${state.currentStudent.credit_balance.toFixed(2)}. Switch to Pay Later or Cash.`);
-                    return;
+            const prevBalance = state.currentStudent.credit_balance;
+            const prevSpent = state.currentStudent.daily_spent_today;
+            const prevPayLaterBal = state.currentStudent.pay_later_balance;
+            const prevPayLaterCount = state.currentStudent.pay_later_count;
+
+            try {
+                isCheckoutProcessing = true;
+                checkoutBtn.disabled = true;
+                checkoutBtn.textContent = 'Processing...';
+
+                if (state.selectedPayment === 'rfid') {
+                    payMethodEnum = "RFID_CREDIT";
+                    if (state.currentStudent.credit_balance < grandTotal) {
+                        alert(`Insufficient RFID wallet balance! Current balance: ₱${state.currentStudent.credit_balance.toFixed(2)}. Switch to Pay Later or Cash.`);
+                        return;
+                    }
+                    state.currentStudent.credit_balance -= grandTotal;
+                    state.currentStudent.daily_spent_today += grandTotal;
+                    await updateStudentBalance(
+                        state.currentStudent.student_id,
+                        state.currentStudent.credit_balance,
+                        state.currentStudent.daily_spent_today
+                    );
+                    updateStudentUI();
+                } else if (state.selectedPayment === 'paylater') {
+                    payMethodEnum = "PAY_LATER";
+                    if (!state.currentStudent.pay_later_allowance) {
+                        alert(`Pay Later credit mode is not approved for ${state.currentStudent.full_name}. Select RFID or Cash.`);
+                        return;
+                    }
+                    const currentPayLaterCount = state.currentStudent.pay_later_count || 0;
+                    if (currentPayLaterCount >= 5) {
+                        alert(`🚫 Pay Later Limit Reached (5/5 Transactions Used)!\n\n${state.currentStudent.full_name} has already utilized all 5 allowed emergency Pay Later transactions. Existing debt must be settled before new credit can be issued.`);
+                        return;
+                    }
+                    const currentDebt = state.currentStudent.pay_later_balance || 0.0;
+                    const newDebt = currentDebt + grandTotal;
+                    if (newDebt > 1000.00) {
+                        const proceed = confirm(`⚠️ PAY LATER NOTICE: Cumulative Pay Later balance for ${state.currentStudent.full_name} will reach ₱${newDebt.toFixed(2)}, which exceeds the standard ₱1,000.00 threshold (${currentPayLaterCount + 1}/5 used).\n\nIs it okay to proceed with this Pay Later transaction?`);
+                        if (!proceed) return;
+                    }
+                    state.currentStudent.pay_later_balance = newDebt;
+                    state.currentStudent.pay_later_count = currentPayLaterCount + 1;
+                    await updateStudentBalance(
+                        state.currentStudent.student_id,
+                        state.currentStudent.credit_balance,
+                        state.currentStudent.daily_spent_today,
+                        state.currentStudent.pay_later_balance
+                    );
+                    alert(`🤝 Transaction tagged under Pay Later allowance for ${state.currentStudent.full_name} (${state.currentStudent.pay_later_count}/5 used). Outstanding credit: ₱${state.currentStudent.pay_later_balance.toFixed(2)}`);
+                } else if (state.selectedPayment === 'salary_deduction') {
+                    payMethodEnum = "SALARY_DEDUCTION";
+                    state.currentStudent.salary_deduction_balance = (state.currentStudent.salary_deduction_balance || 0) + grandTotal;
+                    alert(`💼 Transaction charged to Faculty/Staff Salary Deduction for ${state.currentStudent.full_name}. Accumulated: ₱${state.currentStudent.salary_deduction_balance.toFixed(2)}`);
+                } else {
+                    payMethodEnum = "CASH_BACKUP";
                 }
-                state.currentStudent.credit_balance -= grandTotal;
-                state.currentStudent.daily_spent_today += grandTotal;
-                await updateStudentBalance(
-                    state.currentStudent.student_id,
-                    state.currentStudent.credit_balance,
-                    state.currentStudent.daily_spent_today
-                );
+
+                // Save to Firebase backend
+                const txnRecord = await recordTransaction({
+                    student_id: state.currentStudent.student_id,
+                    items: state.cart,
+                    total_amount: grandTotal,
+                    payment_method: payMethodEnum,
+                    tray_image_url: "https://firebasestorage.googleapis.com/v0/b/novalunch.appspot.com/o/trays%2Fsample_tray_01.jpg?alt=media"
+                });
+
+                showReceipt(grandTotal, payMethodEnum, txnRecord?.transaction_id || `TXN-${Date.now()}`);
+            } catch (err) {
+                console.error('[Checkout Error]:', err);
+                // Rollback local state
+                state.currentStudent.credit_balance = prevBalance;
+                state.currentStudent.daily_spent_today = prevSpent;
+                state.currentStudent.pay_later_balance = prevPayLaterBal;
+                state.currentStudent.pay_later_count = prevPayLaterCount;
                 updateStudentUI();
-            } else if (state.selectedPayment === 'paylater') {
-                payMethodEnum = "PAY_LATER";
-                if (!state.currentStudent.pay_later_allowance) {
-                    alert(`Pay Later credit mode is not approved for ${state.currentStudent.full_name}. Select RFID or Cash.`);
-                    return;
+                alert(`⚠️ Checkout failed: ${err.message || 'Transaction could not be recorded.'}`);
+            } finally {
+                isCheckoutProcessing = false;
+                if (checkoutBtn) {
+                    checkoutBtn.disabled = false;
+                    checkoutBtn.textContent = 'Process Payment';
                 }
-                const currentPayLaterCount = state.currentStudent.pay_later_count || 0;
-                if (currentPayLaterCount >= 5) {
-                    alert(`🚫 Pay Later Limit Reached (5/5 Transactions Used)!\n\n${state.currentStudent.full_name} has already utilized all 5 allowed emergency Pay Later transactions. Existing debt must be settled before new credit can be issued.`);
-                    return;
-                }
-                const currentDebt = state.currentStudent.pay_later_balance || 0.0;
-                const newDebt = currentDebt + grandTotal;
-                if (newDebt > 1000.00) {
-                    const proceed = confirm(`⚠️ PAY LATER NOTICE: Cumulative Pay Later balance for ${state.currentStudent.full_name} will reach ₱${newDebt.toFixed(2)}, which exceeds the standard ₱1,000.00 threshold (${currentPayLaterCount + 1}/5 used).\n\nIs it okay to proceed with this Pay Later transaction?`);
-                    if (!proceed) return;
-                }
-                state.currentStudent.pay_later_balance = newDebt;
-                state.currentStudent.pay_later_count = currentPayLaterCount + 1;
-                await updateStudentBalance(
-                    state.currentStudent.student_id,
-                    state.currentStudent.credit_balance,
-                    state.currentStudent.daily_spent_today,
-                    state.currentStudent.pay_later_balance
-                );
-                alert(`🤝 Transaction tagged under Pay Later allowance for ${state.currentStudent.full_name} (${state.currentStudent.pay_later_count}/5 used). Outstanding credit: ₱${state.currentStudent.pay_later_balance.toFixed(2)}`);
-            } else if (state.selectedPayment === 'salary_deduction') {
-                payMethodEnum = "SALARY_DEDUCTION";
-                state.currentStudent.salary_deduction_balance = (state.currentStudent.salary_deduction_balance || 0) + grandTotal;
-                alert(`💼 Transaction charged to Faculty/Staff Salary Deduction for ${state.currentStudent.full_name}. Accumulated: ₱${state.currentStudent.salary_deduction_balance.toFixed(2)}`);
-            } else {
-                payMethodEnum = "CASH_BACKUP";
             }
-
-            // Save to Firebase backend
-            const txnRecord = await recordTransaction({
-                student_id: state.currentStudent.student_id,
-                items: state.cart,
-                total_amount: grandTotal,
-                payment_method: payMethodEnum,
-                tray_image_url: "https://firebasestorage.googleapis.com/v0/b/novalunch.appspot.com/o/trays%2Fsample_tray_01.jpg?alt=media"
-            });
-
-            showReceipt(grandTotal, payMethodEnum, txnRecord.transaction_id);
         });
     }
 

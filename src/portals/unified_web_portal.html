@@ -3895,8 +3895,8 @@
                 }));
             };
 
-            const totalValue = rawIngredients.reduce((sum, ing) => sum + (ing.currentStock * ing.unitCost), 0);
-            const lowStockCount = rawIngredients.filter(ing => ing.currentStock <= ing.reorderPoint).length;
+            const totalValue = rawIngredients.reduce((sum, ing) => sum + ((parseFloat(ing.currentStock) || 0) * (parseFloat(ing.unitCost) || 0)), 0);
+            const lowStockCount = rawIngredients.filter(ing => (parseFloat(ing.currentStock) || 0) <= (parseFloat(ing.reorderPoint) || 0)).length;
 
             return (
                 <div className="space-y-6 pb-12">
@@ -4700,6 +4700,10 @@
                                 src={order.tray_photo_url || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800&auto=format&fit=crop&q=80"}
                                 alt="High-Res Meal Tray Capture"
                                 className="w-full h-full object-cover"
+                                onError={(e) => {
+                                    e.target.onerror = null;
+                                    e.target.src = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800&auto=format&fit=crop&q=80";
+                                }}
                             />
                             <div className="absolute top-3 left-3 bg-slate-900/80 backdrop-blur-md px-2.5 py-1 rounded-full text-[10px] font-mono text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 shadow-md">
                                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
@@ -4793,21 +4797,43 @@
 
             const totalOverdraft = mockPayLater.reduce((sum, o) => sum + (parseFloat(o.total || o.final_amount || 0) || 0), 0);
 
+            const sanitizeCsvCell = (val) => {
+                if (val === null || val === undefined) return '""';
+                let str = String(val).replace(/"/g, '""');
+                // Neutralize Excel / Sheets formula injection (=, +, -, @, \t, \r)
+                if (/^[=+\-@\t\r]/.test(str)) {
+                    str = `'${str}`;
+                }
+                return `"${str}"`;
+            };
+
             const handleExport = () => {
                 setIsExporting(true);
                 const batchRef = `SIS-TUITION-${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-BATCH-01`;
 
-                let content = "Batch Reference,Student ID,Student Name,Order Number,Date,Amount,Payment Method,Tray Photo URL,Dispute Status\n";
+                let content = "Batch Reference,Student ID,Student Name,Order Number,Date,Amount,Payment Method,Tray Photo URL,Dispute Status\r\n";
                 mockPayLater.forEach(o => {
-                    content += `"${batchRef}","${o.studentId || '2023-01900'}","${o.student || 'Juan Dela Cruz'}","${o.id || 'ORD-AI-902'}","${new Date().toISOString()}","${o.total || 85.00}","PAY_LATER","https://novalunch.sjc.edu.ph/tray-proof/${o.id || 'snap1'}.jpg","RESOLVED_BILLABLE"\n`;
+                    const row = [
+                        sanitizeCsvCell(batchRef),
+                        sanitizeCsvCell(o.studentId || o.student_id || '2023-01900'),
+                        sanitizeCsvCell(o.student || o.student_name || 'Juan Dela Cruz'),
+                        sanitizeCsvCell(o.id || o.order_number || 'ORD-AI-902'),
+                        sanitizeCsvCell(o.date || new Date().toISOString()),
+                        sanitizeCsvCell((parseFloat(o.total || o.final_amount || 0) || 0).toFixed(2)),
+                        sanitizeCsvCell('PAY_LATER'),
+                        sanitizeCsvCell(o.tray_photo_url || `https://novalunch.sjc.edu.ph/tray-proof/${o.id || 'snap1'}.jpg`),
+                        sanitizeCsvCell('RESOLVED_BILLABLE')
+                    ];
+                    content += row.join(',') + '\r\n';
                 });
 
-                const blob = new Blob([content], { type: 'text/csv' });
+                const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
                 a.download = `SJC_NOVALUNCH_PAYLATER_EXPORT_${batchRef}.csv`;
                 a.click();
+                setTimeout(() => URL.revokeObjectURL(url), 60000);
 
                 setTimeout(() => {
                     setIsExporting(false);
@@ -6333,7 +6359,15 @@
                                             {/* ITEMS & TRAY PROOF */}
                                             <td className="py-3 px-4">
                                                 <div className="flex items-center gap-2">
-                                                    <img src={row.photo} alt="Tray Proof" className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0" />
+                                                    <img
+                                                        src={row.photo}
+                                                        alt="Tray Proof"
+                                                        className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0"
+                                                        onError={(e) => {
+                                                            e.target.onerror = null;
+                                                            e.target.src = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=300&q=80";
+                                                        }}
+                                                    />
                                                     <div>
                                                         <span className="text-xs font-bold text-slate-800 block truncate max-w-[130px]">{row.item}</span>
                                                         <span className="text-[9px] text-emerald-700 font-mono font-bold">✓ YOLO Timestamped</span>
@@ -7356,6 +7390,7 @@
             const [preorderItem, setPreorderItem] = useState(null);
             const [nearExpiryWarningItem, setNearExpiryWarningItem] = useState(null);
             const [preorderSession, setPreorderSession] = useState('Lunch Break (12:00 PM)');
+            const [isSubmittingPreorder, setIsSubmittingPreorder] = useState(false);
             const [favorites, setFavorites] = useState(['p1', 'p4']);
             const [selectedReceipt, setSelectedReceipt] = useState(null);
             const [dietFilter, setDietFilter] = useState('All');
@@ -7995,20 +8030,29 @@
                                     <div className="space-y-1.5">
                                         <label className="block text-[10px] uppercase font-bold text-slate-500 tracking-wider">Select Pickup Session</label>
                                         <div className="grid grid-cols-3 gap-1.5">
-                                            {[
-                                                { id: 'Morning Recess', label: 'Morning Recess (09:45 AM)' },
-                                                { id: 'Lunch Break', label: 'Lunch Break (11:30 AM)' },
-                                                { id: 'Afternoon Recess', label: 'Afternoon Recess (02:45 PM)' }
-                                            ].map(sess => (
-                                                <button
-                                                    key={sess.id}
-                                                    type="button"
-                                                    onClick={() => setPreorderSession(sess.id)}
-                                                    className={`py-2 px-2 rounded-xl text-xs font-bold transition-all ${preorderSession === sess.id ? 'bg-brand-700 text-white shadow-2xs' : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
-                                                >
-                                                    {sess.label}
-                                                </button>
-                                            ))}
+                                            {(() => {
+                                                const now = new Date();
+                                                const currentDecHour = now.getHours() + (now.getMinutes() / 60);
+                                                return [
+                                                    { id: 'Morning Recess', label: 'Morning Recess (09:45 AM)', cutoff: 10.0 },
+                                                    { id: 'Lunch Break', label: 'Lunch Break (11:30 AM)', cutoff: 13.0 },
+                                                    { id: 'Afternoon Recess', label: 'Afternoon Recess (02:45 PM)', cutoff: 15.5 }
+                                                ].map(sess => {
+                                                    const isPastCutoff = currentDecHour > sess.cutoff;
+                                                    return (
+                                                        <button
+                                                            key={sess.id}
+                                                            type="button"
+                                                            disabled={isPastCutoff}
+                                                            onClick={() => setPreorderSession(sess.id)}
+                                                            className={`py-2 px-2 rounded-xl text-xs font-bold transition-all ${isPastCutoff ? 'opacity-40 cursor-not-allowed bg-slate-100 text-slate-400 border border-slate-200' : preorderSession === sess.id ? 'bg-brand-700 text-white shadow-2xs' : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
+                                                        >
+                                                            <div>{sess.label}</div>
+                                                            {isPastCutoff && <div className="text-[9px] font-normal text-rose-500">Cutoff Passed</div>}
+                                                        </button>
+                                                    );
+                                                });
+                                            })()}
                                         </div>
                                     </div>
 
@@ -8066,14 +8110,20 @@
                                         <ActionButton variant="secondary" onClick={() => setPreorderItem(null)} className="w-1/3 py-2.5 font-bold">Cancel</ActionButton>
                                         <ActionButton
                                             variant="primary"
-                                            disabled={isInsufficient || isExceedingCap || isHardBlock}
-                                            onClick={() => {
-                                                onAddPreOrder({ ...preorderItem, session: preorderSession, shelf: 'Shelf B2' });
-                                                setPreorderItem(null);
+                                            disabled={isInsufficient || isExceedingCap || isHardBlock || isSubmittingPreorder}
+                                            onClick={async () => {
+                                                if (isSubmittingPreorder) return;
+                                                setIsSubmittingPreorder(true);
+                                                try {
+                                                    await onAddPreOrder({ ...preorderItem, session: preorderSession, shelf: 'Shelf B2' });
+                                                    setPreorderItem(null);
+                                                } finally {
+                                                    setIsSubmittingPreorder(false);
+                                                }
                                             }}
                                             className="w-2/3 py-2.5 font-bold"
                                         >
-                                            Confirm & Reserve Tray
+                                            {isSubmittingPreorder ? 'Reserving Tray...' : 'Confirm & Reserve Tray'}
                                         </ActionButton>
                                     </div>
                                 </div>
@@ -8112,7 +8162,7 @@
                             const newNotif = {
                                 id: 'sos_' + Date.now(),
                                 user_id: 'u201',
-                                title: `🆘 Urgent Top-Up SOS: ₱${amt}.00 Requested`,
+                                title: `Urgent Top-Up SOS: ₱${amt}.00 Requested`,
                                 message: `Student ${studentName} (${studentIdNum}) requested ₱${amt}.00 via 1-Tap SOS. Note: "${note}"`,
                                 type: 'topup_request',
                                 is_read: false,
@@ -8168,6 +8218,21 @@
             const [payLaterAllowanceState, setPayLaterAllowanceState] = useState(activeChild.pay_later_allowance !== false);
             const [saveStatusMsg, setSaveStatusMsg] = useState('');
 
+            // Multi-Child Profile Synchronization
+            useEffect(() => {
+                if (activeChild) {
+                    const cLimit = (typeof activeChild.dailyCap === 'number' ? activeChild.dailyCap : (typeof activeChild.daily_limit === 'number' ? activeChild.daily_limit : 200));
+                    setNewLimitInput(cLimit.toString());
+                    setMaxCaloriesInput((activeChild.max_daily_calories || activeChild.maxDailyCalories || globalDefaultDailyCalories).toString());
+                    setMaxMealCaloriesInput((activeChild.max_meal_calories || activeChild.maxMealCalories || 800).toString());
+                    setAllergenMode(activeChild.allergen_mode || 'SOFT_WARN');
+                    setAllergenRestrictions(Array.isArray(activeChild.allergen_restrictions) ? activeChild.allergen_restrictions : (Array.isArray(activeChild.allergies) ? activeChild.allergies : []));
+                    setWeeklyLimitState((activeChild.weekly_limit || activeChild.weeklyLimit || 1000).toString());
+                    setCreditLimitState((activeChild.credit_limit || activeChild.creditLimit || 500).toString());
+                    setPayLaterAllowanceState(activeChild.pay_later_allowance !== false);
+                }
+            }, [activeChild?.id, activeChild?.studentId]);
+
             // ── Operational Remediation State (Parent) ──
             const [disputeModalOpen, setDisputeModalOpen] = useState(false);
             const [disputeOrder, setDisputeOrder] = useState(null);
@@ -8199,8 +8264,8 @@
                     setTimeout(() => setWebhookSimStatus(''), 5000);
                 } catch (err) {
                     console.warn("Webhook processing error:", err);
-                    setWebhookSimStatus(`✅ INSTANT WEBHOOK CREDITED: ₱${amt.toFixed(2)} added to ${activeChild.name}! Ref: ${sampleRef}`);
-                    setTimeout(() => setWebhookSimStatus(''), 5000);
+                    setWebhookSimStatus(`⚠️ WEBHOOK SIMULATION REJECTED: ${err.message || 'Gateway signature verification timeout.'}`);
+                    setTimeout(() => setWebhookSimStatus(''), 6000);
                 }
             };
 
@@ -8239,26 +8304,31 @@
                 if (e) e.preventDefault();
                 setSaveStatusMsg('');
                 const sId = activeChild.id || 'u101';
+                const parsedLimit = parseFloat(newLimitInput);
+                const cleanDailyLimit = isNaN(parsedLimit) ? safeLimit : Math.max(0, parsedLimit);
+
                 try {
                     if (window.CanteenDB) {
                         await window.CanteenDB.updateStudentHealthGuardrails(sId, {
-                            max_daily_calories: parseInt(maxCaloriesInput) || globalDefaultDailyCalories,
-                            max_meal_calories: parseInt(maxMealCaloriesInput) || 800,
+                            max_daily_calories: Math.max(500, parseInt(maxCaloriesInput) || globalDefaultDailyCalories),
+                            max_meal_calories: Math.max(200, parseInt(maxMealCaloriesInput) || 800),
                             allergen_restrictions: allergenRestrictions,
                             allergen_mode: allergenMode
                         });
                         await window.CanteenDB.updateStudentFinancialCaps(sId, {
-                            daily_limit: parseFloat(newLimitInput) || safeLimit,
-                            weekly_limit: parseFloat(weeklyLimitState) || 1000,
-                            credit_limit: parseFloat(creditLimitState) || 500,
+                            daily_limit: cleanDailyLimit,
+                            weekly_limit: Math.max(0, parseFloat(weeklyLimitState) || 1000),
+                            credit_limit: Math.max(0, parseFloat(creditLimitState) || 500),
                             pay_later_allowance: payLaterAllowanceState,
                             restricted_categories: restrictSugar ? ['Beverages', 'High Sugar'] : []
                         });
                     }
                     if (onUpdateDailyLimit) {
-                        onUpdateDailyLimit(parseFloat(newLimitInput) || safeLimit);
+                        onUpdateDailyLimit(cleanDailyLimit);
                     }
-                    setSaveStatusMsg('✅ Guardrails & Financial Controls updated successfully!');
+                    setSaveStatusMsg(cleanDailyLimit === 0
+                        ? '🔒 Card Locked (₱0.00 Daily Limit Saved) — Card spending disabled until unlocked.'
+                        : '✅ Guardrails & Financial Controls updated successfully!');
                     setTimeout(() => setSaveStatusMsg(''), 4000);
                 } catch (err) {
                     console.error("Save guardrails error:", err);
@@ -9341,6 +9411,7 @@
             const [endingCashInput, setEndingCashInput] = useState('');
             const [shiftNotesInput, setShiftNotesInput] = useState('');
             const [zReadReport, setZReadReport] = useState(null);
+            const [dismissedAILabels, setDismissedAILabels] = useState(new Set());
 
             // Handler: Trigger Manual Offline Edge Sync
             const handleTriggerOfflineSync = async () => {
@@ -9395,6 +9466,7 @@
             useEffect(() => {
                 let rfidBuffer = '';
                 let lastKeyTime = Date.now();
+                let lastSuccessfulTapTime = 0;
 
                 const handleGlobalRfidKey = (e) => {
                     const tagName = e.target ? e.target.tagName.toUpperCase() : '';
@@ -9410,6 +9482,11 @@
 
                     if (e.key === 'Enter') {
                         if (rfidBuffer.length >= 4) {
+                            if (now - lastSuccessfulTapTime < 1200) {
+                                rfidBuffer = '';
+                                return; // 1.2s hardware debounce lock
+                            }
+                            lastSuccessfulTapTime = now;
                             console.log('[GLOBAL 125kHz RFID HARDWARE TAP]:', rfidBuffer);
                             const rawScanned = rfidBuffer.trim();
                             rfidBuffer = '';
@@ -9594,7 +9671,9 @@
                     // Auto-mirror detected items to POS register if enabled
                     if (autoMirrorKiosk && data.cart && data.cart.length > 0 && (data.kiosk_state === 'SCANNING' || data.kiosk_state === 'COUNTDOWN' || data.kiosk_state === 'SETTLEMENT')) {
                         data.cart.forEach(kItem => {
-                            const catalogItem = menuCatalog.find(m => m.name.toLowerCase().includes(kItem.name.toLowerCase()) || kItem.name.toLowerCase().includes(m.name.toLowerCase())) || {
+                            const itemNameKey = (kItem.name || '').toLowerCase().trim();
+                            if (dismissedAILabels && dismissedAILabels.has(itemNameKey)) return;
+                            const catalogItem = menuCatalog.find(m => m.name.toLowerCase().includes(itemNameKey) || itemNameKey.includes(m.name.toLowerCase())) || {
                                 id: kItem.id || `kiosk-${kItem.name.replace(/\s+/g, '-').toLowerCase()}`,
                                 name: kItem.name,
                                 price: kItem.price,
@@ -9645,7 +9724,7 @@
                     if (eventSource) eventSource.close();
                     if (pollInterval) clearInterval(pollInterval);
                 };
-            }, [autoMirrorKiosk, menuCatalog, registeredUsers, posCart]);
+            }, [autoMirrorKiosk, menuCatalog, registeredUsers, posCart, dismissedAILabels]);
 
             const handleSimulateAiScan = async () => {
                 try {
@@ -10343,7 +10422,10 @@
                                         {posCart.length > 0 && (
                                             <button
                                                 type="button"
-                                                onClick={() => onClearCart()}
+                                                onClick={() => {
+                                                    onClearCart();
+                                                    setDismissedAILabels(new Set());
+                                                }}
                                                 className="text-[11px] font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2 py-0.5 rounded transition-colors"
                                                 title="Clear entire cart"
                                             >
@@ -10467,7 +10549,18 @@
                                                             <span className="font-bold px-1.5 text-xs text-center min-w-[18px] font-mono">{item.qty}</span>
                                                             <button onClick={() => onUpdateQty(item.id, item.qty + 1)} className="p-1 hover:bg-slate-100 rounded text-slate-700 transition-colors"><Icon.Plus className="w-3 h-3" /></button>
                                                         </div>
-                                                        <button onClick={() => onDeleteItem(item.id)} className="text-slate-400 hover:text-rose-600 p-1 transition-colors rounded hover:bg-rose-50" title="Delete item"><Icon.Trash className="w-3.5 h-3.5" /></button>
+                                                        <button
+                                                            onClick={() => {
+                                                                onDeleteItem(item.id);
+                                                                if (item.name) {
+                                                                    setDismissedAILabels(prev => new Set([...prev, item.name.toLowerCase().trim()]));
+                                                                }
+                                                            }}
+                                                            className="text-slate-400 hover:text-rose-600 p-1 transition-colors rounded hover:bg-rose-50"
+                                                            title="Delete item"
+                                                        >
+                                                            <Icon.Trash className="w-3.5 h-3.5" />
+                                                        </button>
                                                     </div>
                                                 </div>
                                             ))}
@@ -18589,7 +18682,8 @@
                         img: cleanImg,
                         calories: parseInt(updatedProd.calories) || 0,
                         protein: updatedProd.protein || '0g',
-                        allergens: Array.isArray(updatedProd.allergens) ? updatedProd.allergens : []
+                        allergens: Array.isArray(updatedProd.allergens) ? updatedProd.allergens : [],
+                        updated_at: new Date().toISOString()
                     }).catch(err => console.warn("Cloud product update warning", err));
                 } else if (supabaseClient && updatedProd.id) {
                     await supabaseClient.from('products').update({
@@ -18605,7 +18699,8 @@
                         img: cleanImg,
                         calories: parseInt(updatedProd.calories) || 0,
                         protein: updatedProd.protein || '0g',
-                        allergens: Array.isArray(updatedProd.allergens) ? updatedProd.allergens : []
+                        allergens: Array.isArray(updatedProd.allergens) ? updatedProd.allergens : [],
+                        updated_at: new Date().toISOString()
                     }).eq('id', updatedProd.id).catch(err => console.warn("Supabase direct update warning", err));
                 }
             };
