@@ -67,6 +67,7 @@ STATE_STABILITY_COUNTDOWN = 4
 STATE_SETTLEMENT = 5
 STATE_ERROR = 6
 STATE_PREORDER_ANNOUNCEMENT = 7
+STATE_RFID_CONFIRM = 8   # Waiting for student's RFID tap to confirm payment
 
 STATE_NAMES = {
     STATE_IDLE: "IDLE",
@@ -75,7 +76,8 @@ STATE_NAMES = {
     STATE_STABILITY_COUNTDOWN: "COUNTDOWN",
     STATE_SETTLEMENT: "SETTLEMENT",
     STATE_ERROR: "ERROR",
-    STATE_PREORDER_ANNOUNCEMENT: "PREORDER"
+    STATE_PREORDER_ANNOUNCEMENT: "PREORDER",
+    STATE_RFID_CONFIRM: "RFID_CONFIRM"
 }
 
 # Catalog Database
@@ -1214,52 +1216,22 @@ class NovaLunchKioskGUI:
             self.countdown_remaining = 5.0
             self.last_tick_sec = 5
             self.motion_voice_alerted = False
-            self.status_message = f"🟢 AI Scanning items ({self.countdown_remaining:.1f}s)... Hold steady"
+            self.status_message = f"🟢 AI Scanning items (5s)... Hold tray steady"
+
+        elif new_state == STATE_RFID_CONFIRM:
+            # Items are already in cart — wait for student RFID tap to confirm
+            student_bal = self.active_student["balance"] if self.active_student else 0.0
+            if self.total_amount > student_bal:
+                self.status_message = f"⚠️ Insufficient balance (₱{student_bal:.2f}). Tap RFID for Pay Later or cancel."
+            else:
+                self.status_message = f"✅ ₱{self.total_amount:.2f} ready. Tap RFID card to confirm payment."
 
         elif new_state == STATE_SETTLEMENT:
-            if not self.active_student:
-                accounts = self.db_manager.load_accounts()
-                if accounts:
-                    st = accounts[0]
-                    self.active_student = {
-                        "id": st.get("student_id_number"),
-                        "name": st.get("full_name"),
-                        "email": st.get("email"),
-                        "rfidUid": st.get("rfid_uid"),
-                        "balance": float(st.get("balance", 200.0)),
-                        "daily_limit": float(st.get("daily_limit", 200.0))
-                    }
-
-            student_bal = self.active_student["balance"] if self.active_student else 0.0
-            student_id = self.active_student["id"] if self.active_student else "GUEST"
-            daily_limit = float(self.active_student.get("daily_limit", 200.0)) if self.active_student else 200.0
-            daily_spent = self.db_manager.get_student_daily_spent(student_id)
-
-            if self.total_amount > 0 and (daily_spent + self.total_amount) > daily_limit:
-                self.status_message = f"⚠️ DAILY SPENDING CAP EXCEEDED (Cap: ₱{daily_limit:.2f})"
-                speak_text("Warning! Daily spending limit exceeded.")
-            elif student_bal >= self.total_amount and self.total_amount > 0:
-                rem_balance = self.db_manager.deduct_student_balance(student_id, self.total_amount)
-                self.active_student["balance"] = rem_balance
-
-                tx_id = f"TXN_{int(time.time())}_{student_id.replace('-', '')}"
-                self.db_manager.record_transaction(tx_id, student_id, self.cart_items, self.total_amount, self.latest_tray_image, payment_method="rfid")
-                self.status_message = f"Payment Successful! Remaining Balance: ₱{rem_balance:.2f}"
-                if self.sounds.get("success"):
-                    try:
-                        self.sounds["success"].play()
-                    except Exception:
-                        pass
-                speak_text(f"Payment successful! Remaining balance {int(rem_balance)} pesos. Thank you!")
-            elif self.total_amount == 0:
-                self.status_message = "No items scanned on platform!"
-            else:
-                self.status_message = "⚠️ Insufficient Balance! Press [P] for 1-Tap Pay Later."
-                speak_text("Insufficient balance. Press P for Pay Later.")
+            # Payment has already been deducted — just display confirmation
+            self.status_message = "✅ Payment confirmed! Please claim your order."
 
         elif new_state == STATE_ERROR:
             self.status_message = "⚠️ UNREGISTERED RFID CARD — PLEASE VISIT ADMIN"
-            speak_text("Unregistered card. Please visit canteen administration.")
 
         self.notify_pos_update()
 
@@ -1300,14 +1272,58 @@ class NovaLunchKioskGUI:
         speak_text(f"Safety net approved. Charged to pay later. Thank you {st_name.split()[0]}!")
         self.notify_pos_update()
 
+    def execute_rfid_payment_confirm(self, scanned_uid=None):
+        """Called when student taps RFID in STATE_RFID_CONFIRM to confirm and deduct payment."""
+        if not self.active_student or self.total_amount <= 0:
+            return
+
+        # If a real UID was scanned, verify it matches the expected student
+        if scanned_uid:
+            clean = str(scanned_uid).strip().replace("NL-QR-", "").replace("QR-", "")
+            expected_rfid = str(self.active_student.get("rfidUid", "")).strip().replace("NL-QR-", "").replace("QR-", "")
+            norm_scanned = clean.lstrip("0").upper()
+            norm_expected = expected_rfid.lstrip("0").upper()
+            if norm_scanned and norm_expected and norm_scanned != norm_expected:
+                self.status_message = f"⚠️ Card does not match enrolled student. Expected: {expected_rfid[:8]}..."
+                self.notify_pos_update()
+                return
+
+        student_id = self.active_student["id"]
+        student_bal = float(self.active_student.get("balance", 0.0))
+        daily_limit = float(self.active_student.get("daily_limit", 200.0))
+        daily_spent = self.db_manager.get_student_daily_spent(student_id)
+
+        if self.total_amount > 0 and (daily_spent + self.total_amount) > daily_limit:
+            self.status_message = f"⚠️ DAILY SPENDING CAP EXCEEDED (Cap: ₱{daily_limit:.2f}) — Ask cashier for override."
+            self.notify_pos_update()
+            return
+
+        if student_bal >= self.total_amount:
+            rem_balance = self.db_manager.deduct_student_balance(student_id, self.total_amount)
+            self.active_student["balance"] = rem_balance
+            tx_id = f"TXN_{int(time.time())}_{student_id.replace('-', '')}"
+            self.db_manager.record_transaction(tx_id, student_id, self.cart_items, self.total_amount, self.latest_tray_image, payment_method="rfid")
+            self.status_message = f"✅ Payment confirmed! Remaining Balance: ₱{rem_balance:.2f}"
+            print(f"[PAYMENT] Student {self.active_student['name']} paid ₱{self.total_amount:.2f}. Rem: ₱{rem_balance:.2f}")
+            self.transition_to_state(STATE_SETTLEMENT)
+        else:
+            # Insufficient balance — prompt pay later
+            self.status_message = f"⚠️ Insufficient Balance (₱{student_bal:.2f} / ₱{self.total_amount:.2f}). Press [P] for Pay Later."
+            self.notify_pos_update()
+
     def handle_rfid_tap(self, scanned_uid=None):
         now = time.time()
         if scanned_uid:
             clean = str(scanned_uid).strip().replace("NL-QR-", "").replace("QR-", "")
             last_tap = self.rfid_anti_passback_cache.get(clean, 0)
             if now - last_tap < 3.0:
-                return  # Hardware debounce to prevent duplicate flutter
+                return  # Hardware debounce
             self.rfid_anti_passback_cache[clean] = now
+
+            # If waiting for payment confirmation, treat this as the confirm tap
+            if self.current_state == STATE_RFID_CONFIRM:
+                self.execute_rfid_payment_confirm(scanned_uid=clean)
+                return
 
             student = self.db_manager.find_student_by_rfid(clean)
             if student:
@@ -1322,7 +1338,7 @@ class NovaLunchKioskGUI:
                 self.transition_to_state(STATE_ERROR)
             return
 
-        # Advance step state simulation
+        # Keyboard/simulation advance
         if self.current_state in [STATE_IDLE, STATE_ERROR]:
             self.execute_simulation_step(1)
         elif self.current_state == STATE_PREORDER_ANNOUNCEMENT:
@@ -1332,7 +1348,11 @@ class NovaLunchKioskGUI:
         elif self.current_state == STATE_SCANNING:
             self.execute_simulation_step(3)
         elif self.current_state == STATE_STABILITY_COUNTDOWN:
-            self.execute_simulation_step(4)
+            # Manually advance to RFID confirm step
+            self.transition_to_state(STATE_RFID_CONFIRM)
+        elif self.current_state == STATE_RFID_CONFIRM:
+            # Simulate payment confirm (no real RFID — keyboard simulation)
+            self.execute_rfid_payment_confirm()
         elif self.current_state == STATE_SETTLEMENT:
             self.transition_to_state(STATE_IDLE)
 
@@ -1539,22 +1559,25 @@ class NovaLunchKioskGUI:
             s3_state = "PENDING"
             s3_sub = "Waiting"
 
-        # Step 4: Pay / Settlement
+        # Step 4: Confirm RFID / Settlement
         if self.current_state == STATE_SETTLEMENT:
             s4_state = "DONE"
             s4_sub = f"Paid ₱{self.total_amount:.0f}"
-        elif self.current_state == STATE_STABILITY_COUNTDOWN and self.countdown_remaining <= 0.8:
+        elif self.current_state == STATE_RFID_CONFIRM:
             s4_state = "ACTIVE"
-            s4_sub = "Authorizing..."
+            s4_sub = "Tap RFID Now"
+        elif self.current_state == STATE_STABILITY_COUNTDOWN and self.countdown_remaining <= 1.0:
+            s4_state = "ACTIVE"
+            s4_sub = "Scan Done Soon"
         else:
             s4_state = "PENDING"
-            s4_sub = "Auto-Deduct"
+            s4_sub = "Tap RFID"
 
         steps_info = [
             (self.btn_step1, "Step 1: Tap ID", s1_state, s1_sub, 1),
             (self.btn_step2, "Step 2: AI Scan", s2_state, s2_sub, 2),
             (self.btn_step3, "Step 3: 5s Timer", s3_state, s3_sub, 3),
-            (self.btn_step4, "Step 4: Cashier Pay", s4_state, s4_sub, 4),
+            (self.btn_step4, "Step 4: Confirm RFID", s4_state, s4_sub, 4),
         ]
 
         # Draw connecting background progress track
@@ -1688,17 +1711,19 @@ class NovaLunchKioskGUI:
     def render_action_banner(self):
         banner_rect = pygame.Rect(775, 565, 460, 56)
         if self.current_state == STATE_IDLE:
-            bg, txt, fg = COLOR_CARD_ALT, "Place items on platform or Tap RFID...", COLOR_TEXT_MUTED
+            bg, txt, fg = COLOR_CARD_ALT, "Tap Student RFID Card to begin...", COLOR_TEXT_MUTED
         elif self.current_state in [STATE_GREET, STATE_SCANNING]:
             bg, txt, fg = COLOR_MAROON_HEADER, "AI Overhead Vision Scanning Active...", COLOR_WHITE
         elif self.current_state == STATE_STABILITY_COUNTDOWN:
             bg = COLOR_AMBER_BG if self.motion_detected else COLOR_ROSE_VIBRANT
-            txt = "⚠️ Motion Detected — Keep Hands Off" if self.motion_detected else f"⏳ AI Scanning Platform ({self.countdown_remaining:.1f}s)"
+            txt = "⚠️ Motion Detected — Keep Hands Off" if self.motion_detected else f"⏳ AI Scanning ({self.countdown_remaining:.1f}s remaining)"
             fg = COLOR_MAROON_HEADER if self.motion_detected else COLOR_WHITE
+        elif self.current_state == STATE_RFID_CONFIRM:
+            bg, txt, fg = COLOR_GOLD_ACCENT, "👆 Tap RFID Card to Confirm Payment", COLOR_MAROON_DARK
         elif self.current_state == STATE_SETTLEMENT:
-            bg, txt, fg = COLOR_EMERALD, "✓ Payment have been confirmed please claim your order.", COLOR_WHITE
+            bg, txt, fg = COLOR_EMERALD, "✓ Payment Confirmed — Please Claim Your Order!", COLOR_WHITE
         else:
-            bg, txt, fg = COLOR_ROSE_ALERT, "⚡ Press [P] for 1-Tap Pay Later", COLOR_WHITE
+            bg, txt, fg = COLOR_ROSE_ALERT, "⚡ Insufficient Balance — Press [P] for Pay Later", COLOR_WHITE
 
         self.pay_later_btn_rect = banner_rect
         pygame.draw.rect(self.screen, bg, banner_rect, border_radius=12)
@@ -1750,6 +1775,103 @@ class NovaLunchKioskGUI:
             p_surf = self.font_large.render(f"₱{price:.2f}", True, COLOR_ROSE_VIBRANT)
             self.screen.blit(p_surf, (card.right - p_surf.get_width() - 15, y_pos + 14))
             y_pos += 75
+
+    def render_rfid_confirm_overlay(self):
+        """Full-screen overlay prompting student to tap RFID to confirm payment."""
+        # Semi-transparent dark backdrop over left/right panels
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT - 84 - 42), pygame.SRCALPHA)
+        overlay.fill((10, 10, 20, 195))
+        self.screen.blit(overlay, (0, 84))
+
+        st = self.active_student or {}
+        st_name = st.get("name", "Student")
+        st_id = st.get("id", "—")
+        rfid_uid = st.get("rfidUid", "—")
+        balance = float(st.get("balance", 0.0))
+        total = self.total_amount
+        has_balance = balance >= total
+
+        # Center card
+        card_w, card_h = 680, 370
+        card_x = (SCREEN_WIDTH - card_w) // 2
+        card_y = 84 + ((SCREEN_HEIGHT - 84 - 42 - card_h) // 2)
+        card_rect = pygame.Rect(card_x, card_y, card_w, card_h)
+
+        # Card shadow (simple drop)
+        shadow_rect = pygame.Rect(card_x + 5, card_y + 6, card_w, card_h)
+        pygame.draw.rect(self.screen, (0, 0, 0, 100), shadow_rect, border_radius=24)
+
+        # Card background
+        card_bg = (16, 24, 40)
+        pygame.draw.rect(self.screen, card_bg, card_rect, border_radius=24)
+        border_color = COLOR_EMERALD if has_balance else COLOR_GOLD_ACCENT
+        pygame.draw.rect(self.screen, border_color, card_rect, width=2, border_radius=24)
+
+        # Header ribbon
+        ribbon = pygame.Rect(card_x, card_y, card_w, 60)
+        pygame.draw.rect(self.screen, COLOR_MAROON_HEADER, ribbon, border_top_left_radius=24, border_top_right_radius=24)
+        title_surf = self.font_header.render("SCAN RFID TO CONFIRM PURCHASE", True, COLOR_GOLD_LIGHT)
+        self.screen.blit(title_surf, (card_rect.centerx - title_surf.get_width() // 2, card_y + 16))
+
+        # Animated pulse ring around card (pulse every 0.8s using time)
+        pulse_t = time.time() % 1.0
+        pulse_alpha = int(80 + 100 * abs(math.sin(pulse_t * math.pi)))
+        ring_surf = pygame.Surface((card_w + 24, card_h + 24), pygame.SRCALPHA)
+        pygame.draw.rect(ring_surf, (*border_color, pulse_alpha), (0, 0, card_w + 24, card_h + 24), width=3, border_radius=28)
+        self.screen.blit(ring_surf, (card_x - 12, card_y - 12))
+
+        # --- Student info block ---
+        info_y = card_y + 76
+
+        # Avatar circle
+        av_cx, av_cy = card_x + 52, info_y + 44
+        pygame.draw.circle(self.screen, COLOR_GOLD_ACCENT, (av_cx, av_cy), 34)
+        initials = "".join([n[0] for n in st_name.split()[:2]]).upper()
+        av_txt = self.font_title.render(initials, True, COLOR_MAROON_DARK)
+        self.screen.blit(av_txt, (av_cx - av_txt.get_width() // 2, av_cy - av_txt.get_height() // 2))
+
+        # Name + IDs
+        name_surf = self.font_large.render(st_name, True, COLOR_WHITE)
+        self.screen.blit(name_surf, (card_x + 102, info_y + 16))
+        id_surf = self.font_subtitle_bold.render(f"Student No: {st_id}", True, COLOR_TEXT_MUTED)
+        self.screen.blit(id_surf, (card_x + 102, info_y + 50))
+        rfid_surf = self.font_brand_sub.render(f"RFID UID: {rfid_uid}", True, COLOR_TEXT_MUTED)
+        self.screen.blit(rfid_surf, (card_x + 102, info_y + 70))
+
+        # Divider
+        div_y = info_y + 100
+        pygame.draw.line(self.screen, (40, 50, 70), (card_x + 24, div_y), (card_x + card_w - 24, div_y), 1)
+
+        # Balance + Total
+        bal_y = div_y + 18
+        bal_lbl = self.font_subtitle_bold.render("Current Balance:", True, COLOR_TEXT_MUTED)
+        bal_val = self.font_large.render(f"₱{balance:.2f}", True, COLOR_EMERALD if has_balance else COLOR_ROSE_ALERT)
+        self.screen.blit(bal_lbl, (card_x + 28, bal_y))
+        self.screen.blit(bal_val, (card_x + card_w - bal_val.get_width() - 28, bal_y))
+
+        tot_y = bal_y + 44
+        tot_lbl = self.font_subtitle_bold.render("Order Total:", True, COLOR_TEXT_MUTED)
+        tot_val = self.font_large.render(f"₱{total:.2f}", True, COLOR_ROSE_VIBRANT)
+        self.screen.blit(tot_lbl, (card_x + 28, tot_y))
+        self.screen.blit(tot_val, (card_x + card_w - tot_val.get_width() - 28, tot_y))
+
+        pygame.draw.line(self.screen, (40, 50, 70), (card_x + 24, tot_y + 42), (card_x + card_w - 24, tot_y + 42), 1)
+
+        # Instruction prompt
+        prompt_y = tot_y + 56
+        if has_balance:
+            prompt_bg = COLOR_EMERALD
+            prompt_txt = "👆  TAP YOUR RFID CARD NOW TO CONFIRM"
+            prompt_fg = COLOR_WHITE
+        else:
+            prompt_bg = COLOR_GOLD_ACCENT
+            prompt_txt = "⚠️  BALANCE LOW — PRESS [P] FOR PAY LATER"
+            prompt_fg = COLOR_MAROON_DARK
+
+        btn_rect = pygame.Rect(card_x + 28, prompt_y, card_w - 56, 46)
+        pygame.draw.rect(self.screen, prompt_bg, btn_rect, border_radius=14)
+        p_surf = self.font_body_bold.render(prompt_txt, True, prompt_fg)
+        self.screen.blit(p_surf, (btn_rect.centerx - p_surf.get_width() // 2, btn_rect.centery - p_surf.get_height() // 2))
 
     def render_footer(self):
         footer_rect = pygame.Rect(0, 678, SCREEN_WIDTH, 42)
@@ -1879,12 +2001,19 @@ class NovaLunchKioskGUI:
                     if curr_sec < self.last_tick_sec and curr_sec >= 1:
                         self.last_tick_sec = curr_sec
                     if self.countdown_remaining <= 0.0:
-                        # 5-second scan finished: Push to Cashier POS cart without auto-deducting
-                        self.status_message = f"🟢 Scanned {len(self.cart_items)} item(s) (₱{self.total_amount:.2f}) — Sent to Cashier POS Cart"
-                        self.current_state = STATE_SCANNING
-                        self.notify_pos_update()
+                        # 5-second scan finished — move to RFID confirm; do NOT auto-deduct yet
+                        cnt = len(self.cart_items)
+                        self.status_message = f"🟢 Scanned {cnt} item(s) — ₱{self.total_amount:.2f}. Tap RFID to confirm payment."
+                        self.transition_to_state(STATE_RFID_CONFIRM)
 
-            elif self.current_state == STATE_SETTLEMENT and (now - self.state_timer >= 4.0):
+            elif self.current_state == STATE_RFID_CONFIRM:
+                # Timeout after 60 seconds back to idle if no confirmation
+                if now - self.state_timer >= 60.0:
+                    self.status_message = "⏰ RFID confirm timed out. Session cancelled."
+                    self.transition_to_state(STATE_IDLE)
+
+            elif self.current_state == STATE_SETTLEMENT and (now - self.state_timer >= 3.0):
+                # 3-second thank-you screen then return to idle (clears cart)
                 self.transition_to_state(STATE_IDLE)
             elif self.current_state == STATE_ERROR and (now - self.state_timer >= 4.0):
                 self.transition_to_state(STATE_IDLE)
@@ -1893,6 +2022,10 @@ class NovaLunchKioskGUI:
             self.render_header()
             if self.current_state == STATE_PREORDER_ANNOUNCEMENT:
                 self.render_preorder_announcement()
+            elif self.current_state == STATE_RFID_CONFIRM:
+                self.render_left_panel()
+                self.render_right_panel()
+                self.render_rfid_confirm_overlay()
             else:
                 self.render_left_panel()
                 self.render_right_panel()
