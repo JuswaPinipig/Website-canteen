@@ -738,43 +738,15 @@ class CameraThread(threading.Thread):
             self.cap.release()
 
 # ==============================================================================
-# AUDIO & SPEECH ANNOUNCEMENT ENGINE
+# AUDIO & SPEECH ANNOUNCEMENT ENGINE (MUTED)
 # ==============================================================================
-_tts_lock = threading.Lock()
-
 def speak_text(text):
-    def _run():
-        with _tts_lock:
-            try:
-                if shutil.which("say"):
-                    subprocess.run(["killall", "say"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL, check=False)
-                    subprocess.run(["say", "-r", "240", "-v", "Samantha", text], timeout=3, check=False)
-                else:
-                    print(f"[VOICE]: {text}")
-            except Exception:
-                pass
-    threading.Thread(target=_run, daemon=True).start()
+    # Sounds and voice announcements muted per user kiosk setup
+    pass
 
 def create_synthesized_sounds():
-    sounds = {"success": None, "tick": None}
-    try:
-        if not pygame.mixer.get_init():
-            pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
-        sr = 44100
-        # Success sound
-        t_s = np.linspace(0, 0.35, int(sr * 0.35), False)
-        w = (np.sin(2 * np.pi * 523.25 * t_s) + np.sin(2 * np.pi * 659.25 * t_s) + np.sin(2 * np.pi * 783.99 * t_s)) * 0.3 * np.exp(-4.0 * t_s)
-        arr = (w * 32767).astype(np.int16)
-        sounds["success"] = pygame.sndarray.make_sound(np.column_stack((arr, arr)))
-
-        # Tick sound
-        t_t = np.linspace(0, 0.08, int(sr * 0.08), False)
-        wt = np.sin(2 * np.pi * 880.0 * t_t) * 0.25 * np.exp(-15.0 * t_t)
-        arr_t = (wt * 32767).astype(np.int16)
-        sounds["tick"] = pygame.sndarray.make_sound(np.column_stack((arr_t, arr_t)))
-    except Exception:
-        pass
-    return sounds
+    # Sound effects disabled per user kiosk setup
+    return {"success": None, "tick": None}
 
 # ==============================================================================
 # REAL-TIME KIOSK HTTP REST & SERVER-SENT EVENTS (SSE) SERVER (PORT 8085)
@@ -966,6 +938,23 @@ class KioskHTTPRequestHandler(BaseHTTPRequestHandler):
                     _GLOBAL_KIOSK_REF.execute_simulation_step(4)
                 elif action == "pay_later":
                     _GLOBAL_KIOSK_REF.execute_pay_later_checkout()
+                elif action in ["confirm_payment", "complete_checkout"]:
+                    st = req_data.get("student")
+                    amt = float(req_data.get("amount", _GLOBAL_KIOSK_REF.total_amount))
+                    if st and isinstance(st, dict):
+                        _GLOBAL_KIOSK_REF.active_student = {
+                            "id": st.get("studentId") or st.get("id", "STU-2026"),
+                            "name": st.get("name", "Student"),
+                            "email": st.get("email", ""),
+                            "rfidUid": st.get("rfidUid", ""),
+                            "balance": float(st.get("balance", 200.0)),
+                            "daily_limit": float(st.get("daily_limit", 200.0))
+                        }
+                    _GLOBAL_KIOSK_REF.total_amount = amt
+                    _GLOBAL_KIOSK_REF.status_message = "Payment have been confirmed please claim your order."
+                    _GLOBAL_KIOSK_REF.current_state = STATE_SETTLEMENT
+                    _GLOBAL_KIOSK_REF.state_timer = time.time()
+                    _GLOBAL_KIOSK_REF.notify_pos_update()
 
             self._send_cors_headers(200, "application/json")
             self.end_headers()
@@ -1045,8 +1034,8 @@ class NovaLunchKioskGUI:
         self.latest_tray_image = ""
 
         # Stability & Motion
-        self.countdown_remaining = 4.0
-        self.last_tick_sec = 4
+        self.countdown_remaining = 5.0
+        self.last_tick_sec = 5
         self.motion_detected = False
         self.motion_voice_alerted = False
         self.greet_audio_spoken = False
@@ -1222,12 +1211,10 @@ class NovaLunchKioskGUI:
                 print(f"[TRAY SNAPSHOT WARN]: {e}")
 
         elif new_state == STATE_STABILITY_COUNTDOWN:
-            self.countdown_remaining = 4.0
-            self.last_tick_sec = 4
+            self.countdown_remaining = 5.0
+            self.last_tick_sec = 5
             self.motion_voice_alerted = False
-            self.status_message = f"🟢 Items stable. Auto-deducting ₱{self.total_amount:.2f} in 4.0s..."
-            names = " and ".join(i["name"] for i in self.cart_items) if self.cart_items else "Food items"
-            speak_text(f"Scanned {names}. Total is {int(self.total_amount)} pesos.")
+            self.status_message = f"🟢 AI Scanning items ({self.countdown_remaining:.1f}s)... Hold steady"
 
         elif new_state == STATE_SETTLEMENT:
             if not self.active_student:
@@ -1496,11 +1483,11 @@ class NovaLunchKioskGUI:
         self.screen.blit(num_surf, (cx - num_surf.get_width() // 2, cy - num_surf.get_height() // 2))
 
     def render_settlement_banner(self, video_area):
-        banner = pygame.Rect(video_area.centerx - 200, video_area.centery - 40, 400, 80)
+        banner = pygame.Rect(video_area.centerx - 220, video_area.centery - 40, 440, 80)
         pygame.draw.rect(self.screen, COLOR_EMERALD_BG, banner, border_radius=16)
         pygame.draw.rect(self.screen, COLOR_EMERALD, banner, width=2, border_radius=16)
         t1 = self.font_large.render("✓ PAYMENT APPROVED", True, COLOR_EMERALD)
-        t2 = self.font_subtitle_bold.render(f"Deducted ₱{self.total_amount:.2f} — Session Complete", True, COLOR_TEXT_MAIN)
+        t2 = self.font_subtitle_bold.render("Payment have been confirmed please claim your order.", True, COLOR_TEXT_MAIN)
         self.screen.blit(t1, (banner.centerx - t1.get_width() // 2, banner.y + 12))
         self.screen.blit(t2, (banner.centerx - t2.get_width() // 2, banner.y + 48))
 
@@ -1566,8 +1553,8 @@ class NovaLunchKioskGUI:
         steps_info = [
             (self.btn_step1, "Step 1: Tap ID", s1_state, s1_sub, 1),
             (self.btn_step2, "Step 2: AI Scan", s2_state, s2_sub, 2),
-            (self.btn_step3, "Step 3: 4s Timer", s3_state, s3_sub, 3),
-            (self.btn_step4, "Step 4: Pay", s4_state, s4_sub, 4),
+            (self.btn_step3, "Step 3: 5s Timer", s3_state, s3_sub, 3),
+            (self.btn_step4, "Step 4: Cashier Pay", s4_state, s4_sub, 4),
         ]
 
         # Draw connecting background progress track
@@ -1706,10 +1693,10 @@ class NovaLunchKioskGUI:
             bg, txt, fg = COLOR_MAROON_HEADER, "AI Overhead Vision Scanning Active...", COLOR_WHITE
         elif self.current_state == STATE_STABILITY_COUNTDOWN:
             bg = COLOR_AMBER_BG if self.motion_detected else COLOR_ROSE_VIBRANT
-            txt = "⚠️ Motion Detected — Keep Hands Off" if self.motion_detected else f"⏳ Auto-Deducting in {self.countdown_remaining:.1f}s"
+            txt = "⚠️ Motion Detected — Keep Hands Off" if self.motion_detected else f"⏳ AI Scanning Platform ({self.countdown_remaining:.1f}s)"
             fg = COLOR_MAROON_HEADER if self.motion_detected else COLOR_WHITE
         elif self.current_state == STATE_SETTLEMENT:
-            bg, txt, fg = COLOR_EMERALD, "✓ Payment Approved — Thank You!", COLOR_WHITE
+            bg, txt, fg = COLOR_EMERALD, "✓ Payment have been confirmed please claim your order.", COLOR_WHITE
         else:
             bg, txt, fg = COLOR_ROSE_ALERT, "⚡ Press [P] for 1-Tap Pay Later", COLOR_WHITE
 
@@ -1884,23 +1871,18 @@ class NovaLunchKioskGUI:
 
             elif self.current_state == STATE_STABILITY_COUNTDOWN:
                 if self.motion_detected:
-                    self.countdown_remaining = 4.0
-                    if not self.motion_voice_alerted:
-                        speak_text("Motion detected on platform.")
-                        self.motion_voice_alerted = True
+                    self.countdown_remaining = 5.0
                 else:
                     self.motion_voice_alerted = False
                     self.countdown_remaining -= dt
                     curr_sec = int(math.ceil(self.countdown_remaining))
                     if curr_sec < self.last_tick_sec and curr_sec >= 1:
                         self.last_tick_sec = curr_sec
-                        if self.sounds.get("tick"):
-                            try:
-                                self.sounds["tick"].play()
-                            except Exception:
-                                pass
                     if self.countdown_remaining <= 0.0:
-                        self.transition_to_state(STATE_SETTLEMENT)
+                        # 5-second scan finished: Push to Cashier POS cart without auto-deducting
+                        self.status_message = f"🟢 Scanned {len(self.cart_items)} item(s) (₱{self.total_amount:.2f}) — Sent to Cashier POS Cart"
+                        self.current_state = STATE_SCANNING
+                        self.notify_pos_update()
 
             elif self.current_state == STATE_SETTLEMENT and (now - self.state_timer >= 4.0):
                 self.transition_to_state(STATE_IDLE)
