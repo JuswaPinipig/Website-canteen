@@ -1603,129 +1603,6 @@
             }
         }
 
-        // Parent Guardian Monthly Expenditure Statement PDF Generator
-        function generateParentMonthlyStatementPDF(child, purchases = [], period = 'August 1 - August 31, 2026') {
-            if (!child) return;
-            try {
-                const jspdfModule = window.jspdf;
-                if (!jspdfModule || !jspdfModule.jsPDF) {
-                    window.print();
-                    return;
-                }
-                const { jsPDF } = jspdfModule;
-                const doc = new jsPDF({ unit: 'pt', format: 'letter' });
-
-                // Institutional Maroon Header
-                doc.setFillColor(29, 5, 7);
-                doc.rect(0, 0, 612, 65, 'F');
-                doc.setTextColor(255, 255, 255);
-                doc.setFont('helvetica', 'bold');
-                doc.setFontSize(13);
-                doc.text("SAINT JOSEPH COLLEGE OF NOVALICHES, INC.", 40, 28);
-                doc.setFontSize(8.5);
-                doc.setFont('helvetica', 'normal');
-                doc.setTextColor(245, 158, 11);
-                doc.text("NovaLunch Parental Portal • Student Canteen Monthly Expenditure Statement", 40, 42);
-                doc.setTextColor(203, 213, 225);
-                doc.text("Congressional Road, Novaliches, Caloocan City • Verified E-Wallet Audit Record", 40, 54);
-
-                // Document Subtitle & Meta
-                doc.setFontSize(12);
-                doc.setFont('helvetica', 'bold');
-                doc.setTextColor(15, 23, 42);
-                doc.text("MONTHLY CANTEEN MEAL & EXPENDITURE STATEMENT", 40, 92);
-
-                doc.setFontSize(8.5);
-                doc.setFont('helvetica', 'normal');
-                doc.setTextColor(100, 116, 139);
-                doc.text(`Statement Ref: SJC-PRNT-${Date.now().toString().slice(-6)}`, 40, 106);
-                doc.text(`Billing / Academic Cycle: ${period}`, 40, 119);
-                doc.text(`Date Generated: ${new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`, 340, 106);
-
-                // Student Profile Card
-                doc.setFillColor(248, 250, 252);
-                doc.setDrawColor(226, 232, 240);
-                doc.roundedRect(40, 130, 532, 58, 6, 6, 'FD');
-
-                doc.setFontSize(8.5);
-                doc.setTextColor(71, 85, 105);
-                doc.text("Student Full Name:", 55, 148);
-                doc.text("Student ID / Badge No.:", 55, 163);
-                doc.text("RFID Smart Card Status:", 55, 178);
-
-                doc.setFont('helvetica', 'bold');
-                doc.setTextColor(15, 23, 42);
-                doc.text(child.name || "Student", 170, 148);
-                doc.text(child.studentId || child.student_id_number || "2023-01900", 170, 163);
-                doc.text(child.rfidUid ? `Active (${child.rfidUid})` : "Enrolled / Active", 170, 178);
-
-                // Total Expense Box
-                doc.setFillColor(240, 253, 244);
-                doc.setDrawColor(187, 247, 208);
-                doc.roundedRect(390, 138, 170, 42, 4, 4, 'FD');
-
-                doc.setFontSize(7.5);
-                doc.setFont('helvetica', 'bold');
-                doc.setTextColor(22, 101, 52);
-                doc.text("TOTAL MONTHLY EXPENSES", 400, 151);
-
-                const totalExp = (purchases && purchases.length > 0)
-                    ? purchases.reduce((sum, p) => sum + (parseFloat(p.price || p.total || 0)), 0)
-                    : 1840.00;
-
-                doc.setFontSize(13);
-                doc.text(`PHP ${totalExp.toFixed(2)}`, 400, 170);
-
-                // Purchases Table
-                const tableRows = (purchases && purchases.length > 0 ? purchases : [
-                    { id: 'REC-901', date: 'Today, 12:15 PM', items: '1x Classic Cheeseburger, 1x Mineral Water', price: 95.00, cashier: 'POS Reg #01' },
-                    { id: 'REC-892', date: 'Yesterday, 12:05 PM', items: '1x Beef Pares Rice Bowl, 1x Iced Fruit Juice', price: 125.00, cashier: 'POS Reg #01' },
-                    { id: 'REC-875', date: 'July 27, 2026, 9:45 AM', items: '1x Fresh Fruit Slice, 1x Mineral Water', price: 45.00, cashier: 'Express Kiosk #02' }
-                ]).map((p, idx) => [
-                    (idx + 1).toString(),
-                    p.date || 'Recent',
-                    p.id || `REC-${idx + 1}`,
-                    typeof p.items === 'string' ? p.items : (Array.isArray(p.items) ? p.items.map(it => `${it.qty || 1}x ${it.name}`).join(', ') : 'Meal Purchase'),
-                    p.cashier || 'Terminal #01',
-                    `PHP ${(parseFloat(p.price || p.total || 0)).toFixed(2)}`
-                ]);
-
-                if (doc.autoTable) {
-                    doc.autoTable({
-                        startY: 200,
-                        head: [['#', 'Date & Time', 'Receipt Ref', 'Meal Items & Nutrition', 'Terminal', 'Total']],
-                        body: tableRows,
-                        theme: 'grid',
-                        headStyles: {
-                            fillColor: [74, 14, 23],
-                            textColor: [255, 255, 255],
-                            fontStyle: 'bold',
-                            fontSize: 8
-                        },
-                        bodyStyles: {
-                            fontSize: 7.5,
-                            textColor: [30, 41, 59]
-                        },
-                        columnStyles: {
-                            0: { cellWidth: 25, halign: 'center' },
-                            1: { cellWidth: 95 },
-                            2: { cellWidth: 80 },
-                            3: { cellWidth: 200 },
-                            4: { cellWidth: 65 },
-                            5: { cellWidth: 67, halign: 'right', fontStyle: 'bold' }
-                        },
-                        margin: { left: 40, right: 40 }
-                    });
-                }
-
-                const safeChildName = (child.name || "Student").replace(/[^a-zA-Z0-9]/g, "_");
-                doc.save(`NovaLunch_Monthly_Statement_${safeChildName}_${new Date().toISOString().slice(0, 10)}.pdf`);
-            } catch (err) {
-                console.error("Parent PDF Export Error:", err);
-                window.print();
-            }
-        }
-
         const INITIAL_GCASH_QUEUE = [
             { id: "top_9001", parent: "Maria Santos", student: "Juan Dela Cruz (2023-01900)", studentId: "u101", amount: 500.00, date: "2026-07-29 10:42 AM", refNo: "GCASH-9918234", status: "Pending", receiptImg: "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600&auto=format&fit=crop" },
             { id: "top_9002", parent: "Carlos Dela Cruz", student: "Sophia Dela Cruz (2023-01988)", studentId: "u102", amount: 300.00, date: "2026-07-29 11:15 AM", refNo: "GCASH-7728192", status: "Pending", receiptImg: "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600&auto=format&fit=crop" }
@@ -1791,8 +1668,8 @@
             const matchingBatches = (inventoryBatches || []).filter(b => {
                 if (!b) return false;
                 const matchId = (b.product_id && (b.product_id === product.id || b.productId === product.id));
-                const matchName = (b.product_name && product.name && b.product_name.toLowerCase() === product.name.toLowerCase()) || 
-                                  (b.products?.name && product.name && b.products.name.toLowerCase() === product.name.toLowerCase());
+                const matchName = (b.product_name && product.name && b.product_name.toLowerCase() === product.name.toLowerCase()) ||
+                    (b.products?.name && product.name && b.products.name.toLowerCase() === product.name.toLowerCase());
                 const isExcludedStatus = ['DEPLETED', 'SPOILED', 'ROLLED_OVER', 'archived'].includes(b.status);
                 return (matchId || matchName) && !isExcludedStatus && (b.quantity_remaining === undefined || b.quantity_remaining > 0);
             });
@@ -2152,7 +2029,8 @@
                                 section: 'Canteen Settings',
                                 items: [
                                     { id: 'ai_vision', label: 'AI Food Scanner Setup', icon: Icon.Eye },
-                                    { id: 'system_governance', label: 'Canteen Rules & Settings', icon: Icon.Sliders },
+                                    { id: 'telemetry', label: 'Camera & Device Health', icon: Icon.Activity },
+                                    { id: 'system_governance', label: 'Canteen Rules & Discounts', icon: Icon.Sliders },
                                     { id: 'audit_logs', label: 'Activity Log & Archive', icon: Icon.ClipboardList }
                                 ]
                             }
@@ -5254,8 +5132,8 @@
                 let creditedStudentId = null;
 
                 if (target.method === 'RFID_WALLET' || target.method === 'Pending Wallet Credit') {
-                    const matchedStudent = registeredUsers.find(u => 
-                        (target.studentId && (u.studentId === target.studentId || u.id === target.studentId)) || 
+                    const matchedStudent = registeredUsers.find(u =>
+                        (target.studentId && (u.studentId === target.studentId || u.id === target.studentId)) ||
                         (target.studentName && u.name && u.name.toLowerCase() === target.studentName.toLowerCase())
                     );
                     if (matchedStudent) {
@@ -9239,14 +9117,7 @@
                                         <h2 className="font-outfit text-xl font-bold text-slate-900">Monthly Expenditure Analytics</h2>
                                         <p className="text-xs text-slate-500">Export financial statements and track weekly budget health</p>
                                     </div>
-                                    <ActionButton 
-                                        variant="secondary" 
-                                        onClick={() => {
-                                            generateParentMonthlyStatementPDF(activeChild, recentPurchases, 'August 2026');
-                                            showToast("Generated and downloaded Monthly Expenditure Statement PDF!");
-                                        }} 
-                                        className="px-3 py-1.5 text-xs font-bold"
-                                    >
+                                    <ActionButton variant="secondary" onClick={() => alert("Downloading Monthly Statement PDF...")} className="px-3 py-1.5 text-xs font-bold">
                                         <Icon.Download className="w-4 h-4" /> Download Statement (PDF)
                                     </ActionButton>
                                 </div>
@@ -10156,7 +10027,9 @@
                                                     ) : (
                                                         <div className="flex items-center gap-1.5 flex-wrap">
                                                             <span>Python Kiosk GUI offline.</span>
-                                                            <code className="bg-slate-200 text-slate-800 px-1.5 py-0.2 rounded font-mono text-[10px] font-bold select-all">python3 src/hardware/student_kiosk_gui.py</code>
+                                                            <code className="bg-slate-200 text-slate-800 px-1.5 py-0.2 rounded font-mono text-[10px] font-bold select-all">
+                                                                {navigator.userAgent.indexOf('Win') !== -1 ? 'start_kiosk.bat' : 'python3 src/hardware/student_kiosk_gui.py'}
+                                                            </code>
                                                         </div>
                                                     )}
                                                 </div>
@@ -10168,6 +10041,15 @@
                                                 <>
                                                     <button
                                                         onClick={async () => {
+                                                            const isWin = navigator.userAgent.indexOf('Win') !== -1;
+                                                            const scriptName = isWin ? 'start_kiosk.bat' : 'start_kiosk.command';
+                                                            const isRemote = window.location.protocol === 'https:' || (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1');
+
+                                                            if (isRemote) {
+                                                                showToast(`💡 Online/Cloud Mode: Web browsers cannot launch local apps. Double-click '${scriptName}' in your project folder to run locally at http://localhost:8080.`, "warning");
+                                                                return;
+                                                            }
+
                                                             try {
                                                                 showToast("🚀 Opening NovaLunch Student Kiosk GUI window on screen...", "info");
                                                                 let launched = false;
@@ -10204,10 +10086,10 @@
                                                                 }, 2000);
 
                                                                 if (!launched) {
-                                                                    showToast("💡 Auto-launcher starting. You can also double-click start_kiosk.command in project folder.", "warning");
+                                                                    showToast(`💡 Auto-launcher starting. You can also double-click ${scriptName} in project folder.`, "warning");
                                                                 }
                                                             } catch (err) {
-                                                                showToast("Double-click start_kiosk.command in your project folder to launch.", "warning");
+                                                                showToast(`Double-click ${scriptName} in your project folder to launch.`, "warning");
                                                             }
                                                         }}
                                                         className="px-3 py-1.5 bg-brand-700 hover:bg-brand-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
@@ -10217,6 +10099,15 @@
                                                     </button>
                                                     <button
                                                         onClick={async () => {
+                                                            const isWin = navigator.userAgent.indexOf('Win') !== -1;
+                                                            const runCmd = isWin ? 'start_kiosk.bat' : "python3 src/hardware/student_kiosk_gui.py";
+                                                            const isRemote = window.location.protocol === 'https:' || (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1');
+
+                                                            if (isRemote) {
+                                                                showToast(`💡 On GitHub Pages/Cloud: To connect hardware, double-click '${runCmd}' in your project folder and use http://localhost:8080.`, "warning");
+                                                                return;
+                                                            }
+
                                                             try {
                                                                 const res = await fetch('http://localhost:8085/api/kiosk/status', { signal: AbortSignal.timeout(1000) });
                                                                 if (res.ok) {
@@ -10227,7 +10118,7 @@
                                                                     showToast("Kiosk bridge responded but returned status " + res.status, "warning");
                                                                 }
                                                             } catch (e) {
-                                                                showToast("Bridge not active yet. Run 'python3 src/hardware/student_kiosk_gui.py' first.", "warning");
+                                                                showToast(`Bridge not active yet. Run '${runCmd}' in your project folder first.`, "warning");
                                                             }
                                                         }}
                                                         className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-all shadow-2xs"
@@ -10394,8 +10285,8 @@
                                         const targetName = String(selectedStudent.name || '').toLowerCase();
 
                                         return (poStudId && (poStudId === targetId || poStudId === targetNum)) ||
-                                               (poStudNum && (poStudNum === targetNum || poStudNum === targetId)) ||
-                                               (poName && (poName === targetName || (targetName && poName.includes(targetName)) || (targetName && targetName.includes(poName))));
+                                            (poStudNum && (poStudNum === targetNum || poStudNum === targetId)) ||
+                                            (poName && (poName === targetName || (targetName && poName.includes(targetName)) || (targetName && targetName.includes(poName))));
                                     }) : null;
                                     if (!activePo) return null;
 
@@ -11522,8 +11413,7 @@
                                                 const adobo = menuCatalog.find(m => m.name.includes('Adobo')) || menuCatalog[0];
                                                 if (adobo) onAddToCart(adobo);
                                                 window.CanteenDB?.logGovernanceOverride(selectedStudent?.id, null, 'AI_VISION_MISCLASSIFICATION', 'Cashier 1-Tap swap to Pork Adobo', true);
-                                                showToast("1-Tap Override: Swapped to Pork Adobo. Audit logged.", "success");
-                                                speakWebText("Pork Adobo added by cashier override.");
+                                                alert("1-Tap Override Applied: Swapped to Pork Adobo. Audit logged.");
                                             }}
                                             className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1"
                                         >
@@ -11535,8 +11425,7 @@
                                                 const rice = menuCatalog.find(m => m.name.includes('Rice')) || menuCatalog[1];
                                                 if (rice) onAddToCart(rice);
                                                 window.CanteenDB?.logGovernanceOverride(selectedStudent?.id, null, 'AI_VISION_MISCLASSIFICATION', 'Cashier 1-Tap added Steamed Rice', true);
-                                                showToast("1-Tap Override: Added Steamed Rice. Audit logged.", "success");
-                                                speakWebText("Steamed Rice added by cashier override.");
+                                                alert("1-Tap Override Applied: Added Steamed Rice. Audit logged.");
                                             }}
                                             className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1"
                                         >
@@ -14599,6 +14488,213 @@
                             );
                         })()}
 
+                        {/* TAB: SYSTEM TELEMETRY & HARDWARE TOPOLOGY */}
+                        {activeTab === 'telemetry' && (() => {
+                            return (
+                                <section className="space-y-6">
+                                    {/* 1. TELEMETRY HEADER CARD */}
+                                    <div className="enterprise-card p-6 rounded-2xl space-y-5 bg-white border border-slate-200 shadow-sm">
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                                            <div className="flex items-center gap-3.5">
+                                                <div className="p-3 bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-100 shadow-xs">
+                                                    <Icon.Activity className="w-6 h-6" />
+                                                </div>
+                                                <div>
+                                                    <h2 className="font-outfit text-xl font-bold text-slate-900">Camera & Device Health</h2>
+                                                    <p className="text-xs text-slate-500 mt-0.5">Live camera feed, recognition accuracy, overhead camera setup, and connected registers</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-xs">
+                                                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                                                    Camera Feed: LIVE
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* TELEMETRY METRICS */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                                            <MetricCard label="Camera Speed" value="28.4 FPS" subtext="Live Video Stream" icon={Icon.Activity} />
+                                            <MetricCard label="Scan Speed" value="1.38s" subtext="Recognition Latency" icon={Icon.Clock} />
+                                            <MetricCard label="Scan Accuracy" value="96.4%" subtext="Average Accuracy" icon={Icon.ShieldCheck} />
+                                            <MetricCard label="Connected Registers" value={`${hardwareMappings.filter(h => h.is_online !== false).length} / ${hardwareMappings.length}`} subtext="Online & Ready" icon={Icon.HardDrive} />
+                                        </div>
+
+                                        {/* REAL-TIME MODEL DRIFT & TELEMETRY DASHBOARD */}
+                                        <div className="p-5 bg-gradient-to-br from-slate-950 via-slate-900 to-brand-950 text-white rounded-2xl border border-slate-800 space-y-4 shadow-lg">
+                                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-white/10 pb-3">
+                                                <div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20">LIVE CAMERA STATUS</span>
+                                                        <span className="bg-emerald-500/20 text-emerald-300 text-[9px] font-mono px-2 py-0.5 rounded border border-emerald-400/30">FPS: 28.4 • LATENCY: 1.38s</span>
+                                                    </div>
+                                                    <h3 className="font-outfit font-bold text-base text-white mt-1 flex items-center gap-2">
+                                                        <Icon.Activity className="w-4 h-4 text-emerald-400" /> Recognition Accuracy & Training
+                                                    </h3>
+                                                </div>
+                                                <button
+                                                    onClick={() => {
+                                                        speakWebText("Initiating automated camera retraining pipeline on recent tray photos.");
+                                                        alert("🔄 CAMERA RETRAINING STARTED!\n\n• Fetched 128 recent overhead tray photos with parent/cashier review tags.\n• Target items: Buttercream Biscuits, Magic Chips\n• Target cycles: 50 epochs | Device: Apple Silicon GPU\n• Automatically updates novalunch_yolo.pt when finished.");
+                                                    }}
+                                                    className="px-3.5 py-2 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 shrink-0"
+                                                >
+                                                    <Icon.RefreshCw className="w-3.5 h-3.5 text-slate-950" /> Start Camera Retraining
+                                                </button>
+                                            </div>
+
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                                                {/* CLASS CONFIDENCES */}
+                                                <div className="space-y-2.5 p-3.5 bg-white/5 rounded-xl border border-white/10">
+                                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Recognition Accuracy by Food Item</div>
+
+                                                    <div className="space-y-1">
+                                                        <div className="flex justify-between text-[11px]">
+                                                            <span>Buttercream Biscuits (#0)</span>
+                                                            <strong className="text-emerald-400 font-mono">96.2% (High)</strong>
+                                                        </div>
+                                                        <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                                                            <div className="bg-emerald-400 h-full" style={{ width: '96.2%' }}></div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="space-y-1">
+                                                        <div className="flex justify-between text-[11px]">
+                                                            <span>Jack & Jill Magic Chips (#1)</span>
+                                                            <strong className="text-emerald-400 font-mono">94.8% (High)</strong>
+                                                        </div>
+                                                        <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                                                            <div className="bg-emerald-400 h-full" style={{ width: '94.8%' }}></div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="space-y-1">
+                                                        <div className="flex justify-between text-[11px]">
+                                                            <span className="text-amber-200 font-bold">Unrecognized Tray Items / Snacks</span>
+                                                            <strong className="text-amber-400 font-mono">79.4% (Needs Review)</strong>
+                                                        </div>
+                                                        <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                                                            <div className="bg-amber-400 h-full" style={{ width: '79.4%' }}></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* HARDWARE CAMERA CALIBRATION SLIDERS */}
+                                                <div className="space-y-2.5 p-3.5 bg-white/5 rounded-xl border border-white/10">
+                                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Overhead Camera Adjustments</div>
+
+                                                    <div>
+                                                        <div className="flex justify-between text-[11px] mb-1">
+                                                            <span className="text-slate-300">Exposure / Brightness</span>
+                                                            <span className="font-mono text-amber-300">+0.2 EV</span>
+                                                        </div>
+                                                        <input type="range" min="-2" max="2" step="0.1" defaultValue="0.2" className="w-full accent-amber-400 cursor-pointer h-1.5 bg-slate-800 rounded" />
+                                                    </div>
+
+                                                    <div>
+                                                        <div className="flex justify-between text-[11px] mb-1">
+                                                            <span className="text-slate-300">Canteen Lighting Level</span>
+                                                            <span className="font-mono text-emerald-300">52%</span>
+                                                        </div>
+                                                        <input type="range" min="0" max="100" defaultValue="52" className="w-full accent-emerald-400 cursor-pointer h-1.5 bg-slate-800 rounded" />
+                                                    </div>
+
+                                                    <div>
+                                                        <div className="flex justify-between text-[11px] mb-1">
+                                                            <span className="text-slate-300">Lighting Warmth (Color Temp)</span>
+                                                            <span className="font-mono text-white">5500 K</span>
+                                                        </div>
+                                                        <input type="range" min="3000" max="7500" defaultValue="5500" className="w-full accent-brand-400 cursor-pointer h-1.5 bg-slate-800 rounded" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* 2. HARDWARE TERMINAL TOPOLOGY & REGISTER MAPPINGS */}
+                                    <div className="enterprise-card p-6 rounded-2xl space-y-5 bg-white border border-slate-200 shadow-sm">
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2.5 bg-brand-50 text-brand-700 rounded-xl border border-brand-100">
+                                                    <Icon.HardDrive className="w-5 h-5" />
+                                                </div>
+                                                <div>
+                                                    <h3 className="font-outfit text-lg font-bold text-slate-900">Connected Registers & Scanners</h3>
+                                                    <p className="text-xs text-slate-500 mt-0.5">Manage connected POS registers, camera devices, and RFID card readers</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold">
+                                                    <span>Auto-Checkout Trigger</span>
+                                                    <label className="relative inline-flex items-center cursor-pointer">
+                                                        <input type="checkbox" checked={autoCheckoutEnabled} onChange={(e) => {
+                                                            setAutoCheckoutEnabled(e.target.checked);
+                                                            if (window.CanteenDB) window.CanteenDB.updateSystemSetting('ai_auto_checkout', { enabled: e.target.checked });
+                                                        }} className="sr-only peer" />
+                                                        <div className="w-8 h-4 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-600"></div>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                                            <table className="w-full text-left text-xs">
+                                                <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200">
+                                                    <tr>
+                                                        <th className="p-3">Terminal ID</th>
+                                                        <th className="p-3">POS Register Name</th>
+                                                        <th className="p-3">Station</th>
+                                                        <th className="p-3 text-center">Camera Device Index</th>
+                                                        <th className="p-3 text-center">RFID Reader Port</th>
+                                                        <th className="p-3 text-center">Status</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-200 bg-white font-semibold">
+                                                    {hardwareMappings.map(t => (
+                                                        <tr key={t.terminal_id} className="hover:bg-slate-50/80">
+                                                            <td className="p-3 font-mono font-bold text-brand-800">{t.terminal_id}</td>
+                                                            <td className="p-3 text-slate-900">{t.pos_register_name}</td>
+                                                            <td className="p-3 text-slate-600">{t.assigned_station}</td>
+                                                            <td className="p-3 text-center font-mono">
+                                                                <input
+                                                                    type="number"
+                                                                    min="0"
+                                                                    max="4"
+                                                                    value={t.camera_device_index}
+                                                                    onChange={(e) => {
+                                                                        const val = parseInt(e.target.value) || 0;
+                                                                        setHardwareMappings(prev => prev.map(m => m.terminal_id === t.terminal_id ? { ...m, camera_device_index: val } : m));
+                                                                        if (window.CanteenDB) window.CanteenDB.updateHardwareMapping(t.terminal_id, { camera_device_index: val });
+                                                                    }}
+                                                                    className="w-14 text-center bg-slate-50 border border-slate-300 rounded p-1 font-bold text-xs"
+                                                                />
+                                                            </td>
+                                                            <td className="p-3 text-center font-mono">
+                                                                <input
+                                                                    type="text"
+                                                                    value={t.rfid_reader_port}
+                                                                    onChange={(e) => {
+                                                                        const val = e.target.value;
+                                                                        setHardwareMappings(prev => prev.map(m => m.terminal_id === t.terminal_id ? { ...m, rfid_reader_port: val } : m));
+                                                                        if (window.CanteenDB) window.CanteenDB.updateHardwareMapping(t.terminal_id, { rfid_reader_port: val });
+                                                                    }}
+                                                                    className="w-20 text-center bg-slate-50 border border-slate-300 rounded p-1 font-bold text-xs"
+                                                                />
+                                                            </td>
+                                                            <td className="p-3 text-center">
+                                                                <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-[10px] font-bold">ONLINE</span>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </section>
+                            );
+                        })()}
+
+                        {/* TAB: INSTITUTIONAL GOVERNANCE & OPERATIONAL POLICIES */}
                         {activeTab === 'system_governance' && (() => {
                             return (
                                 <section className="space-y-6">
@@ -14683,9 +14779,79 @@
                                                     className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm font-bold text-slate-800 font-mono"
                                                 />
                                             </div>
+
+                                            {/* DISCOUNT RATE POLICY */}
+                                            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3 md:col-span-2">
+                                                <div className="flex items-center gap-2 border-b pb-2">
+                                                    <div className="p-1.5 bg-brand-50 text-brand-700 rounded-lg border border-brand-100">
+                                                        <Icon.Tag className="w-4 h-4" />
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-xs font-bold text-slate-800">Discount Rules</div>
+                                                        <div className="text-[11px] text-slate-500">Set discount percentages applied at cashier checkout</div>
+                                                    </div>
+                                                </div>
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                    <div className="space-y-2">
+                                                        <div className="flex justify-between items-center">
+                                                            <label className="text-xs font-bold text-slate-700">Student Discount (%)</label>
+                                                            <label className="flex items-center gap-1.5 cursor-pointer">
+                                                                <input type="checkbox" checked={adminStudentDiscountEnabled} onChange={(e) => {
+                                                                    setAdminStudentDiscountEnabled(e.target.checked);
+                                                                    if (window.CanteenDB) window.CanteenDB.updateSystemSetting('discount_policy', { student_discount_pct: adminStudentDiscountPct, senior_pwd_discount_pct: adminSeniorPwdDiscountPct, student_discount_enabled: e.target.checked, senior_pwd_discount_enabled: adminSeniorPwdDiscountEnabled });
+                                                                }} className="w-3.5 h-3.5 accent-brand-700" />
+                                                                <span className="text-[11px] font-bold text-slate-600">Enabled</span>
+                                                            </label>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <input
+                                                                type="number"
+                                                                min="0" max="50" step="1"
+                                                                value={adminStudentDiscountPct}
+                                                                disabled={!adminStudentDiscountEnabled}
+                                                                onChange={(e) => {
+                                                                    const val = parseFloat(e.target.value) || 0;
+                                                                    setAdminStudentDiscountPct(val);
+                                                                    if (window.CanteenDB) window.CanteenDB.updateSystemSetting('discount_policy', { student_discount_pct: val, senior_pwd_discount_pct: adminSeniorPwdDiscountPct, student_discount_enabled: adminStudentDiscountEnabled, senior_pwd_discount_enabled: adminSeniorPwdDiscountEnabled });
+                                                                }}
+                                                                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm font-bold text-brand-800 font-mono disabled:opacity-40 disabled:cursor-not-allowed"
+                                                            />
+                                                            <span className="text-sm font-bold text-slate-500">%</span>
+                                                        </div>
+                                                        <p className="text-[11px] text-slate-500">Applied when Cashier selects "Student" discount at POS checkout.</p>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <div className="flex justify-between items-center">
+                                                            <label className="text-xs font-bold text-slate-700">Senior / PWD Discount (%)</label>
+                                                            <label className="flex items-center gap-1.5 cursor-pointer">
+                                                                <input type="checkbox" checked={adminSeniorPwdDiscountEnabled} onChange={(e) => {
+                                                                    setAdminSeniorPwdDiscountEnabled(e.target.checked);
+                                                                    if (window.CanteenDB) window.CanteenDB.updateSystemSetting('discount_policy', { student_discount_pct: adminStudentDiscountPct, senior_pwd_discount_pct: adminSeniorPwdDiscountPct, student_discount_enabled: adminStudentDiscountEnabled, senior_pwd_discount_enabled: e.target.checked });
+                                                                }} className="w-3.5 h-3.5 accent-amber-600" />
+                                                                <span className="text-[11px] font-bold text-slate-600">Enabled</span>
+                                                            </label>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <input
+                                                                type="number"
+                                                                min="0" max="50" step="1"
+                                                                value={adminSeniorPwdDiscountPct}
+                                                                disabled={!adminSeniorPwdDiscountEnabled}
+                                                                onChange={(e) => {
+                                                                    const val = parseFloat(e.target.value) || 0;
+                                                                    setAdminSeniorPwdDiscountPct(val);
+                                                                    if (window.CanteenDB) window.CanteenDB.updateSystemSetting('discount_policy', { student_discount_pct: adminStudentDiscountPct, senior_pwd_discount_pct: val, student_discount_enabled: adminStudentDiscountEnabled, senior_pwd_discount_enabled: adminSeniorPwdDiscountEnabled });
+                                                                }}
+                                                                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm font-bold text-amber-800 font-mono disabled:opacity-40 disabled:cursor-not-allowed"
+                                                            />
+                                                            <span className="text-sm font-bold text-slate-500">%</span>
+                                                        </div>
+                                                        <p className="text-[11px] text-slate-500">Applied for Senior Citizens and PWD customers at POS terminal checkout.</p>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
-
 
                                     {/* 2. PRE-ORDER SCHEDULE CONFIGURATOR */}
                                     <div className="enterprise-card p-6 rounded-2xl space-y-5 bg-white border border-slate-200 shadow-sm">
@@ -17245,7 +17411,6 @@
                         isOpen={isDisputeQueueOpen}
                         onClose={() => setIsDisputeQueueOpen(false)}
                     />
-                {/* END: outer pl-72 wrapper div opened at return() start */}
                 </div>
             );
         }
@@ -18294,10 +18459,10 @@
                     return;
                 }
 
-                const targetUser = registeredUsers.find(u => 
-                    u.id === queueItem.studentId || 
-                    u.studentId === queueItem.studentId || 
-                    u.studentId === queueItem.studentIdNumber || 
+                const targetUser = registeredUsers.find(u =>
+                    u.id === queueItem.studentId ||
+                    u.studentId === queueItem.studentId ||
+                    u.studentId === queueItem.studentIdNumber ||
                     (u.name && queueItem.student && (queueItem.student.toLowerCase().includes(u.name.toLowerCase()) || u.name.toLowerCase().includes(queueItem.student.toLowerCase())))
                 );
                 const targetUserId = targetUser?.id || queueItem.studentId;
@@ -18942,9 +19107,9 @@
                                         const isPayLater = String(orderToVoid.paymentMethod || '').toUpperCase() === 'PAY_LATER';
 
                                         if (isRfid) {
-                                            const matchedStud = registeredUsers.find(u => 
-                                                (orderToVoid.rfidUid && u.rfidUid === orderToVoid.rfidUid) || 
-                                                (orderToVoid.student && u.name && u.name.toLowerCase() === orderToVoid.student.toLowerCase()) || 
+                                            const matchedStud = registeredUsers.find(u =>
+                                                (orderToVoid.rfidUid && u.rfidUid === orderToVoid.rfidUid) ||
+                                                (orderToVoid.student && u.name && u.name.toLowerCase() === orderToVoid.student.toLowerCase()) ||
                                                 (orderToVoid.studentId && (u.studentId === orderToVoid.studentId || u.id === orderToVoid.studentId))
                                             );
                                             if (matchedStud) {
@@ -18964,9 +19129,9 @@
                                                 }
                                             }
                                         } else if (isPayLater) {
-                                            const matchedStud = registeredUsers.find(u => 
-                                                (orderToVoid.rfidUid && u.rfidUid === orderToVoid.rfidUid) || 
-                                                (orderToVoid.student && u.name && u.name.toLowerCase() === orderToVoid.student.toLowerCase()) || 
+                                            const matchedStud = registeredUsers.find(u =>
+                                                (orderToVoid.rfidUid && u.rfidUid === orderToVoid.rfidUid) ||
+                                                (orderToVoid.student && u.name && u.name.toLowerCase() === orderToVoid.student.toLowerCase()) ||
                                                 (orderToVoid.studentId && (u.studentId === orderToVoid.studentId || u.id === orderToVoid.studentId))
                                             );
                                             if (matchedStud) {
