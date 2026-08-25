@@ -103,30 +103,42 @@ POS_CATALOG_DATABASE = {
 
 def lookup_pos_item(raw_label):
     if not raw_label:
-        return {"name": "Tray Item", "category": "ITEM", "price": 35.00, "stock": 50}
+        return {"name": "Tray Item", "category": "ITEM", "price": 35.00, "stock": 50, "available": True, "status": "active"}
     s = str(raw_label).strip()
+    match = None
     if s in POS_CATALOG_DATABASE:
-        return POS_CATALOG_DATABASE[s]
-    s_low = s.lower()
-    if s_low in POS_CATALOG_DATABASE:
-        return POS_CATALOG_DATABASE[s_low]
-    s_norm = s.replace("_", " ").strip()
-    if s_norm in POS_CATALOG_DATABASE:
-        return POS_CATALOG_DATABASE[s_norm]
-    s_snake = s_low.replace(" ", "_").replace("-", "_")
-    if s_snake in POS_CATALOG_DATABASE:
-        return POS_CATALOG_DATABASE[s_snake]
-    for k, v in POS_CATALOG_DATABASE.items():
-        if k.lower() in s_low or s_low in k.lower():
-            return v
-    clean = s.replace("_", " ").title()
-    return {"name": clean, "category": "ITEM", "price": 35.00, "stock": 50}
+        match = dict(POS_CATALOG_DATABASE[s])
+    elif s.lower() in POS_CATALOG_DATABASE:
+        match = dict(POS_CATALOG_DATABASE[s.lower()])
+    elif s.replace("_", " ").strip() in POS_CATALOG_DATABASE:
+        match = dict(POS_CATALOG_DATABASE[s.replace("_", " ").strip()])
+    else:
+        s_snake = s.lower().replace(" ", "_").replace("-", "_")
+        if s_snake in POS_CATALOG_DATABASE:
+            match = dict(POS_CATALOG_DATABASE[s_snake])
+        else:
+            for k, v in POS_CATALOG_DATABASE.items():
+                if k.lower() in s.lower() or s.lower() in k.lower():
+                    match = dict(v)
+                    break
+    if not match:
+        clean = s.replace("_", " ").title()
+        match = {"name": clean, "category": "ITEM", "price": 35.00, "stock": 50, "available": True, "status": "active"}
+    
+    if match.get("available") is None:
+        match["available"] = True
+    if match.get("status") is None:
+        match["status"] = "active"
+    return match
 
 def aggregate_detections(detections_list):
     if not detections_list:
         return []
     aggregated = {}
     for it in detections_list:
+        # Exclude archived and expired items
+        if it.get("available") is False or it.get("status") in ["archived", "EXPIRED", "expired"]:
+            continue
         name = it.get("name", "Item")
         if name in aggregated:
             aggregated[name]["qty"] += it.get("qty", 1)
@@ -576,6 +588,9 @@ class CameraThread(threading.Thread):
                                             bw = max(20, x2 - x1)
                                             bh = max(20, y2 - y1)
                                             pos_info = lookup_pos_item(cls_name)
+                                            if pos_info.get("available") is False or pos_info.get("status") in ["archived", "EXPIRED", "expired"]:
+                                                continue
+                                            is_near_exp = pos_info.get("status") in ["NEAR_EXPIRY", "near_expiry"] or pos_info.get("expiry_status") == "near_expiry"
                                             detections.append({
                                                 "id": f"yolo-obb-{cls_id}-{idx}",
                                                 "ai_label": cls_name,
@@ -584,6 +599,7 @@ class CameraThread(threading.Thread):
                                                 "qty": 1,
                                                 "price": float(pos_info.get("price", 35.00)),
                                                 "stock": int(pos_info.get("stock", 50)),
+                                                "is_near_expiry": is_near_exp,
                                                 "bbox": [x1, y1, bw, bh],
                                                 "conf": conf
                                             })
@@ -599,6 +615,9 @@ class CameraThread(threading.Thread):
                                             bw = max(20, x2 - x1)
                                             bh = max(20, y2 - y1)
                                             pos_info = lookup_pos_item(cls_name)
+                                            if pos_info.get("available") is False or pos_info.get("status") in ["archived", "EXPIRED", "expired"]:
+                                                continue
+                                            is_near_exp = pos_info.get("status") in ["NEAR_EXPIRY", "near_expiry"] or pos_info.get("expiry_status") == "near_expiry"
                                             detections.append({
                                                 "id": f"yolo-box-{cls_id}-{idx}",
                                                 "ai_label": cls_name,
@@ -607,6 +626,7 @@ class CameraThread(threading.Thread):
                                                 "qty": 1,
                                                 "price": float(pos_info.get("price", 35.00)),
                                                 "stock": int(pos_info.get("stock", 50)),
+                                                "is_near_expiry": is_near_exp,
                                                 "bbox": [x1, y1, bw, bh],
                                                 "conf": conf
                                             })

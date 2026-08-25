@@ -1649,13 +1649,154 @@
             );
         }
 
+        // =========================================================================
+        // CENTRALIZED FOOD SAFETY, EXPIRY & ARCHIVAL UTILITY
+        // =========================================================================
+        function getProductExpiryDetails(product, inventoryBatches = []) {
+            if (!product) return { isArchived: true, isExpired: true, isNearExpiry: false, status: 'archived', daysUntilExpiry: -1, earliestBatch: null };
+
+            // 1. Archival check
+            const isArchived = product.status === 'archived' || product.available === false || product.is_available === false;
+            if (isArchived) {
+                return { isArchived: true, isExpired: false, isNearExpiry: false, status: 'archived', daysUntilExpiry: -1, earliestBatch: null };
+            }
+
+            const now = new Date();
+            now.setHours(0, 0, 0, 0);
+
+            // 2. Find matching inventory batches
+            const matchingBatches = (inventoryBatches || []).filter(b => {
+                if (!b) return false;
+                const matchId = (b.product_id && (b.product_id === product.id || b.productId === product.id));
+                const matchName = (b.product_name && product.name && b.product_name.toLowerCase() === product.name.toLowerCase()) || 
+                                  (b.products?.name && product.name && b.products.name.toLowerCase() === product.name.toLowerCase());
+                const isExcludedStatus = ['DEPLETED', 'SPOILED', 'ROLLED_OVER', 'archived'].includes(b.status);
+                return (matchId || matchName) && !isExcludedStatus && (b.quantity_remaining === undefined || b.quantity_remaining > 0);
+            });
+
+            if (matchingBatches.length === 0) {
+                if (product.status === 'EXPIRED' || product.status === 'expired') {
+                    return { isArchived: false, isExpired: true, isNearExpiry: false, status: 'EXPIRED', daysUntilExpiry: -1, earliestBatch: null };
+                }
+                if (product.status === 'NEAR_EXPIRY' || product.status === 'near_expiry' || product.expiryStatus === 'near_expiry') {
+                    return { isArchived: false, isExpired: false, isNearExpiry: true, status: 'NEAR_EXPIRY', daysUntilExpiry: product.daysUntilExpiry || 2, hoursUntilExpiry: product.hoursUntilExpiry || 1.2, batchNo: product.batchNo || 'BATCH-LOT', earliestBatch: null };
+                }
+                return { isArchived: false, isExpired: false, isNearExpiry: false, status: 'FRESH', daysUntilExpiry: 999, earliestBatch: null };
+            }
+
+            // Map and calculate days until expiration
+            const validBatches = matchingBatches.map(b => {
+                let diffDays = 999;
+                if (b.expiration_date) {
+                    const expDate = new Date(b.expiration_date + 'T23:59:59');
+                    if (!isNaN(expDate.getTime())) {
+                        const diffTime = expDate.getTime() - now.getTime();
+                        diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    }
+                }
+                return {
+                    ...b,
+                    calculatedDays: diffDays
+                };
+            }).sort((a, b) => a.calculatedDays - b.calculatedDays);
+
+            const freshBatches = validBatches.filter(b => b.calculatedDays >= 0 && b.status !== 'EXPIRED');
+
+            // If all matching batches are expired
+            if (freshBatches.length === 0) {
+                return {
+                    isArchived: false,
+                    isExpired: true,
+                    isNearExpiry: false,
+                    status: 'EXPIRED',
+                    daysUntilExpiry: validBatches[0]?.calculatedDays ?? -1,
+                    expirationDate: validBatches[0]?.expiration_date || 'Past Expiry',
+                    earliestBatch: validBatches[0]
+                };
+            }
+
+            // Earliest batch in FIFO queue
+            const earliest = freshBatches[0];
+            const isNearExpiry = earliest.calculatedDays <= 3 || earliest.status === 'NEAR_EXPIRY' || earliest.status === 'EXPIRING_TODAY' || earliest.status === 'EXPIRING_TOMORROW' || product.expiryStatus === 'near_expiry';
+
+            return {
+                isArchived: false,
+                isExpired: false,
+                isNearExpiry: isNearExpiry,
+                status: isNearExpiry ? 'NEAR_EXPIRY' : 'FRESH',
+                daysUntilExpiry: earliest.calculatedDays,
+                hoursUntilExpiry: earliest.calculatedDays === 0 ? 3.5 : null,
+                expirationDate: earliest.expiration_date || 'Upcoming',
+                batchNo: earliest.batch_number || earliest.id || 'BATCH-FIFO',
+                batchStock: earliest.quantity_remaining || 1,
+                earliestBatch: earliest
+            };
+        }
+
+        // STUDENT / PARENT NEAR-EXPIRY ADVISORY CONFIRMATION MODAL
+        function StudentNearExpiryModal({ isOpen, onClose, item, onConfirm }) {
+            if (!isOpen || !item) return null;
+            const daysLeft = item.daysUntilExpiry !== undefined ? (item.daysUntilExpiry === 0 ? 'Today' : `${item.daysUntilExpiry} days`) : (item.hoursUntilExpiry ? `${item.hoursUntilExpiry} hrs` : '1-2 days');
+            const expiryDate = item.expirationDate || item.expiration_date || 'Soon';
+
+            return (
+                <CustomModal
+                    isOpen={isOpen}
+                    onClose={onClose}
+                    title="⚠️ Near Expiry Warning"
+                    subtitle="Food Safety Shelf-Life Advisory"
+                    icon={Icon.AlertCircle}
+                    iconBg="bg-amber-100 text-amber-900 border-amber-300"
+                    size="sm"
+                >
+                    <div className="space-y-4">
+                        <div className="p-4 bg-amber-50/90 rounded-2xl border border-amber-200/80 space-y-2">
+                            <div className="flex items-center justify-between">
+                                <span className="font-outfit font-bold text-sm text-amber-950">{item.name}</span>
+                                <span className="bg-amber-200 text-amber-900 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-300">
+                                    NEAR EXPIRY
+                                </span>
+                            </div>
+                            <p className="text-xs text-amber-800 leading-relaxed">
+                                This item is nearing its best-before or expiration date (<strong>{expiryDate}</strong> / approx. <strong>{daysLeft} remaining</strong>).
+                            </p>
+                            <div className="flex justify-between items-center pt-2 border-t border-amber-200 text-xs text-slate-700">
+                                <span>Price:</span>
+                                <strong className="font-outfit text-sm text-slate-900">₱{parseFloat(item.price || 0).toFixed(2)}</strong>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-2.5 pt-1">
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                className="w-1/2 py-2.5 px-3 bg-white hover:bg-slate-100 text-slate-700 font-bold rounded-xl border border-slate-200 text-xs transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    onConfirm(item);
+                                    onClose();
+                                }}
+                                className="w-1/2 py-2.5 px-3 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs transition-colors shadow-xs flex items-center justify-center gap-1.5"
+                            >
+                                <Icon.Check className="w-3.5 h-3.5" /> Proceed
+                            </button>
+                        </div>
+                    </div>
+                </CustomModal>
+            );
+        }
+
         // CUSTOM NEAR-EXPIRY / CARRY-OVER WARNING MODAL FOR POS & INVENTORY
         function NearExpiryWarningModal({ isOpen, onClose, item, onConfirmSellToday, onRollOverTomorrow, onSendToSpoilage }) {
             if (!isOpen || !item) return null;
 
             const isUlam = item.productType === 'ulam_meal' || item.category === 'Meals & Mains';
             const hoursLeft = item.hoursUntilExpiry || 1.2;
-            const daysLeft = item.daysUntilExpiry || 1;
+            const daysLeft = item.daysUntilExpiry !== undefined ? item.daysUntilExpiry : 1;
             const expiryText = isUlam ? `${hoursLeft}h until shift cutoff` : `${daysLeft}d until lot expiry`;
             const originalPrice = item.price || 0;
 
@@ -7206,13 +7347,14 @@
         // =====================================================================
         // 2. STUDENT PORTAL MODULE (WITH CALORIE TRACKER & DIGITAL RECEIPTS)
         // =====================================================================
-        function StudentView({ studentBalance, dailyLimit, currentStudent, menuCatalog, preorders = [], recentOrders = [], reloadLogs = [], onUploadReceipt, onAddPreOrder, onClaimClick, activeTab = 'menu', setActiveTab, onSignOut, onSelectRoleQuick, isCloudConnected, onRefreshCloud, notifications = [], onMarkNotifRead, onMarkAllNotifRead, parentStudentLinkRequests = [], onRespondLinkRequest, onOpenCommandPalette, showToast = () => { },
+        function StudentView({ studentBalance, dailyLimit, currentStudent, menuCatalog, preorders = [], recentOrders = [], reloadLogs = [], inventoryBatches = [], onUploadReceipt, onAddPreOrder, onClaimClick, activeTab = 'menu', setActiveTab, onSignOut, onSelectRoleQuick, isCloudConnected, onRefreshCloud, notifications = [], onMarkNotifRead, onMarkAllNotifRead, parentStudentLinkRequests = [], onRespondLinkRequest, onOpenCommandPalette, showToast = () => { },
             // ── Governance Policy Props ──
             globalDefaultDailyCalories = 1800
         }) {
             const [selectedCategory, setSelectedCategory] = useState('All');
             const [searchQuery, setSearchQuery] = useState('');
             const [preorderItem, setPreorderItem] = useState(null);
+            const [nearExpiryWarningItem, setNearExpiryWarningItem] = useState(null);
             const [preorderSession, setPreorderSession] = useState('Lunch Break (12:00 PM)');
             const [favorites, setFavorites] = useState(['p1', 'p4']);
             const [selectedReceipt, setSelectedReceipt] = useState(null);
@@ -7227,6 +7369,9 @@
 
             const categories = ['All', 'Meals & Mains', 'Beverages', 'Snacks & Bakery', 'Fruits & Healthy'];
             const filteredMenu = menuCatalog.filter(i => {
+                const expiry = getProductExpiryDetails(i, inventoryBatches);
+                // Exclude archived and expired items from student menu
+                if (expiry.isArchived || expiry.isExpired) return false;
                 const matchCat = selectedCategory === 'All' || i.category === selectedCategory;
                 const matchSearch = i.name.toLowerCase().includes(searchQuery.toLowerCase());
                 const matchDiet = dietFilter === 'All' ||
@@ -7234,6 +7379,15 @@
                     (dietFilter === 'Low Calorie' && (i.calories && i.calories <= 300)) ||
                     (dietFilter === 'Favorites' && favorites.includes(i.id));
                 return matchCat && matchSearch && matchDiet;
+            }).map(i => {
+                const expiry = getProductExpiryDetails(i, inventoryBatches);
+                return {
+                    ...i,
+                    isNearExpiry: expiry.isNearExpiry,
+                    daysUntilExpiry: expiry.daysUntilExpiry,
+                    hoursUntilExpiry: expiry.hoursUntilExpiry,
+                    expirationDate: expiry.expirationDate
+                };
             });
 
             const safeBalance = (typeof studentBalance === 'number' && !isNaN(studentBalance)) ? studentBalance : (typeof currentStudent?.balance === 'number' ? currentStudent.balance : 0);
@@ -7450,8 +7604,9 @@
                                             {filteredMenu.map(item => {
                                                 const isAllergic = item.allergens && item.allergens.some(alg => studentAllergies.includes(alg));
                                                 const isLowStock = (item.stock !== undefined && item.stock <= 10);
+                                                const isNearExpiry = item.isNearExpiry;
                                                 return (
-                                                    <div key={item.id} className={`enterprise-card p-4 rounded-2xl space-y-3 flex flex-col justify-between relative group ${isAllergic ? 'border-2 border-rose-300 bg-rose-50/30' : isLowStock ? 'border-2 border-amber-300 bg-amber-50/20' : ''}`}>
+                                                    <div key={item.id} className={`enterprise-card p-4 rounded-2xl space-y-3 flex flex-col justify-between relative group ${isAllergic ? 'border-2 border-rose-300 bg-rose-50/30' : isNearExpiry ? 'border-2 border-amber-300 bg-amber-50/20' : isLowStock ? 'border-2 border-amber-300 bg-amber-50/20' : ''}`}>
                                                         <div className="relative">
                                                             <img src={item.img} alt={item.name} className="h-36 w-full object-cover rounded-2xl border border-slate-100/80" />
                                                             <button onClick={() => toggleFavorite(item.id)} className="absolute top-2.5 left-2.5 p-1.5 bg-white/90 backdrop-blur-sm rounded-full shadow-sm text-rose-600 hover:scale-110 transition-transform">
@@ -7460,7 +7615,12 @@
                                                             {Boolean(item.calories && parseInt(item.calories) > 0) && (
                                                                 <span className="absolute bottom-2.5 right-2.5 bg-slate-900/80 text-white text-[10px] font-mono font-bold px-2.5 py-1 rounded-lg backdrop-blur-sm">{item.calories} kcal</span>
                                                             )}
-                                                            {isLowStock && (
+                                                            {isNearExpiry && (
+                                                                <span className="absolute top-2.5 right-2.5 bg-amber-500 text-slate-950 font-bold text-[9px] px-2 py-0.5 rounded-md shadow-xs flex items-center gap-1 uppercase tracking-wide">
+                                                                    ⚠️ Near Expiry {item.daysUntilExpiry !== undefined && item.daysUntilExpiry <= 3 ? `(${item.daysUntilExpiry}d left)` : ''}
+                                                                </span>
+                                                            )}
+                                                            {!isNearExpiry && isLowStock && (
                                                                 <span className="absolute top-2.5 right-2.5 bg-amber-500 text-slate-950 font-bold text-[9px] px-2 py-0.5 rounded-md shadow-xs flex items-center gap-1 uppercase tracking-wide">
                                                                     ⚠️ Low Stock ({item.stock} left)
                                                                 </span>
@@ -7480,7 +7640,13 @@
                                                                     Restricted: Customer is allergic to {item.allergens.join(', ')}
                                                                 </div>
                                                             )}
-                                                            {isLowStock && (
+                                                            {isNearExpiry && (
+                                                                <div className="text-[10px] text-amber-800 font-bold mt-1 bg-amber-100/90 border border-amber-200 px-2 py-0.5 rounded-md flex items-center gap-1">
+                                                                    <Icon.AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
+                                                                    <span>Near best-before date ({item.expirationDate || 'Upcoming'})</span>
+                                                                </div>
+                                                            )}
+                                                            {!isNearExpiry && isLowStock && (
                                                                 <div className="text-[10px] text-amber-800 font-bold mt-1 bg-amber-100/80 border border-amber-200 px-2 py-0.5 rounded-md">
                                                                     ⚠️ Stock &le; 10%: Pre-Order Auto-Paused
                                                                 </div>
@@ -7489,18 +7655,22 @@
                                                         <div className="flex justify-between items-center pt-2 border-t border-slate-100">
                                                             <span className="font-outfit font-bold text-slate-900 text-sm">₱{item.price.toFixed(2)}</span>
                                                             <ActionButton
-                                                                variant={isAllergic ? 'danger' : isLowStock ? 'secondary' : 'primary'}
-                                                                disabled={isLowStock}
+                                                                variant={isAllergic ? 'danger' : isNearExpiry ? 'primary' : isLowStock ? 'secondary' : 'primary'}
+                                                                disabled={isLowStock && !isNearExpiry}
                                                                 onClick={() => {
-                                                                    if (isLowStock) return alert("Pre-orders for this item are temporarily paused due to low canteen stock (≤10%). Please purchase directly at the counter.");
+                                                                    if (isLowStock && !isNearExpiry) return alert("Pre-orders for this item are temporarily paused due to low canteen stock (≤10%). Please purchase directly at the counter.");
                                                                     if (isAllergic && !confirm(`⚠️ DIETARY RESTRICTION LOCK\n\nThis item contains ${item.allergens.join(', ')}, which matches your parent-configured dietary restrictions.\n\nDo you still want to reserve this pre-order?`)) {
                                                                         return;
                                                                     }
-                                                                    setPreorderItem(item);
+                                                                    if (item.isNearExpiry) {
+                                                                        setNearExpiryWarningItem(item);
+                                                                    } else {
+                                                                        setPreorderItem(item);
+                                                                    }
                                                                 }}
-                                                                className={`px-3 py-1.5 text-xs font-bold ${isLowStock ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                                className={`px-3 py-1.5 text-xs font-bold ${isLowStock && !isNearExpiry ? 'opacity-60 cursor-not-allowed' : ''} ${isNearExpiry ? 'bg-amber-600 hover:bg-amber-700 text-white' : ''}`}
                                                             >
-                                                                {isLowStock ? 'Paused' : '+ Reserve Pre-Order'}
+                                                                {isLowStock && !isNearExpiry ? 'Paused' : isNearExpiry ? '⚠️ Review & Reserve' : '+ Reserve Pre-Order'}
                                                             </ActionButton>
                                                         </div>
                                                     </div>
@@ -7951,6 +8121,12 @@
                             if (notifications) notifications.unshift(newNotif);
                             speakWebText(`Emergency SOS Top-Up request for ${amt} pesos dispatched to parent.`);
                         }}
+                    {/* MODAL: STUDENT NEAR-EXPIRY FOOD SAFETY ADVISORY */}
+                    <StudentNearExpiryModal
+                        isOpen={!!nearExpiryWarningItem}
+                        onClose={() => setNearExpiryWarningItem(null)}
+                        item={nearExpiryWarningItem}
+                        onConfirm={(it) => setPreorderItem(it)}
                     />
                 </div>
             );
@@ -7959,7 +8135,7 @@
         // =====================================================================
         // 3. PARENT GUARDIAN PORTAL MODULE (WITH MULTI-CHILD & NUTRITION ANALYTICS)
         // =====================================================================
-        function ParentView({ studentBalance = 350, dailyLimit = 200, currentParent, currentStudent, reloadLogs = [], recentOrders = [], registeredUsers = [], preorders = [], onUpdateDailyLimit, onUploadReceipt, onSettleDebt, onSubmitDispute, activeTab = 'family', setActiveTab, onSignOut, onSelectRoleQuick, isCloudConnected, onRefreshCloud, notifications = [], onMarkNotifRead, onMarkAllNotifRead, parentStudentLinkRequests = [], onSendLinkRequest, onOpenCommandPalette, onOpenGuardrails, onExportCSV, showToast = () => { },
+        function ParentView({ studentBalance = 350, dailyLimit = 200, currentParent, currentStudent, reloadLogs = [], recentOrders = [], registeredUsers = [], preorders = [], menuCatalog = [], inventoryBatches = [], onUpdateDailyLimit, onUploadReceipt, onSettleDebt, onSubmitDispute, activeTab = 'family', setActiveTab, onSignOut, onSelectRoleQuick, isCloudConnected, onRefreshCloud, notifications = [], onMarkNotifRead, onMarkAllNotifRead, parentStudentLinkRequests = [], onSendLinkRequest, onOpenCommandPalette, onOpenGuardrails, onExportCSV, showToast = () => { },
             // ── Governance Policy Props ──
             globalDefaultDailyCalories = 1800
         }) {
@@ -9103,7 +9279,7 @@
         // =====================================================================
         // 4. CASHIER POS MODULE (WITH DIETARY LOCK ALERTS & SHIFT DRAWER TALLY)
         // =====================================================================
-        function CashierView({ posCart, posTotal, menuCatalog, registeredUsers, recentOrders = [], preorders = [], onClaimPreorderPos, onUpdatePreorderStatus, onRefundPackagedPreorder, onAddToCart, onUpdateQty, onDeleteItem, onClearCart, onCompleteCheckout, onVoidOrder, onSettleDebt, activeTab = 'register', setActiveTab, onSignOut, onSelectRoleQuick, isCloudConnected, onRefreshCloud, notifications = [], onMarkNotifRead, onMarkAllNotifRead, onOpenCommandPalette, onOpenShiftZRead, kdsOrders = [], setKdsOrders, currentUser = null, showToast = () => { },
+        function CashierView({ posCart, posTotal, menuCatalog, registeredUsers, recentOrders = [], preorders = [], inventoryBatches = [], onClaimPreorderPos, onUpdatePreorderStatus, onRefundPackagedPreorder, onAddToCart, onUpdateQty, onDeleteItem, onClearCart, onCompleteCheckout, onVoidOrder, onSettleDebt, activeTab = 'register', setActiveTab, onSignOut, onSelectRoleQuick, isCloudConnected, onRefreshCloud, notifications = [], onMarkNotifRead, onMarkAllNotifRead, onOpenCommandPalette, onOpenShiftZRead, kdsOrders = [], setKdsOrders, currentUser = null, showToast = () => { },
             // ── Governance Policy Props (sourced from canteen_settings DB via root app state) ──
             globalPayLaterCap = 1000.00,
             globalDailySpendingDefault = 200.00,
@@ -9269,7 +9445,25 @@
             }, [registeredUsers]);
 
             const categories = ['All', 'Meals & Mains', 'Beverages', 'Snacks & Bakery', 'Fruits & Healthy'];
-            const filteredMenu = menuCatalog.filter(i => (selectedCategory === 'All' || i.category === selectedCategory) && i.name.toLowerCase().includes(searchQuery.toLowerCase()) && i.available !== false);
+            const filteredMenu = menuCatalog.filter(i => {
+                const expiry = getProductExpiryDetails(i, inventoryBatches);
+                // Exclude archived and expired items from POS catalog grid
+                if (expiry.isArchived || expiry.isExpired) return false;
+                const matchCat = selectedCategory === 'All' || i.category === selectedCategory;
+                const matchSearch = i.name.toLowerCase().includes(searchQuery.toLowerCase());
+                return matchCat && matchSearch;
+            }).map(i => {
+                const expiry = getProductExpiryDetails(i, inventoryBatches);
+                return {
+                    ...i,
+                    isNearExpiry: expiry.isNearExpiry,
+                    daysUntilExpiry: expiry.daysUntilExpiry,
+                    hoursUntilExpiry: expiry.hoursUntilExpiry,
+                    expirationDate: expiry.expirationDate,
+                    batchNo: expiry.batchNo,
+                    batchStock: expiry.batchStock
+                };
+            });
 
             // POS Register Cart Total Calculation (No discounts applied)
             const cartSubtotal = posCart.reduce((sum, i) => sum + (i.price * i.qty), 0);
@@ -10094,7 +10288,7 @@
                                     ) : (
                                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                                             {filteredMenu.map(item => {
-                                                const isNearExpiry = item.expiryStatus === 'near_expiry';
+                                                const isNearExpiry = item.isNearExpiry;
                                                 return (
                                                     <div key={item.id} className={`p-3 rounded-2xl bg-white border border-slate-200/80 space-y-2.5 flex flex-col justify-between hover:shadow-xs hover:border-slate-300 transition-all ${isNearExpiry ? 'border-amber-300 bg-amber-50/20' : ''}`}>
                                                         <div className="flex gap-2.5 items-center">
@@ -10105,7 +10299,9 @@
                                                                 <div className="flex items-center gap-1.5 pt-0.5">
                                                                     <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-medium bg-slate-100 text-slate-600">Stock: {item.stock}</span>
                                                                     {isNearExpiry && (
-                                                                        <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800">Near Expiry</span>
+                                                                        <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800">
+                                                                            ⚠️ Near Expiry {item.daysUntilExpiry !== undefined && item.daysUntilExpiry <= 3 ? `(${item.daysUntilExpiry}d)` : ''}
+                                                                        </span>
                                                                     )}
                                                                 </div>
                                                             </div>
@@ -10122,7 +10318,7 @@
                                                                 }}
                                                                 className={`px-3 py-1 font-bold rounded-xl text-xs flex items-center gap-1 btn-press transition-all shadow-2xs ${isNearExpiry ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-brand-700 hover:bg-brand-800 text-white'}`}
                                                             >
-                                                                <Icon.Plus className="w-3 h-3" /> {isNearExpiry ? 'Review' : 'Add'}
+                                                                <Icon.Plus className="w-3 h-3" /> {isNearExpiry ? '⚠️ Review' : 'Add'}
                                                             </button>
                                                         </div>
                                                     </div>
@@ -18558,6 +18754,7 @@
                                     dailyLimit={dailyLimit}
                                     currentStudent={currentStudent}
                                     menuCatalog={menuCatalog}
+                                    inventoryBatches={inventoryBatches}
                                     preorders={preorders}
                                     recentOrders={recentOrders}
                                     reloadLogs={reloadLogs}
@@ -18728,6 +18925,8 @@
                                     recentOrders={recentOrders}
                                     reloadLogs={reloadLogs}
                                     preorders={preorders}
+                                    menuCatalog={menuCatalog}
+                                    inventoryBatches={inventoryBatches}
                                     onSubmitDispute={handleParentSubmitDispute}
                                     onUpdateDailyLimit={(l) => {
                                         const cleanLimit = Math.max(0, parseFloat(l) || 0);
@@ -18765,6 +18964,7 @@
                                     posCart={posCart}
                                     posTotal={posTotal}
                                     menuCatalog={menuCatalog}
+                                    inventoryBatches={inventoryBatches}
                                     registeredUsers={registeredUsers}
                                     recentOrders={recentOrders}
                                     preorders={preorders}
