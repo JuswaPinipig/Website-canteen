@@ -24,6 +24,15 @@ import numpy as np
 import cv2
 import pygame
 
+# Ensure Windows console handles UTF-8 prints without UnicodeEncodeError
+try:
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    if hasattr(sys.stderr, 'reconfigure'):
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
+
 # ==============================================================================
 # CONFIGURATION & CONSTANTS
 # ==============================================================================
@@ -1042,6 +1051,7 @@ class NovaLunchKioskGUI:
         self.font_footer = pygame.font.SysFont("Helvetica Neue", 12)
         self.font_timer_large = pygame.font.SysFont("Helvetica Neue", 34, bold=True)
         self.font_timer_badge = pygame.font.SysFont("Helvetica Neue", 13, bold=True)
+        self.font_badge = pygame.font.SysFont("Helvetica Neue", 12, bold=True)
 
         # State Variables
         self.current_state = STATE_IDLE
@@ -1588,85 +1598,6 @@ class NovaLunchKioskGUI:
             lbl_surf = self.font_subtitle_bold.render(label, True, title_color)
             sub_surf = self.font_brand_sub.render(subtext, True, sub_color)
             self.screen.blit(lbl_surf, (text_x, rect.y + 7))
-            self.screen.blit(sub_surf, (text_x, rect.y + 24))
-
-        # Draw connecting background progress track
-        track_y = 578 + 23
-        pygame.draw.line(self.screen, COLOR_CARD_BORDER, (50, track_y), (700, track_y), 4)
-
-        # Highlight completed segments on connecting line
-        for i in range(len(steps_info) - 1):
-            curr_rect, _, curr_state, _, _ = steps_info[i]
-            next_rect, _, _, _, _ = steps_info[i + 1]
-            if curr_state == "DONE":
-                pygame.draw.line(self.screen, COLOR_EMERALD, (curr_rect.centerx, track_y), (next_rect.centerx, track_y), 4)
-
-        mouse_pos = pygame.mouse.get_pos()
-
-        # Render each step card
-        for rect, label, state, subtext, num in steps_info:
-            is_hover = rect.collidepoint(mouse_pos)
-
-            if state == "DONE":
-                # Emerald Green Done Card
-                bg_color = COLOR_EMERALD
-                border_color = (5, 150, 105)
-                title_color = COLOR_WHITE
-                sub_color = (209, 250, 229)
-                badge_bg = COLOR_WHITE
-                badge_fg = COLOR_EMERALD
-            elif state == "ACTIVE":
-                # Vibrant Crimson/Rose Highlighted Card
-                bg_color = (225, 29, 72) if (num == 3 and self.motion_detected) else COLOR_ROSE_VIBRANT
-                border_color = COLOR_GOLD_ACCENT if is_hover else COLOR_MAROON_DARK
-                title_color = COLOR_WHITE
-                sub_color = COLOR_GOLD_LIGHT
-                badge_bg = COLOR_WHITE
-                badge_fg = COLOR_ROSE_VIBRANT
-            else:
-                # Grey Pending Card
-                bg_color = (241, 245, 249)
-                border_color = COLOR_CARD_BORDER if not is_hover else COLOR_TEXT_MUTED
-                title_color = COLOR_TEXT_MUTED
-                sub_color = (148, 163, 184)
-                badge_bg = (203, 213, 225)
-                badge_fg = COLOR_WHITE
-
-            # Draw card container
-            pygame.draw.rect(self.screen, bg_color, rect, border_radius=10)
-            pygame.draw.rect(
-                self.screen,
-                border_color,
-                rect,
-                width=2 if (state == "ACTIVE" or is_hover) else 1,
-                border_radius=10
-            )
-
-            # Circular Indicator Badge
-            badge_cx = rect.x + 18
-            badge_cy = rect.centery
-            badge_radius = 11
-            pygame.draw.circle(self.screen, badge_bg, (badge_cx, badge_cy), badge_radius)
-
-            if state == "DONE":
-                # Crisp Vector Checkmark
-                chk_pts = [
-                    (badge_cx - 4, badge_cy),
-                    (badge_cx - 1, badge_cy + 3),
-                    (badge_cx + 4, badge_cy - 4)
-                ]
-                pygame.draw.lines(self.screen, badge_fg, False, chk_pts, width=2)
-            else:
-                # Step Number
-                num_surf = self.font_brand_sub.render(str(num), True, badge_fg)
-                self.screen.blit(num_surf, (badge_cx - num_surf.get_width() // 2, badge_cy - num_surf.get_height() // 2))
-
-            # Step Title & Subtitle
-            text_x = rect.x + 34
-            title_surf = self.font_subtitle_bold.render(label, True, title_color)
-            sub_surf = self.font_brand_sub.render(subtext, True, sub_color)
-
-            self.screen.blit(title_surf, (text_x, rect.y + 6))
             self.screen.blit(sub_surf, (text_x, rect.y + 24))
 
     def render_right_panel(self):
