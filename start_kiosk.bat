@@ -1,21 +1,22 @@
 @echo off
-title NovaLunch Kiosk & Web Server Launcher
+setlocal
+title NovaLunch Python Student Kiosk GUI Launcher
 cd /d "%~dp0"
 
 echo ==================================================================
-echo   🍱 NOVALUNCH CANTEEN PLATFORM (SJC NOVALICHES)
+echo   🍱 NOVALUNCH STUDENT KIOSK HARDWARE GUI (SJC NOVALICHES)
 echo ==================================================================
 
 :: Check if Python is available
 where py >nul 2>&1
 if %ERRORLEVEL% equ 0 (
-    set PYTHON_CMD=py -3
+    set "PYTHON_CMD=py -3"
     goto :PYTHON_FOUND
 )
 
 where python >nul 2>&1
 if %ERRORLEVEL% equ 0 (
-    set PYTHON_CMD=python
+    set "PYTHON_CMD=python"
     goto :PYTHON_FOUND
 )
 
@@ -28,22 +29,19 @@ echo   [OK] Python detected:
 %PYTHON_CMD% --version
 
 echo.
-echo   [1/3] Starting NovaLunch Web & Bridge Server (Port 8080)...
-start "NovaLunch Web Server" /min %PYTHON_CMD% server.py
+echo   [1/1] Launching Student Kiosk GUI (Port 8085)...
+echo   (No extra web browser windows will be opened)
+echo.
 
-timeout /t 2 /nobreak >nul
-
-echo   [2/3] Opening NovaLunch Web Portal in default browser...
-start http://localhost:8080
-
-echo   [3/3] Starting Student Kiosk GUI (Port 8085)...
-start "NovaLunch Student Kiosk GUI" %PYTHON_CMD% src\hardware\student_kiosk_gui.py
+if exist "src\hardware\student_kiosk_gui.py" (
+    %PYTHON_CMD% src\hardware\student_kiosk_gui.py
+) else if exist "..\src\hardware\student_kiosk_gui.py" (
+    %PYTHON_CMD% ..\src\hardware\student_kiosk_gui.py
+) else (
+    echo [ERROR] student_kiosk_gui.py not found!
+    pause
+)
 
 echo.
-echo ==================================================================
-echo   ✅ NovaLunch Platform is now ACTIVE!
-echo   🌐 Web Portal: http://localhost:8080
-echo   🖥️  Kiosk GUI:  Port 8085 (Pygame Window)
-echo ==================================================================
-echo.
+echo Kiosk process finished.
 pause

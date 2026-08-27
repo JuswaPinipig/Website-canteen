@@ -24,6 +24,15 @@ import numpy as np
 import cv2
 import pygame
 
+# Ensure Windows console handles UTF-8 prints without UnicodeEncodeError
+try:
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    if hasattr(sys.stderr, 'reconfigure'):
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
+
 # ==============================================================================
 # CONFIGURATION & CONSTANTS
 # ==============================================================================
@@ -228,12 +237,14 @@ class DatabaseManager:
                                 bal = float(w.get("balance", p.get("balance", 200.0)))
                                 dlim = float(w.get("daily_limit", p.get("daily_limit", 200.0)))
                                 if st_id in by_id:
+                                    by_id[st_id]["id"] = p.get("id")
                                     by_id[st_id]["balance"] = bal
                                     by_id[st_id]["daily_limit"] = dlim
                                     if p.get("rfid_uid"):
                                         by_id[st_id]["rfid_uid"] = p.get("rfid_uid")
                                 else:
                                     by_id[st_id] = {
+                                        "id": p.get("id"),
                                         "full_name": p.get("full_name", "Student"),
                                         "email": p.get("email", ""),
                                         "role": "student",
@@ -413,17 +424,21 @@ class OfflineSyncWorker(threading.Thread):
                 local_students = self.db.load_accounts()
                 matched_st = next((s for s in local_students if s.get("student_id_number") == student_id or s.get("rfid_uid") == student_id or s.get("id") == student_id), None)
                 user_uuid = matched_st.get("id") if (matched_st and str(matched_st.get("id", "")).count("-") == 4) else None
-                student_name = matched_st.get("full_name", "Student") if matched_st else "Offline Student"
+
+                # Format payment_method to match DB check constraint: ('rfid', 'wallet', 'cash', 'online', 'pay_later')
+                pm = str(pay_method or 'rfid').strip().lower()
+                if pm not in ('rfid', 'wallet', 'cash', 'online', 'pay_later'):
+                    pm = 'rfid'
 
                 order_payload = {
                     "order_number": tx_id,
-                    "student_name": student_name,
                     "total_amount": float(total_amt),
                     "final_amount": float(total_amt),
-                    "discount_amount": 0,
-                    "payment_method": (pay_method or 'RFID').upper(),
-                    "order_source": "offline_edge_kiosk",
-                    "order_status": "COMPLETED"
+                    "discount_amount": 0.0,
+                    "payment_method": pm,
+                    "payment_status": "paid",
+                    "order_source": "ai_kiosk",
+                    "order_status": "completed"
                 }
                 if user_uuid:
                     order_payload["user_id"] = user_uuid
@@ -443,9 +458,49 @@ class OfflineSyncWorker(threading.Thread):
                     )
                     with urllib.request.urlopen(req, timeout=5) as resp:
                         if resp.status in (200, 201):
+                            resp_body = resp.read().decode('utf-8')
+                            try:
+                                created_data = json.loads(resp_body) if resp_body else []
+                                created_order = created_data[0] if isinstance(created_data, list) and created_data else (created_data if isinstance(created_data, dict) else {})
+                                created_id = created_order.get("id")
+                                if created_id and items:
+                                    items_payload = [{
+                                        "order_id": created_id,
+                                        "product_name": itm.get("name", "Item"),
+                                        "unit_price": float(itm.get("price", 0.0)),
+                                        "quantity": int(itm.get("qty", 1))
+                                    } for itm in items]
+                                    items_req = urllib.request.Request(
+                                        f"{SUPABASE_URL}/rest/v1/order_items",
+                                        data=json.dumps(items_payload).encode('utf-8'),
+                                        headers={
+                                            "apikey": SUPABASE_ANON_KEY,
+                                            "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
+                                            "Content-Type": "application/json"
+                                        },
+                                        method="POST"
+                                    )
+                                    with urllib.request.urlopen(items_req, timeout=5):
+                                        pass
+                            except Exception:
+                                pass
+
                             c.execute("UPDATE pending_transactions SET sync_status = 'SYNCED' WHERE transaction_id = ?", (tx_id,))
                             conn.commit()
                             print(f"[EDGE SYNC] ☁️ Replayed offline transaction to cloud: {tx_id}")
+                except urllib.error.HTTPError as http_err:
+                    err_body = ""
+                    try:
+                        err_body = http_err.read().decode('utf-8')
+                    except Exception:
+                        pass
+                    if http_err.code == 409 or "duplicate key" in err_body or "unique constraint" in err_body:
+                        c.execute("UPDATE pending_transactions SET sync_status = 'SYNCED' WHERE transaction_id = ?", (tx_id,))
+                        conn.commit()
+                        print(f"[EDGE SYNC] ☁️ Transaction already exists in cloud: {tx_id}")
+                    else:
+                        print(f"[EDGE SYNC NOTICE] Offline sync pending connection for {tx_id}: {http_err} {err_body}")
+                        break
                 except Exception as sync_err:
                     print(f"[EDGE SYNC NOTICE] Offline sync pending connection for {tx_id}: {sync_err}")
                     break  # Pause sweep if network is unreachable
@@ -738,43 +793,15 @@ class CameraThread(threading.Thread):
             self.cap.release()
 
 # ==============================================================================
-# AUDIO & SPEECH ANNOUNCEMENT ENGINE
+# AUDIO & SPEECH ANNOUNCEMENT ENGINE (MUTED)
 # ==============================================================================
-_tts_lock = threading.Lock()
-
 def speak_text(text):
-    def _run():
-        with _tts_lock:
-            try:
-                if shutil.which("say"):
-                    subprocess.run(["killall", "say"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL, check=False)
-                    subprocess.run(["say", "-r", "240", "-v", "Samantha", text], timeout=3, check=False)
-                else:
-                    print(f"[VOICE]: {text}")
-            except Exception:
-                pass
-    threading.Thread(target=_run, daemon=True).start()
+    # Sounds and voice announcements muted per user kiosk setup
+    pass
 
 def create_synthesized_sounds():
-    sounds = {"success": None, "tick": None}
-    try:
-        if not pygame.mixer.get_init():
-            pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
-        sr = 44100
-        # Success sound
-        t_s = np.linspace(0, 0.35, int(sr * 0.35), False)
-        w = (np.sin(2 * np.pi * 523.25 * t_s) + np.sin(2 * np.pi * 659.25 * t_s) + np.sin(2 * np.pi * 783.99 * t_s)) * 0.3 * np.exp(-4.0 * t_s)
-        arr = (w * 32767).astype(np.int16)
-        sounds["success"] = pygame.sndarray.make_sound(np.column_stack((arr, arr)))
-
-        # Tick sound
-        t_t = np.linspace(0, 0.08, int(sr * 0.08), False)
-        wt = np.sin(2 * np.pi * 880.0 * t_t) * 0.25 * np.exp(-15.0 * t_t)
-        arr_t = (wt * 32767).astype(np.int16)
-        sounds["tick"] = pygame.sndarray.make_sound(np.column_stack((arr_t, arr_t)))
-    except Exception:
-        pass
-    return sounds
+    # Sound effects disabled per user kiosk setup
+    return {"success": None, "tick": None}
 
 # ==============================================================================
 # REAL-TIME KIOSK HTTP REST & SERVER-SENT EVENTS (SSE) SERVER (PORT 8085)
@@ -801,193 +828,299 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
+    def handle_error(self, request, client_address):
+        exc_type, exc_value, _ = sys.exc_info()
+        if exc_type in (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, TimeoutError, OSError):
+            return
+        if isinstance(exc_value, OSError) and getattr(exc_value, 'winerror', None) in (10053, 10054, 10058, 10060, 32):
+            return
+        super().handle_error(request, client_address)
+
 class KioskHTTPRequestHandler(BaseHTTPRequestHandler):
+    def handle(self):
+        try:
+            super().handle()
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, TimeoutError, OSError):
+            pass
+        except Exception:
+            pass
+
+    def finish(self):
+        try:
+            super().finish()
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, TimeoutError, OSError):
+            pass
+        except Exception:
+            pass
+
     def _send_cors_headers(self, status=200, content_type="application/json"):
-        self.send_response(status)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, HEAD")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
-        self.send_header("Content-Type", content_type)
+        try:
+            self.send_response(status)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, HEAD")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+            self.send_header("Content-Type", content_type)
+        except Exception:
+            pass
 
     def do_OPTIONS(self):
-        self._send_cors_headers(200)
-        self.end_headers()
+        try:
+            self._send_cors_headers(200)
+            self.end_headers()
+        except Exception:
+            pass
 
     def do_HEAD(self):
-        parsed = urllib.parse.urlparse(self.path)
-        path = parsed.path
+        try:
+            parsed = urllib.parse.urlparse(self.path)
+            path = parsed.path
 
-        if path in ["/api/kiosk/status", "/api/scan_tray"]:
-            self._send_cors_headers(200, "application/json")
-            self.end_headers()
-        elif path in ["/api/camera/frame.jpg", "/api/camera/frame_clean.jpg", "/api/camera/frame_annotated.jpg"]:
-            self._send_cors_headers(200, "image/jpeg")
-            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
-            self.send_header("Pragma", "no-cache")
-            self.send_header("Expires", "0")
-            self.end_headers()
-        elif path == "/api/camera/stream":
-            self.send_response(200)
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
-            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
-            self.end_headers()
-        else:
-            self._send_cors_headers(200, "application/json")
-            self.end_headers()
+            if path in ["/api/kiosk/status", "/api/scan_tray"]:
+                self._send_cors_headers(200, "application/json")
+                self.end_headers()
+            elif path in ["/api/camera/frame.jpg", "/api/camera/frame_clean.jpg", "/api/camera/frame_annotated.jpg"]:
+                self._send_cors_headers(200, "image/jpeg")
+                self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
+                self.send_header("Pragma", "no-cache")
+                self.send_header("Expires", "0")
+                self.end_headers()
+            elif path == "/api/camera/stream":
+                self.send_response(200)
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+                self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
+                self.end_headers()
+            else:
+                self._send_cors_headers(200, "application/json")
+                self.end_headers()
+        except Exception:
+            pass
 
     def do_GET(self):
-        parsed = urllib.parse.urlparse(self.path)
-        path = parsed.path
+        try:
+            parsed = urllib.parse.urlparse(self.path)
+            path = parsed.path
 
-        if path in ["/api/kiosk/status", "/api/scan_tray"]:
-            self._send_cors_headers(200, "application/json")
-            self.end_headers()
-            if _GLOBAL_KIOSK_REF is not None:
-                state_data = _GLOBAL_KIOSK_REF.get_live_kiosk_data()
-            else:
-                state_data = {
-                    "status": "SUCCESS",
-                    "kiosk_state": "IDLE",
-                    "student": None,
-                    "cart": [],
-                    "total_amount": 0.0,
-                    "timestamp": time.time()
-                }
-            self.wfile.write(json.dumps(state_data).encode('utf-8'))
+            if path in ["/api/kiosk/status", "/api/scan_tray"]:
+                self._send_cors_headers(200, "application/json")
+                self.end_headers()
+                if _GLOBAL_KIOSK_REF is not None:
+                    state_data = _GLOBAL_KIOSK_REF.get_live_kiosk_data()
+                else:
+                    state_data = {
+                        "status": "SUCCESS",
+                        "kiosk_state": "IDLE",
+                        "student": None,
+                        "cart": [],
+                        "total_amount": 0.0,
+                        "timestamp": time.time()
+                    }
+                try:
+                    self.wfile.write(json.dumps(state_data).encode('utf-8'))
+                except Exception:
+                    pass
 
-        elif path in ["/api/camera/frame.jpg", "/api/camera/frame_clean.jpg"]:
-            if _GLOBAL_KIOSK_REF is not None and hasattr(_GLOBAL_KIOSK_REF, 'camera_thread') and _GLOBAL_KIOSK_REF.camera_thread:
-                jpeg_bytes = _GLOBAL_KIOSK_REF.camera_thread.get_jpeg_frame(draw_boxes=False)
-                if jpeg_bytes:
-                    self._send_cors_headers(200, "image/jpeg")
-                    self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
-                    self.send_header("Pragma", "no-cache")
-                    self.send_header("Expires", "0")
-                    self.send_header("Content-Length", str(len(jpeg_bytes)))
-                    self.end_headers()
-                    self.wfile.write(jpeg_bytes)
-                    return
-            self._send_cors_headers(404, "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"error": "Camera frame unavailable"}).encode('utf-8'))
-
-        elif path == "/api/camera/frame_annotated.jpg":
-            if _GLOBAL_KIOSK_REF is not None and hasattr(_GLOBAL_KIOSK_REF, 'camera_thread') and _GLOBAL_KIOSK_REF.camera_thread:
-                jpeg_bytes = _GLOBAL_KIOSK_REF.camera_thread.get_annotated_jpeg_frame()
-                if jpeg_bytes:
-                    self._send_cors_headers(200, "image/jpeg")
-                    self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
-                    self.send_header("Pragma", "no-cache")
-                    self.send_header("Expires", "0")
-                    self.send_header("Content-Length", str(len(jpeg_bytes)))
-                    self.end_headers()
-                    self.wfile.write(jpeg_bytes)
-                    return
-            self._send_cors_headers(404, "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"error": "Camera frame unavailable"}).encode('utf-8'))
-
-        elif path == "/api/camera/stream":
-            query = urllib.parse.parse_qs(parsed.query)
-            draw_annotated = query.get("annotated", ["0"])[0].lower() in ["1", "true", "yes"]
-            self.send_response(200)
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
-            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
-            self.send_header("Pragma", "no-cache")
-            self.send_header("Connection", "close")
-            self.end_headers()
-            try:
-                while True:
-                    if _GLOBAL_KIOSK_REF is not None and hasattr(_GLOBAL_KIOSK_REF, 'camera_thread') and _GLOBAL_KIOSK_REF.camera_thread:
-                        jpeg_bytes = _GLOBAL_KIOSK_REF.camera_thread.get_jpeg_frame(draw_boxes=draw_annotated)
-                        if jpeg_bytes:
-                            self.wfile.write(b"--frame\r\n")
-                            self.wfile.write(b"Content-Type: image/jpeg\r\n")
-                            self.wfile.write(f"Content-Length: {len(jpeg_bytes)}\r\n\r\n".encode('utf-8'))
+            elif path in ["/api/camera/frame.jpg", "/api/camera/frame_clean.jpg"]:
+                if _GLOBAL_KIOSK_REF is not None and hasattr(_GLOBAL_KIOSK_REF, 'camera_thread') and _GLOBAL_KIOSK_REF.camera_thread:
+                    jpeg_bytes = _GLOBAL_KIOSK_REF.camera_thread.get_jpeg_frame(draw_boxes=False)
+                    if jpeg_bytes:
+                        self._send_cors_headers(200, "image/jpeg")
+                        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
+                        self.send_header("Pragma", "no-cache")
+                        self.send_header("Expires", "0")
+                        self.send_header("Content-Length", str(len(jpeg_bytes)))
+                        self.end_headers()
+                        try:
                             self.wfile.write(jpeg_bytes)
-                            self.wfile.write(b"\r\n")
-                            self.wfile.flush()
-                    time.sleep(0.033)
-            except Exception:
-                pass
+                        except Exception:
+                            pass
+                        return
+                self._send_cors_headers(404, "application/json")
+                self.end_headers()
+                try:
+                    self.wfile.write(json.dumps({"error": "Camera frame unavailable"}).encode('utf-8'))
+                except Exception:
+                    pass
 
-        elif path == "/api/kiosk/events":
-            # Server-Sent Events (SSE) Real-Time stream
-            self._send_cors_headers(200, "text/event-stream")
-            self.send_header("Cache-Control", "no-cache")
-            self.send_header("Connection", "keep-alive")
-            self.end_headers()
+            elif path == "/api/camera/frame_annotated.jpg":
+                if _GLOBAL_KIOSK_REF is not None and hasattr(_GLOBAL_KIOSK_REF, 'camera_thread') and _GLOBAL_KIOSK_REF.camera_thread:
+                    jpeg_bytes = _GLOBAL_KIOSK_REF.camera_thread.get_annotated_jpeg_frame()
+                    if jpeg_bytes:
+                        self._send_cors_headers(200, "image/jpeg")
+                        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
+                        self.send_header("Pragma", "no-cache")
+                        self.send_header("Expires", "0")
+                        self.send_header("Content-Length", str(len(jpeg_bytes)))
+                        self.end_headers()
+                        try:
+                            self.wfile.write(jpeg_bytes)
+                        except Exception:
+                            pass
+                        return
+                self._send_cors_headers(404, "application/json")
+                self.end_headers()
+                try:
+                    self.wfile.write(json.dumps({"error": "Camera frame unavailable"}).encode('utf-8'))
+                except Exception:
+                    pass
 
-            with _SSE_LOCK:
-                _SSE_CLIENTS.append(self.wfile)
+            elif path == "/api/camera/stream":
+                query = urllib.parse.parse_qs(parsed.query)
+                draw_annotated = query.get("annotated", ["0"])[0].lower() in ["1", "true", "yes"]
+                self.send_response(200)
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+                self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
+                self.send_header("Pragma", "no-cache")
+                self.send_header("Connection", "close")
+                self.end_headers()
+                try:
+                    while True:
+                        if _GLOBAL_KIOSK_REF is not None and hasattr(_GLOBAL_KIOSK_REF, 'camera_thread') and _GLOBAL_KIOSK_REF.camera_thread:
+                            jpeg_bytes = _GLOBAL_KIOSK_REF.camera_thread.get_jpeg_frame(draw_boxes=draw_annotated)
+                            if jpeg_bytes:
+                                self.wfile.write(b"--frame\r\n")
+                                self.wfile.write(b"Content-Type: image/jpeg\r\n")
+                                self.wfile.write(f"Content-Length: {len(jpeg_bytes)}\r\n\r\n".encode('utf-8'))
+                                self.wfile.write(jpeg_bytes)
+                                self.wfile.write(b"\r\n")
+                                self.wfile.flush()
+                        time.sleep(0.033)
+                except Exception:
+                    pass
 
-            # Send initial state snapshot immediately
-            if _GLOBAL_KIOSK_REF is not None:
-                init_payload = _GLOBAL_KIOSK_REF.get_live_kiosk_data()
-                self.wfile.write(f"event: kiosk_update\ndata: {json.dumps(init_payload)}\n\n".encode('utf-8'))
-                self.wfile.flush()
+            elif path == "/api/kiosk/events":
+                # Server-Sent Events (SSE) Real-Time stream
+                self._send_cors_headers(200, "text/event-stream")
+                self.send_header("Cache-Control", "no-cache")
+                self.send_header("Connection", "keep-alive")
+                self.end_headers()
 
-            try:
-                while True:
-                    time.sleep(15)
-                    self.wfile.write(b": heartbeat\n\n")
-                    self.wfile.flush()
-            except Exception:
                 with _SSE_LOCK:
-                    if self.wfile in _SSE_CLIENTS:
-                        _SSE_CLIENTS.remove(self.wfile)
+                    _SSE_CLIENTS.append(self.wfile)
 
-        else:
-            self._send_cors_headers(404, "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"error": "Not Found"}).encode('utf-8'))
+                # Send initial state snapshot immediately
+                if _GLOBAL_KIOSK_REF is not None:
+                    init_payload = _GLOBAL_KIOSK_REF.get_live_kiosk_data()
+                    try:
+                        self.wfile.write(f"event: kiosk_update\ndata: {json.dumps(init_payload)}\n\n".encode('utf-8'))
+                        self.wfile.flush()
+                    except Exception:
+                        pass
+
+                try:
+                    while True:
+                        time.sleep(15)
+                        self.wfile.write(b": heartbeat\n\n")
+                        self.wfile.flush()
+                except Exception:
+                    with _SSE_LOCK:
+                        if self.wfile in _SSE_CLIENTS:
+                            _SSE_CLIENTS.remove(self.wfile)
+
+            else:
+                self._send_cors_headers(404, "application/json")
+                self.end_headers()
+                try:
+                    self.wfile.write(json.dumps({"error": "Not Found"}).encode('utf-8'))
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def do_POST(self):
-        parsed = urllib.parse.urlparse(self.path)
-        path = parsed.path
-
-        content_len = int(self.headers.get('Content-Length', 0))
-        body = self.rfile.read(content_len).decode('utf-8') if content_len > 0 else "{}"
         try:
-            req_data = json.loads(body)
+            parsed = urllib.parse.urlparse(self.path)
+            path = parsed.path
+
+            content_len = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_len).decode('utf-8') if content_len > 0 else "{}"
+            try:
+                req_data = json.loads(body)
+            except Exception:
+                req_data = {}
+
+            if path == "/api/kiosk/sync":
+                action = req_data.get("action", "")
+                if _GLOBAL_KIOSK_REF is not None:
+                    if action == "reset":
+                        _GLOBAL_KIOSK_REF.transition_to_state(STATE_IDLE)
+                    elif action == "scan":
+                        _GLOBAL_KIOSK_REF.execute_simulation_step(2)
+                    elif action == "pay":
+                        _GLOBAL_KIOSK_REF.execute_simulation_step(4)
+                    elif action == "pay_later":
+                        _GLOBAL_KIOSK_REF.execute_pay_later_checkout()
+                    elif action in ["confirm_payment", "complete_checkout"]:
+                        st = req_data.get("student")
+                        amt = float(req_data.get("amount", _GLOBAL_KIOSK_REF.total_amount))
+                        if st and isinstance(st, dict):
+                            student_id = st.get("studentId") or st.get("student_id_number") or st.get("id", "STU-2026")
+                            student_name = st.get("name") or st.get("full_name", "Student")
+                            curr_bal = float(st.get("balance", 200.0))
+                            rem_bal = max(0.0, curr_bal - amt)
+                            _GLOBAL_KIOSK_REF.active_student = {
+                                "id": student_id,
+                                "name": student_name,
+                                "email": st.get("email", ""),
+                                "rfidUid": st.get("rfidUid") or st.get("rfid_uid", ""),
+                                "balance": rem_bal,
+                                "daily_limit": float(st.get("daily_limit", 200.0))
+                            }
+                            # Deduct balance in local database cache
+                            _GLOBAL_KIOSK_REF.db_manager.deduct_student_balance(student_id, amt)
+                            tx_id = f"TXN_{int(time.time())}_{student_id.replace('-', '')}"
+                            _GLOBAL_KIOSK_REF.db_manager.record_transaction(
+                                tx_id, student_id, _GLOBAL_KIOSK_REF.cart_items, amt,
+                                _GLOBAL_KIOSK_REF.latest_tray_image, payment_method="rfid"
+                            )
+
+                        _GLOBAL_KIOSK_REF.total_amount = amt
+                        _GLOBAL_KIOSK_REF.status_message = "Payment have been confirmed please claim your order."
+                        _GLOBAL_KIOSK_REF.current_state = STATE_SETTLEMENT
+                        _GLOBAL_KIOSK_REF.state_timer = time.time()
+                        _GLOBAL_KIOSK_REF.notify_pos_update()
+
+                self._send_cors_headers(200, "application/json")
+                self.end_headers()
+                resp = {"status": "SUCCESS", "action": action, "data": _GLOBAL_KIOSK_REF.get_live_kiosk_data() if _GLOBAL_KIOSK_REF else None}
+                try:
+                    self.wfile.write(json.dumps(resp).encode('utf-8'))
+                except Exception:
+                    pass
+
+            elif path in ["/api/cache_offline", "/api/offline_sync"]:
+                self._send_cors_headers(200, "application/json")
+                self.end_headers()
+                try:
+                    self.wfile.write(json.dumps({"status": "SUCCESS", "message": "Offline cache synced"}).encode('utf-8'))
+                except Exception:
+                    pass
+            else:
+                self._send_cors_headers(404, "application/json")
+                self.end_headers()
+                try:
+                    self.wfile.write(json.dumps({"error": "Not Found"}).encode('utf-8'))
+                except Exception:
+                    pass
         except Exception:
-            req_data = {}
-
-        if path == "/api/kiosk/sync":
-            action = req_data.get("action", "")
-            if _GLOBAL_KIOSK_REF is not None:
-                if action == "reset":
-                    _GLOBAL_KIOSK_REF.transition_to_state(STATE_IDLE)
-                elif action == "scan":
-                    _GLOBAL_KIOSK_REF.execute_simulation_step(2)
-                elif action == "pay":
-                    _GLOBAL_KIOSK_REF.execute_simulation_step(4)
-                elif action == "pay_later":
-                    _GLOBAL_KIOSK_REF.execute_pay_later_checkout()
-
-            self._send_cors_headers(200, "application/json")
-            self.end_headers()
-            resp = {"status": "SUCCESS", "action": action, "data": _GLOBAL_KIOSK_REF.get_live_kiosk_data() if _GLOBAL_KIOSK_REF else None}
-            self.wfile.write(json.dumps(resp).encode('utf-8'))
-
-        elif path in ["/api/cache_offline", "/api/offline_sync"]:
-            self._send_cors_headers(200, "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"status": "SUCCESS", "message": "Offline cache synced"}).encode('utf-8'))
-        else:
-            self._send_cors_headers(404, "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"error": "Not Found"}).encode('utf-8'))
+            pass
 
     def log_message(self, format, *args):
         return
 
 def start_kiosk_api_server(port=HTTP_PORT):
-    server = ThreadedHTTPServer(("0.0.0.0", port), KioskHTTPRequestHandler)
-    print(f"[KIOSK API SERVER] 🟢 Live Real-Time Multi-Threaded Bridge listening on http://127.0.0.1:{port}")
-    server.serve_forever()
+    for attempt in range(5):
+        try:
+            server = ThreadedHTTPServer(("0.0.0.0", port), KioskHTTPRequestHandler)
+            print(f"[KIOSK API SERVER] 🟢 Live Real-Time Multi-Threaded Bridge listening on http://127.0.0.1:{port}")
+            server.serve_forever()
+            break
+        except OSError as e:
+            if attempt < 4:
+                time.sleep(0.5)
+            else:
+                print(f"[KIOSK API SERVER] ⚠️ Notice: Port {port} in use ({e}). Bridge will retry in background.")
 
 # ==============================================================================
 # NOVALUNCH STUDENT-FACING DISPLAY (CFD) MONITOR APPLICATION
@@ -1033,6 +1166,7 @@ class NovaLunchKioskGUI:
         self.font_footer = pygame.font.SysFont("Helvetica Neue", 12)
         self.font_timer_large = pygame.font.SysFont("Helvetica Neue", 34, bold=True)
         self.font_timer_badge = pygame.font.SysFont("Helvetica Neue", 13, bold=True)
+        self.font_badge = pygame.font.SysFont("Helvetica Neue", 12, bold=True)
 
         # State Variables
         self.current_state = STATE_IDLE
@@ -1045,8 +1179,8 @@ class NovaLunchKioskGUI:
         self.latest_tray_image = ""
 
         # Stability & Motion
-        self.countdown_remaining = 4.0
-        self.last_tick_sec = 4
+        self.countdown_remaining = 5.0
+        self.last_tick_sec = 5
         self.motion_detected = False
         self.motion_voice_alerted = False
         self.greet_audio_spoken = False
@@ -1068,11 +1202,11 @@ class NovaLunchKioskGUI:
         api_thread = threading.Thread(target=start_kiosk_api_server, args=(HTTP_PORT,), daemon=True)
         api_thread.start()
 
-        # Step Simulator / Guided Progress Bar Rects
-        self.btn_step1 = pygame.Rect(34, 578, 163, 46)
-        self.btn_step2 = pygame.Rect(207, 578, 163, 46)
-        self.btn_step3 = pygame.Rect(380, 578, 163, 46)
-        self.btn_step4 = pygame.Rect(553, 578, 163, 46)
+        # 3-Step Guided Progress Bar Rects
+        self.btn_step1 = pygame.Rect(45, 578, 205, 46)
+        self.btn_step2 = pygame.Rect(260, 578, 205, 46)
+        self.btn_step3 = pygame.Rect(475, 578, 205, 46)
+        self.btn_step4 = pygame.Rect(475, 578, 205, 46)
 
     def get_live_kiosk_data(self):
         """Returns JSON-serializable snapshot of live kiosk state for Cashier POS."""
@@ -1222,57 +1356,16 @@ class NovaLunchKioskGUI:
                 print(f"[TRAY SNAPSHOT WARN]: {e}")
 
         elif new_state == STATE_STABILITY_COUNTDOWN:
-            self.countdown_remaining = 4.0
-            self.last_tick_sec = 4
+            self.countdown_remaining = 5.0
+            self.last_tick_sec = 5
             self.motion_voice_alerted = False
-            self.status_message = f"🟢 Items stable. Auto-deducting ₱{self.total_amount:.2f} in 4.0s..."
-            names = " and ".join(i["name"] for i in self.cart_items) if self.cart_items else "Food items"
-            speak_text(f"Scanned {names}. Total is {int(self.total_amount)} pesos.")
+            self.status_message = f"🟢 AI Scanning items (5.0s)... Hold tray steady"
 
         elif new_state == STATE_SETTLEMENT:
-            if not self.active_student:
-                accounts = self.db_manager.load_accounts()
-                if accounts:
-                    st = accounts[0]
-                    self.active_student = {
-                        "id": st.get("student_id_number"),
-                        "name": st.get("full_name"),
-                        "email": st.get("email"),
-                        "rfidUid": st.get("rfid_uid"),
-                        "balance": float(st.get("balance", 200.0)),
-                        "daily_limit": float(st.get("daily_limit", 200.0))
-                    }
-
-            student_bal = self.active_student["balance"] if self.active_student else 0.0
-            student_id = self.active_student["id"] if self.active_student else "GUEST"
-            daily_limit = float(self.active_student.get("daily_limit", 200.0)) if self.active_student else 200.0
-            daily_spent = self.db_manager.get_student_daily_spent(student_id)
-
-            if self.total_amount > 0 and (daily_spent + self.total_amount) > daily_limit:
-                self.status_message = f"⚠️ DAILY SPENDING CAP EXCEEDED (Cap: ₱{daily_limit:.2f})"
-                speak_text("Warning! Daily spending limit exceeded.")
-            elif student_bal >= self.total_amount and self.total_amount > 0:
-                rem_balance = self.db_manager.deduct_student_balance(student_id, self.total_amount)
-                self.active_student["balance"] = rem_balance
-
-                tx_id = f"TXN_{int(time.time())}_{student_id.replace('-', '')}"
-                self.db_manager.record_transaction(tx_id, student_id, self.cart_items, self.total_amount, self.latest_tray_image, payment_method="rfid")
-                self.status_message = f"Payment Successful! Remaining Balance: ₱{rem_balance:.2f}"
-                if self.sounds.get("success"):
-                    try:
-                        self.sounds["success"].play()
-                    except Exception:
-                        pass
-                speak_text(f"Payment successful! Remaining balance {int(rem_balance)} pesos. Thank you!")
-            elif self.total_amount == 0:
-                self.status_message = "No items scanned on platform!"
-            else:
-                self.status_message = "⚠️ Insufficient Balance! Press [P] for 1-Tap Pay Later."
-                speak_text("Insufficient balance. Press P for Pay Later.")
+            self.status_message = "Payment have been confirmed please claim your order."
 
         elif new_state == STATE_ERROR:
             self.status_message = "⚠️ UNREGISTERED RFID CARD — PLEASE VISIT ADMIN"
-            speak_text("Unregistered card. Please visit canteen administration.")
 
         self.notify_pos_update()
 
@@ -1319,12 +1412,18 @@ class NovaLunchKioskGUI:
             clean = str(scanned_uid).strip().replace("NL-QR-", "").replace("QR-", "")
             last_tap = self.rfid_anti_passback_cache.get(clean, 0)
             if now - last_tap < 3.0:
-                return  # Hardware debounce to prevent duplicate flutter
+                return  # Hardware debounce
             self.rfid_anti_passback_cache[clean] = now
 
             student = self.db_manager.find_student_by_rfid(clean)
             if student:
                 self.active_student = student
+                bal = float(student.get("balance", 0.0))
+                if bal <= 0:
+                    self.status_message = f"⚠️ Low/Zero Balance (₱{bal:.2f}). You may use Pay Later at Cashier."
+                else:
+                    self.status_message = f"Welcome {student.get('name', 'Student')}! Balance: ₱{bal:.2f}"
+
                 self.active_preorders = self.db_manager.get_active_preorders(student["id"], student.get("name"))
                 if self.active_preorders:
                     self.transition_to_state(STATE_PREORDER_ANNOUNCEMENT)
@@ -1335,7 +1434,7 @@ class NovaLunchKioskGUI:
                 self.transition_to_state(STATE_ERROR)
             return
 
-        # Advance step state simulation
+        # Keyboard/simulation advance
         if self.current_state in [STATE_IDLE, STATE_ERROR]:
             self.execute_simulation_step(1)
         elif self.current_state == STATE_PREORDER_ANNOUNCEMENT:
@@ -1345,7 +1444,7 @@ class NovaLunchKioskGUI:
         elif self.current_state == STATE_SCANNING:
             self.execute_simulation_step(3)
         elif self.current_state == STATE_STABILITY_COUNTDOWN:
-            self.execute_simulation_step(4)
+            self.transition_to_state(STATE_SCANNING)
         elif self.current_state == STATE_SETTLEMENT:
             self.transition_to_state(STATE_IDLE)
 
@@ -1473,7 +1572,7 @@ class NovaLunchKioskGUI:
     def render_countdown_gauge(self, video_area):
         banner_bg = COLOR_AMBER_BG if self.motion_detected else COLOR_EMERALD_BG
         banner_fg = COLOR_AMBER if self.motion_detected else COLOR_EMERALD
-        banner_txt = "⚠️ MOTION DETECTED — KEEP CLEAR" if self.motion_detected else f"🟢 TRAY STABLE — AUTO DEDUCTING IN {self.countdown_remaining:.1f}s"
+        banner_txt = "⚠️ MOTION DETECTED — KEEP CLEAR" if self.motion_detected else f"🟢 AI SCANNING PLATFORM ({self.countdown_remaining:.1f}s)"
 
         txt_surf = self.font_timer_badge.render(banner_txt, True, banner_fg)
         b_rect = pygame.Rect(video_area.centerx - txt_surf.get_width() // 2 - 16, video_area.top + 14, txt_surf.get_width() + 32, 34)
@@ -1483,7 +1582,7 @@ class NovaLunchKioskGUI:
         # Radial Gauge
         cx, cy, radius = video_area.right - 50, video_area.top + 50, 36
         pygame.draw.circle(self.screen, COLOR_CARD_BG, (cx, cy), radius)
-        progress = max(0.0, min(1.0, 1.0 - (self.countdown_remaining / 4.0)))
+        progress = max(0.0, min(1.0, 1.0 - (self.countdown_remaining / 5.0)))
         arc_color = COLOR_AMBER if self.motion_detected else COLOR_EMERALD
         for i in range(20):
             ang = -math.pi / 2 + (2 * math.pi * (i / 20.0))
@@ -1492,87 +1591,76 @@ class NovaLunchKioskGUI:
                 py = int(cy + (radius - 5) * math.sin(ang))
                 pygame.draw.circle(self.screen, arc_color, (px, py), 3)
 
-        num_surf = self.font_timer_large.render(str(int(math.ceil(self.countdown_remaining))), True, arc_color)
+        num_surf = self.font_timer_large.render(str(max(1, int(math.ceil(self.countdown_remaining)))), True, arc_color)
         self.screen.blit(num_surf, (cx - num_surf.get_width() // 2, cy - num_surf.get_height() // 2))
 
     def render_settlement_banner(self, video_area):
-        banner = pygame.Rect(video_area.centerx - 200, video_area.centery - 40, 400, 80)
+        banner = pygame.Rect(video_area.centerx - 220, video_area.centery - 40, 440, 80)
         pygame.draw.rect(self.screen, COLOR_EMERALD_BG, banner, border_radius=16)
         pygame.draw.rect(self.screen, COLOR_EMERALD, banner, width=2, border_radius=16)
         t1 = self.font_large.render("✓ PAYMENT APPROVED", True, COLOR_EMERALD)
-        t2 = self.font_subtitle_bold.render(f"Deducted ₱{self.total_amount:.2f} — Session Complete", True, COLOR_TEXT_MAIN)
+        t2 = self.font_subtitle_bold.render("Payment have been confirmed please claim your order.", True, COLOR_TEXT_MAIN)
         self.screen.blit(t1, (banner.centerx - t1.get_width() // 2, banner.y + 12))
         self.screen.blit(t2, (banner.centerx - t2.get_width() // 2, banner.y + 48))
 
     def render_toolbar(self):
-        """Renders an interactive, guided 4-step progress bar for students with real-time state guidance."""
-        # 1. Evaluate Progress Status for each step
+        """Renders an interactive, guided 3-step progress bar for students."""
         # Step 1: Tap ID
         if self.active_student is not None or self.current_state in [
             STATE_GREET, STATE_PREORDER_ANNOUNCEMENT, STATE_SCANNING,
             STATE_STABILITY_COUNTDOWN, STATE_SETTLEMENT
         ]:
             s1_state = "DONE"
-            s1_sub = "ID Verified"
+            bal = self.active_student.get("balance", 0.0) if self.active_student else 0.0
+            s1_sub = f"Bal: ₱{bal:.0f}"
         elif self.current_state == STATE_IDLE:
             s1_state = "ACTIVE"
-            s1_sub = "Tap Card"
+            s1_sub = "Tap RFID Card"
         else:
             s1_state = "PENDING"
-            s1_sub = "Waiting"
+            s1_sub = "Tap Card"
 
-        # Step 2: AI Scan
-        if self.current_state in [STATE_STABILITY_COUNTDOWN, STATE_SETTLEMENT] or (
-            self.current_state in [STATE_GREET, STATE_SCANNING] and len(self.cart_items) > 0 and self.stable_start_time > 0
+        # Step 2: AI Scan (5s)
+        if self.current_state == STATE_SETTLEMENT or (
+            len(self.cart_items) > 0 and self.current_state == STATE_SCANNING
         ):
             s2_state = "DONE"
             cnt = sum(i.get("qty", 1) for i in self.cart_items)
-            s2_sub = f"{cnt} Item{'s' if cnt != 1 else ''} Scanned"
-        elif self.current_state in [STATE_GREET, STATE_SCANNING] or (
-            self.current_state == STATE_IDLE and len(self.cart_items) > 0
-        ):
+            s2_sub = f"{cnt} Items Scanned"
+        elif self.current_state == STATE_STABILITY_COUNTDOWN:
+            s2_state = "ACTIVE"
+            s2_sub = f"{self.countdown_remaining:.1f}s Scanning..."
+        elif self.current_state in [STATE_GREET, STATE_SCANNING] and len(self.cart_items) > 0:
             s2_state = "ACTIVE"
             cnt = sum(i.get("qty", 1) for i in self.cart_items)
-            s2_sub = f"Detecting ({cnt})" if cnt > 0 else "Scanning Tray..."
+            s2_sub = f"{cnt} Items Detected"
+        elif self.current_state in [STATE_GREET, STATE_SCANNING]:
+            s2_state = "ACTIVE"
+            s2_sub = "Scanning Tray..."
         else:
             s2_state = "PENDING"
             s2_sub = "Waiting"
 
-        # Step 3: 4s Timer / Tray Stability
+        # Step 3: Cashier Pay
         if self.current_state == STATE_SETTLEMENT:
             s3_state = "DONE"
-            s3_sub = "Tray Stable"
-        elif self.current_state == STATE_STABILITY_COUNTDOWN:
+            s3_sub = f"Paid ₱{self.total_amount:.2f}"
+        elif len(self.cart_items) > 0 and self.current_state != STATE_IDLE:
             s3_state = "ACTIVE"
-            if self.motion_detected:
-                s3_sub = "Motion Alert!"
-            else:
-                s3_sub = f"{self.countdown_remaining:.1f}s Left"
+            s3_sub = f"Total: ₱{self.total_amount:.2f}"
         else:
             s3_state = "PENDING"
-            s3_sub = "Waiting"
-
-        # Step 4: Pay / Settlement
-        if self.current_state == STATE_SETTLEMENT:
-            s4_state = "DONE"
-            s4_sub = f"Paid ₱{self.total_amount:.0f}"
-        elif self.current_state == STATE_STABILITY_COUNTDOWN and self.countdown_remaining <= 0.8:
-            s4_state = "ACTIVE"
-            s4_sub = "Authorizing..."
-        else:
-            s4_state = "PENDING"
-            s4_sub = "Auto-Deduct"
+            s3_sub = "Cashier Checkout"
 
         steps_info = [
             (self.btn_step1, "Step 1: Tap ID", s1_state, s1_sub, 1),
-            (self.btn_step2, "Step 2: AI Scan", s2_state, s2_sub, 2),
-            (self.btn_step3, "Step 3: 4s Timer", s3_state, s3_sub, 3),
-            (self.btn_step4, "Step 4: Pay", s4_state, s4_sub, 4),
+            (self.btn_step2, "Step 2: AI Scan (5s)", s2_state, s2_sub, 2),
+            (self.btn_step3, "Step 3: Cashier Pay", s3_state, s3_sub, 3),
         ]
 
         # Draw connecting background progress track
         track_y = 578 + 23
-        pygame.draw.line(self.screen, COLOR_CARD_BORDER, (50, track_y), (700, track_y), 4)
+        pygame.draw.line(self.screen, COLOR_CARD_BORDER, (70, track_y), (650, track_y), 4)
 
         # Highlight completed segments on connecting line
         for i in range(len(steps_info) - 1):
@@ -1588,7 +1676,6 @@ class NovaLunchKioskGUI:
             is_hover = rect.collidepoint(mouse_pos)
 
             if state == "DONE":
-                # Emerald Green Done Card
                 bg_color = COLOR_EMERALD
                 border_color = (5, 150, 105)
                 title_color = COLOR_WHITE
@@ -1596,57 +1683,36 @@ class NovaLunchKioskGUI:
                 badge_bg = COLOR_WHITE
                 badge_fg = COLOR_EMERALD
             elif state == "ACTIVE":
-                # Vibrant Crimson/Rose Highlighted Card
-                bg_color = (225, 29, 72) if (num == 3 and self.motion_detected) else COLOR_ROSE_VIBRANT
+                bg_color = COLOR_ROSE_VIBRANT
                 border_color = COLOR_GOLD_ACCENT if is_hover else COLOR_MAROON_DARK
                 title_color = COLOR_WHITE
                 sub_color = COLOR_GOLD_LIGHT
                 badge_bg = COLOR_WHITE
                 badge_fg = COLOR_ROSE_VIBRANT
             else:
-                # Grey Pending Card
                 bg_color = (241, 245, 249)
                 border_color = COLOR_CARD_BORDER if not is_hover else COLOR_TEXT_MUTED
                 title_color = COLOR_TEXT_MUTED
                 sub_color = (148, 163, 184)
-                badge_bg = (203, 213, 225)
-                badge_fg = COLOR_WHITE
+                badge_bg = (226, 232, 240)
+                badge_fg = (100, 116, 139)
 
-            # Draw card container
-            pygame.draw.rect(self.screen, bg_color, rect, border_radius=10)
-            pygame.draw.rect(
-                self.screen,
-                border_color,
-                rect,
-                width=2 if (state == "ACTIVE" or is_hover) else 1,
-                border_radius=10
-            )
+            pygame.draw.rect(self.screen, bg_color, rect, border_radius=12)
+            pygame.draw.rect(self.screen, border_color, rect, width=2 if (is_hover or state == "ACTIVE") else 1, border_radius=12)
 
-            # Circular Indicator Badge
-            badge_cx = rect.x + 18
-            badge_cy = rect.centery
-            badge_radius = 11
-            pygame.draw.circle(self.screen, badge_bg, (badge_cx, badge_cy), badge_radius)
-
+            cx = rect.x + 22
+            cy = rect.centery
+            pygame.draw.circle(self.screen, badge_bg, (cx, cy), 13)
             if state == "DONE":
-                # Crisp Vector Checkmark
-                chk_pts = [
-                    (badge_cx - 4, badge_cy),
-                    (badge_cx - 1, badge_cy + 3),
-                    (badge_cx + 4, badge_cy - 4)
-                ]
-                pygame.draw.lines(self.screen, badge_fg, False, chk_pts, width=2)
+                self.screen.blit(self.font_badge.render("✓", True, badge_fg), (cx - 5, cy - 8))
             else:
-                # Step Number
-                num_surf = self.font_brand_sub.render(str(num), True, badge_fg)
-                self.screen.blit(num_surf, (badge_cx - num_surf.get_width() // 2, badge_cy - num_surf.get_height() // 2))
+                num_txt = self.font_badge.render(str(num), True, badge_fg)
+                self.screen.blit(num_txt, (cx - num_txt.get_width() // 2, cy - num_txt.get_height() // 2))
 
-            # Step Title & Subtitle
-            text_x = rect.x + 34
-            title_surf = self.font_subtitle_bold.render(label, True, title_color)
+            text_x = rect.x + 42
+            lbl_surf = self.font_subtitle_bold.render(label, True, title_color)
             sub_surf = self.font_brand_sub.render(subtext, True, sub_color)
-
-            self.screen.blit(title_surf, (text_x, rect.y + 6))
+            self.screen.blit(lbl_surf, (text_x, rect.y + 7))
             self.screen.blit(sub_surf, (text_x, rect.y + 24))
 
     def render_right_panel(self):
@@ -1701,17 +1767,19 @@ class NovaLunchKioskGUI:
     def render_action_banner(self):
         banner_rect = pygame.Rect(775, 565, 460, 56)
         if self.current_state == STATE_IDLE:
-            bg, txt, fg = COLOR_CARD_ALT, "Place items on platform or Tap RFID...", COLOR_TEXT_MUTED
-        elif self.current_state in [STATE_GREET, STATE_SCANNING]:
+            bg, txt, fg = COLOR_CARD_ALT, "Tap Student RFID Card to begin...", COLOR_TEXT_MUTED
+        elif self.current_state in [STATE_GREET, STATE_SCANNING] and len(self.cart_items) == 0:
             bg, txt, fg = COLOR_MAROON_HEADER, "AI Overhead Vision Scanning Active...", COLOR_WHITE
         elif self.current_state == STATE_STABILITY_COUNTDOWN:
             bg = COLOR_AMBER_BG if self.motion_detected else COLOR_ROSE_VIBRANT
-            txt = "⚠️ Motion Detected — Keep Hands Off" if self.motion_detected else f"⏳ Auto-Deducting in {self.countdown_remaining:.1f}s"
+            txt = "⚠️ Motion Detected — Keep Hands Off" if self.motion_detected else f"⏳ AI Scanning ({self.countdown_remaining:.1f}s remaining)"
             fg = COLOR_MAROON_HEADER if self.motion_detected else COLOR_WHITE
+        elif len(self.cart_items) > 0 and self.current_state != STATE_SETTLEMENT:
+            bg, txt, fg = COLOR_EMERALD, "✓ Scanned Items Ready — Confirm at Cashier POS", COLOR_WHITE
         elif self.current_state == STATE_SETTLEMENT:
-            bg, txt, fg = COLOR_EMERALD, "✓ Payment Approved — Thank You!", COLOR_WHITE
+            bg, txt, fg = COLOR_EMERALD, "✓ Payment Confirmed — Please Claim Your Order!", COLOR_WHITE
         else:
-            bg, txt, fg = COLOR_ROSE_ALERT, "⚡ Press [P] for 1-Tap Pay Later", COLOR_WHITE
+            bg, txt, fg = COLOR_ROSE_ALERT, "⚡ Insufficient Balance — Press [P] for Pay Later", COLOR_WHITE
 
         self.pay_later_btn_rect = banner_rect
         pygame.draw.rect(self.screen, bg, banner_rect, border_radius=12)
@@ -1763,6 +1831,103 @@ class NovaLunchKioskGUI:
             p_surf = self.font_large.render(f"₱{price:.2f}", True, COLOR_ROSE_VIBRANT)
             self.screen.blit(p_surf, (card.right - p_surf.get_width() - 15, y_pos + 14))
             y_pos += 75
+
+    def render_rfid_confirm_overlay(self):
+        """Full-screen overlay prompting student to tap RFID to confirm payment."""
+        # Semi-transparent dark backdrop over left/right panels
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT - 84 - 42), pygame.SRCALPHA)
+        overlay.fill((10, 10, 20, 195))
+        self.screen.blit(overlay, (0, 84))
+
+        st = self.active_student or {}
+        st_name = st.get("name", "Student")
+        st_id = st.get("id", "—")
+        rfid_uid = st.get("rfidUid", "—")
+        balance = float(st.get("balance", 0.0))
+        total = self.total_amount
+        has_balance = balance >= total
+
+        # Center card
+        card_w, card_h = 680, 370
+        card_x = (SCREEN_WIDTH - card_w) // 2
+        card_y = 84 + ((SCREEN_HEIGHT - 84 - 42 - card_h) // 2)
+        card_rect = pygame.Rect(card_x, card_y, card_w, card_h)
+
+        # Card shadow (simple drop)
+        shadow_rect = pygame.Rect(card_x + 5, card_y + 6, card_w, card_h)
+        pygame.draw.rect(self.screen, (0, 0, 0, 100), shadow_rect, border_radius=24)
+
+        # Card background
+        card_bg = (16, 24, 40)
+        pygame.draw.rect(self.screen, card_bg, card_rect, border_radius=24)
+        border_color = COLOR_EMERALD if has_balance else COLOR_GOLD_ACCENT
+        pygame.draw.rect(self.screen, border_color, card_rect, width=2, border_radius=24)
+
+        # Header ribbon
+        ribbon = pygame.Rect(card_x, card_y, card_w, 60)
+        pygame.draw.rect(self.screen, COLOR_MAROON_HEADER, ribbon, border_top_left_radius=24, border_top_right_radius=24)
+        title_surf = self.font_header.render("SCAN RFID TO CONFIRM PURCHASE", True, COLOR_GOLD_LIGHT)
+        self.screen.blit(title_surf, (card_rect.centerx - title_surf.get_width() // 2, card_y + 16))
+
+        # Animated pulse ring around card (pulse every 0.8s using time)
+        pulse_t = time.time() % 1.0
+        pulse_alpha = int(80 + 100 * abs(math.sin(pulse_t * math.pi)))
+        ring_surf = pygame.Surface((card_w + 24, card_h + 24), pygame.SRCALPHA)
+        pygame.draw.rect(ring_surf, (*border_color, pulse_alpha), (0, 0, card_w + 24, card_h + 24), width=3, border_radius=28)
+        self.screen.blit(ring_surf, (card_x - 12, card_y - 12))
+
+        # --- Student info block ---
+        info_y = card_y + 76
+
+        # Avatar circle
+        av_cx, av_cy = card_x + 52, info_y + 44
+        pygame.draw.circle(self.screen, COLOR_GOLD_ACCENT, (av_cx, av_cy), 34)
+        initials = "".join([n[0] for n in st_name.split()[:2]]).upper()
+        av_txt = self.font_title.render(initials, True, COLOR_MAROON_DARK)
+        self.screen.blit(av_txt, (av_cx - av_txt.get_width() // 2, av_cy - av_txt.get_height() // 2))
+
+        # Name + IDs
+        name_surf = self.font_large.render(st_name, True, COLOR_WHITE)
+        self.screen.blit(name_surf, (card_x + 102, info_y + 16))
+        id_surf = self.font_subtitle_bold.render(f"Student No: {st_id}", True, COLOR_TEXT_MUTED)
+        self.screen.blit(id_surf, (card_x + 102, info_y + 50))
+        rfid_surf = self.font_brand_sub.render(f"RFID UID: {rfid_uid}", True, COLOR_TEXT_MUTED)
+        self.screen.blit(rfid_surf, (card_x + 102, info_y + 70))
+
+        # Divider
+        div_y = info_y + 100
+        pygame.draw.line(self.screen, (40, 50, 70), (card_x + 24, div_y), (card_x + card_w - 24, div_y), 1)
+
+        # Balance + Total
+        bal_y = div_y + 18
+        bal_lbl = self.font_subtitle_bold.render("Current Balance:", True, COLOR_TEXT_MUTED)
+        bal_val = self.font_large.render(f"₱{balance:.2f}", True, COLOR_EMERALD if has_balance else COLOR_ROSE_ALERT)
+        self.screen.blit(bal_lbl, (card_x + 28, bal_y))
+        self.screen.blit(bal_val, (card_x + card_w - bal_val.get_width() - 28, bal_y))
+
+        tot_y = bal_y + 44
+        tot_lbl = self.font_subtitle_bold.render("Order Total:", True, COLOR_TEXT_MUTED)
+        tot_val = self.font_large.render(f"₱{total:.2f}", True, COLOR_ROSE_VIBRANT)
+        self.screen.blit(tot_lbl, (card_x + 28, tot_y))
+        self.screen.blit(tot_val, (card_x + card_w - tot_val.get_width() - 28, tot_y))
+
+        pygame.draw.line(self.screen, (40, 50, 70), (card_x + 24, tot_y + 42), (card_x + card_w - 24, tot_y + 42), 1)
+
+        # Instruction prompt
+        prompt_y = tot_y + 56
+        if has_balance:
+            prompt_bg = COLOR_EMERALD
+            prompt_txt = "👆  TAP YOUR RFID CARD NOW TO CONFIRM"
+            prompt_fg = COLOR_WHITE
+        else:
+            prompt_bg = COLOR_GOLD_ACCENT
+            prompt_txt = "⚠️  BALANCE LOW — PRESS [P] FOR PAY LATER"
+            prompt_fg = COLOR_MAROON_DARK
+
+        btn_rect = pygame.Rect(card_x + 28, prompt_y, card_w - 56, 46)
+        pygame.draw.rect(self.screen, prompt_bg, btn_rect, border_radius=14)
+        p_surf = self.font_body_bold.render(prompt_txt, True, prompt_fg)
+        self.screen.blit(p_surf, (btn_rect.centerx - p_surf.get_width() // 2, btn_rect.centery - p_surf.get_height() // 2))
 
     def render_footer(self):
         footer_rect = pygame.Rect(0, 678, SCREEN_WIDTH, 42)
@@ -1884,25 +2049,22 @@ class NovaLunchKioskGUI:
 
             elif self.current_state == STATE_STABILITY_COUNTDOWN:
                 if self.motion_detected:
-                    self.countdown_remaining = 4.0
-                    if not self.motion_voice_alerted:
-                        speak_text("Motion detected on platform.")
-                        self.motion_voice_alerted = True
+                    self.countdown_remaining = 5.0
                 else:
                     self.motion_voice_alerted = False
                     self.countdown_remaining -= dt
                     curr_sec = int(math.ceil(self.countdown_remaining))
                     if curr_sec < self.last_tick_sec and curr_sec >= 1:
                         self.last_tick_sec = curr_sec
-                        if self.sounds.get("tick"):
-                            try:
-                                self.sounds["tick"].play()
-                            except Exception:
-                                pass
                     if self.countdown_remaining <= 0.0:
-                        self.transition_to_state(STATE_SETTLEMENT)
+                        # 5-second scan finished — hold cart items ready for Cashier confirmation (do NOT auto-deduct)
+                        cnt = len(self.cart_items)
+                        self.status_message = f"🟢 Scanned {cnt} item(s) (₱{self.total_amount:.2f}) — Sent to Cashier POS"
+                        self.current_state = STATE_SCANNING
+                        self.notify_pos_update()
 
-            elif self.current_state == STATE_SETTLEMENT and (now - self.state_timer >= 4.0):
+            elif self.current_state == STATE_SETTLEMENT and (now - self.state_timer >= 3.0):
+                # 3-second thank-you screen then return to idle (clears cart for next customer)
                 self.transition_to_state(STATE_IDLE)
             elif self.current_state == STATE_ERROR and (now - self.state_timer >= 4.0):
                 self.transition_to_state(STATE_IDLE)
