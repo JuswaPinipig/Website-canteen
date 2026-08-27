@@ -7,8 +7,10 @@
       "role": "student",
       "student_id_number": "2023-01900",
       "rfid_uid": "9A-4F-21-C8",
-      "balance": 165.0,
-      "daily_limit": 200.0
+      "balance": 25.0,
+      "daily_limit": 200.0,
+      "pay_later_count": 2,
+      "pay_later_balance": 140.0
     },
     {
       "full_name": "Sophia Dela Cruz",
@@ -46,6 +48,60 @@
       "role": "student",
       "student_id_number": "2026-00001",
       "rfid_uid": "1A-2B-3C-4D",
+      "balance": 200.0,
+      "daily_limit": 200.0
+    },
+    {
+      "full_name": "Frieren Lupisan",
+      "email": "frierenlupi@sjc.edu.ph",
+      "role": "student",
+      "student_id_number": "2026-71249",
+      "rfid_uid": "0009401737",
+      "balance": 200.0,
+      "daily_limit": 200.0
+    },
+    {
+      "full_name": "Stark Aguilar",
+      "email": "StarkAg@sjc.edu.ph",
+      "role": "student",
+      "student_id_number": "2026-71797",
+      "rfid_uid": "0009458633",
+      "balance": 200.0,
+      "daily_limit": 200.0
+    },
+    {
+      "full_name": "Keith Canilang",
+      "email": "KeithC@sjc.edu.ph",
+      "role": "student",
+      "student_id_number": "2026-27168",
+      "rfid_uid": "0009631295",
+      "balance": 200.0,
+      "daily_limit": 200.0
+    },
+    {
+      "full_name": "Frieren Lupisan",
+      "email": "columbina23.4@gmail.com",
+      "role": "student",
+      "student_id_number": "2026-130130",
+      "rfid_uid": "0009401737 143, 30089",
+      "balance": 200.0,
+      "daily_limit": 200.0
+    },
+    {
+      "full_name": "Juan Student",
+      "email": "student@gmail.com",
+      "role": "student",
+      "student_id_number": "2026-00005",
+      "rfid_uid": "009631295",
+      "balance": 200.0,
+      "daily_limit": 200.0
+    },
+    {
+      "full_name": "Frieren Aguilar",
+      "email": "frierenaguilar@sjc.edu.ph",
+      "role": "student",
+      "student_id_number": "2026-68351",
+      "rfid_uid": "0009596092",
       "balance": 200.0,
       "daily_limit": 200.0
     }
