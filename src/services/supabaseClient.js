@@ -160,7 +160,7 @@
                 } catch (e) {
                     // Generate a client UUID for offline resilience
                     createdProduct = {
-                        id: cleanPayload.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'prod_' + Date.now()),
+                        id: cleanPayload.id || (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : '00000000-0000-4000-8000-' + Array.from({length: 12}, () => Math.floor(Math.random() * 16).toString(16)).join('')),
                         ...cleanPayload,
                         created_at: new Date().toISOString()
                     };
@@ -379,6 +379,63 @@
 
             // Fallback: Deduct items individually
             return await Promise.all(cleanItems.map(i => this.deductStockFifo(i.id, i.qty, i.name)));
+        },
+
+        async restoreCartStockFifo(cartItems) {
+            if (!cartItems || !cartItems.length) return { success: true };
+            const cleanItems = cartItems.map(item => ({
+                id: item.id || item.product_id,
+                qty: parseInt(item.qty || item.quantity) || 1,
+                name: item.name || item.product_name
+            }));
+
+            // 1. Restore local products catalog stock
+            const localProds = this.loadLocal('novalunch_products_catalog', []);
+            const updatedProds = localProds.map(p => {
+                const match = cleanItems.find(i => (i.id && (i.id === p.id)) || (i.name && p.name && i.name.toLowerCase() === p.name.toLowerCase()));
+                if (match) {
+                    return { ...p, stock: (p.stock || 0) + match.qty };
+                }
+                return p;
+            });
+            this.saveLocal('novalunch_products_catalog', updatedProds);
+
+            // 2. Restore local inventory batch quantities
+            const localBatches = this.loadLocal('novalunch_inventory_batches', []);
+            if (localBatches && localBatches.length > 0) {
+                let batchCopy = JSON.parse(JSON.stringify(localBatches));
+                for (const item of cleanItems) {
+                    let rem = item.qty;
+                    for (let b of batchCopy) {
+                        const isMatch = (item.id && b.product_id === item.id) || 
+                                        (item.name && (b.product_name || '').toLowerCase() === item.name.toLowerCase());
+                        if (isMatch && rem > 0) {
+                            b.quantity_remaining = (b.quantity_remaining || 0) + rem;
+                            if (b.status === 'DEPLETED') b.status = 'ACTIVE';
+                            rem = 0;
+                            break;
+                        }
+                    }
+                }
+                this.saveLocal('novalunch_inventory_batches', batchCopy);
+            }
+
+            // 3. Restore Supabase product stock if online
+            if (supabase) {
+                for (const item of cleanItems) {
+                    if (this.isUUID(item.id)) {
+                        try {
+                            const { data: prod } = await supabase.from('products').select('stock_quantity').eq('id', item.id).single();
+                            if (prod) {
+                                await supabase.from('products').update({ stock_quantity: (prod.stock_quantity || 0) + item.qty }).eq('id', item.id);
+                            }
+                        } catch (e) {
+                            console.warn("[CanteenDB] Supabase stock restore notice:", e);
+                        }
+                    }
+                }
+            }
+            return { success: true };
         },
 
         async deductStockFifo(productId, quantity, productName = null) {
@@ -706,23 +763,23 @@
         },
 
         async settleStudentDebt(userId, amountPaid, paymentMethod = 'cash', cashierId = null) {
-            if (supabase) {
+            const cleanAmount = parseFloat(amountPaid) || 0;
+            if (supabase && this.isUUID(userId)) {
                 try {
                     const { data, error } = await supabase.rpc('settle_pay_later_liability', {
-                        p_user_id: userId,
-                        p_amount: amountPaid,
-                        p_payment_method: paymentMethod.toLowerCase(),
-                        p_cashier_id: cashierId
+                        p_student_id: userId,
+                        p_repayment_amount: cleanAmount,
+                        p_payment_method: paymentMethod.toLowerCase()
                     });
-                    if (!error && data) return data;
+                    if (!error && data && data.success) return data;
                 } catch (e) {
-                    console.warn("RPC settle_pay_later_liability fallback", e);
+                    console.warn("[CanteenDB] RPC settle_pay_later_liability fallback:", e);
                 }
             }
             // Fallback update
             const wallet = await this.getWalletByUserId(userId).catch(() => null);
             const currentDebt = wallet ? (parseFloat(wallet.credit_liability) || 0) : 0;
-            const newDebt = Math.max(0, currentDebt - amountPaid);
+            const newDebt = Math.max(0, currentDebt - cleanAmount);
             await this.updateStudentCreditLiability(userId, newDebt);
             return { success: true, remaining_liability: newDebt };
         },
@@ -745,23 +802,36 @@
             }
 
             if (items && items.length > 0) {
-                const formattedItems = items.map(item => ({
-                    order_id: order.id,
-                    product_id: item.product_id && this.isUUID(item.product_id) ? item.product_id : null,
-                    product_name: item.product_name,
-                    unit_price: item.unit_price,
-                    quantity: item.quantity,
-                    subtotal: item.unit_price * item.quantity
-                }));
+                const formattedItems = items.map(item => {
+                    const unitPrice = parseFloat(item.unit_price || item.price) || 0;
+                    const qty = parseInt(item.quantity || item.qty) || 1;
+                    const totalPrice = parseFloat((unitPrice * qty).toFixed(2));
+                    return {
+                        order_id: order.id,
+                        product_id: item.product_id && this.isUUID(item.product_id) ? item.product_id : (item.id && this.isUUID(item.id) ? item.id : null),
+                        product_name: item.product_name || item.name || 'Menu Item',
+                        unit_price: unitPrice,
+                        quantity: qty,
+                        total_price: totalPrice,
+                        subtotal: totalPrice
+                    };
+                });
 
                 if (supabase) {
                     const { error: itemsErr } = await supabase.from('order_items').insert(formattedItems);
                     if (itemsErr) {
-                        console.error("Error inserting order items:", itemsErr);
+                        console.error("[CanteenDB] Error inserting order line items, rolling back order header:", itemsErr);
+                        await supabase.from('orders').delete().eq('id', order.id).catch(() => {});
                         throw new Error(`Failed to save order line items: ${itemsErr.message}`);
                     }
                 } else {
-                    await this._postREST('order_items', formattedItems);
+                    try {
+                        await this._postREST('order_items', formattedItems);
+                    } catch (restErr) {
+                        console.error("[CanteenDB] REST error inserting order items, rolling back order header:", restErr);
+                        await this._deleteREST(`orders?id=eq.${order.id}`).catch(() => {});
+                        throw restErr;
+                    }
                 }
             }
 
@@ -774,9 +844,11 @@
                 'pending': ['preparing', 'cancelled', 'completed'],
                 'preparing': ['ready', 'cancelled', 'completed'],
                 'ready': ['claimed', 'completed'],
-                'claimed': [],
-                'completed': [],
-                'cancelled': []
+                'claimed': ['voided', 'completed'],
+                'completed': ['voided', 'archived', 'cancelled'],
+                'voided': ['completed', 'pending'],
+                'archived': ['completed', 'pending'],
+                'cancelled': ['pending', 'completed']
             };
 
             if (currentStatus) {
@@ -858,9 +930,9 @@
                 console.warn("[registerUser] Phone number format looks unusual, proceeding anyway:", payload.phone);
             }
 
-            const fullName = payload.full_name || `${payload.first_name || payload.firstName || ''} ${payload.last_name || payload.lastName || ''}`.trim() || 'NovaLunch User';
+            const fullName = payload.full_name || payload.name || `${payload.first_name || payload.firstName || ''} ${payload.last_name || payload.lastName || ''}`.trim() || 'NovaLunch User';
             const role = (payload.role || 'student').toLowerCase();
-            const studentId = payload.student_id_number || payload.studentId || (role === 'student' ? `2026-${Math.floor(10000 + Math.random() * 90000)}` : null);
+            const studentId = payload.student_id_number || payload.studentId || (role === 'student' ? `SJC-${Math.floor(1000 + Math.random() * 9000)}` : (role === 'cashier' ? `POS-${Math.floor(10 + Math.random() * 90)}` : `PAR-${Math.floor(100 + Math.random() * 900)}`));
 
             const VALID_PROFILE_COLUMNS = new Set([
                 'id', 'full_name', 'email', 'role', 'student_id_number', 'rfid_uid', 'pin_code',
@@ -873,7 +945,7 @@
 
             const profileFields = {
                 full_name: fullName,
-                email: payload.email || `${(role || 'user')}_${Date.now()}@sjc.edu.ph`,
+                email: payload.email || `${(role || 'user')}_${Math.floor(1000 + Math.random() * 9000)}@sjc.edu.ph`,
                 role: role,
                 student_id_number: studentId,
                 rfid_uid: payload.rfid_uid || payload.rfidUid || null,
@@ -900,38 +972,48 @@
 
             let profile = null;
             if (supabase) {
-                const { data, error } = await supabase.from('profiles').insert([sanitizedFields]).select().single();
-                if (error) {
-                    if (error.code === '23505') {
-                        const detail = error.message || '';
-                        if (detail.includes('rfid_uid')) throw new Error('That RFID UID is already assigned to another account.');
-                        if (detail.includes('email')) throw new Error('That email address is already registered.');
-                        if (detail.includes('student_id_number')) throw new Error('That Student ID is already registered.');
-                        throw new Error(`Duplicate value detected: ${detail}`);
-                    }
-                    throw new Error(error.message || 'Database insertion failed.');
-                }
-                profile = data;
-
-                if (profile && payload.password) {
+                // 1. If password is provided, attempt auth.signUp first to satisfy foreign key REFERENCES auth.users(id)
+                if (payload.password && !sanitizedFields.id) {
                     try {
-                        const { error: authErr } = await supabase.auth.signUp({
+                        const { data: authData, error: authErr } = await supabase.auth.signUp({
                             email: sanitizedFields.email,
                             password: payload.password,
                             options: {
                                 data: {
                                     full_name: sanitizedFields.full_name,
-                                    role: sanitizedFields.role
-                                },
-                                emailRedirectTo: undefined
+                                    role: sanitizedFields.role,
+                                    student_id_number: sanitizedFields.student_id_number
+                                }
                             }
                         });
-                        if (authErr) {
-                            console.warn('[registerUser] Auth user creation warning:', authErr.message);
+                        if (!authErr && authData?.user?.id) {
+                            sanitizedFields.id = authData.user.id;
+                        } else if (authErr) {
+                            console.warn('[registerUser] Auth signUp notice:', authErr.message);
                         }
                     } catch (authEx) {
                         console.warn('[registerUser] Auth signUp exception:', authEx);
                     }
+                }
+
+                // 2. Insert or Upsert into public.profiles
+                try {
+                    const { data, error } = await supabase.from('profiles').upsert([sanitizedFields], { onConflict: 'id' }).select().single();
+                    if (!error && data) {
+                        profile = data;
+                    } else if (error) {
+                        if (error.code === '23505') {
+                            const detail = error.message || '';
+                            if (detail.includes('rfid_uid')) throw new Error('That RFID UID is already assigned to another account.');
+                            if (detail.includes('email')) throw new Error('That email address is already registered.');
+                            if (detail.includes('student_id_number')) throw new Error('That Student ID is already registered.');
+                            throw new Error(`Duplicate value detected: ${detail}`);
+                        }
+                        console.warn('[registerUser] profiles upsert warning, fallback to REST/Local:', error.message);
+                    }
+                } catch (profErr) {
+                    if (profErr.message && profErr.message.includes('Duplicate')) throw profErr;
+                    console.warn('[registerUser] profiles table error:', profErr);
                 }
             }
 
@@ -941,7 +1023,7 @@
                     if (res && res[0]) profile = res[0];
                 } catch (e) {
                     profile = {
-                        id: sanitizedFields.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'u_' + Date.now()),
+                        id: sanitizedFields.id || (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : '00000000-0000-4000-8000-' + Array.from({length: 12}, () => Math.floor(Math.random() * 16).toString(16)).join('')),
                         ...sanitizedFields,
                         created_at: new Date().toISOString()
                     };
@@ -949,8 +1031,8 @@
             }
 
             // Initialize wallet for students automatically
-            const initBal = typeof payload.balance === 'number' ? payload.balance : (parseFloat(payload.initial_balance || payload.balance) || 0.00);
-            const initLimit = typeof payload.dailyCap === 'number' ? payload.dailyCap : (parseFloat(payload.daily_limit || payload.dailyCap) || 200.00);
+            const initBal = typeof payload.balance === 'number' ? payload.balance : (parseFloat(payload.initialBalance || payload.initial_balance || payload.balance) || 0.00);
+            const initLimit = typeof payload.dailyCap === 'number' ? payload.dailyCap : (parseFloat(payload.initialDailyLimit || payload.daily_limit || payload.dailyCap) || 200.00);
 
             if (profile && profile.id) {
                 const walletPayload = {
@@ -979,15 +1061,18 @@
             const localUserObj = {
                 id: profile.id,
                 email: profile.email,
-                studentId: profile.student_id_number || studentId || "2026-00001",
+                studentId: profile.student_id_number || studentId || "SJC-1001",
+                student_id_number: profile.student_id_number || studentId || "SJC-1001",
                 name: profile.full_name,
                 role: role.charAt(0).toUpperCase() + role.slice(1),
                 rfidUid: profile.rfid_uid || "1A-2B-3C-4D",
                 dailyCap: initLimit,
+                daily_limit: initLimit,
                 balance: initBal,
                 status: profile.status || 'active',
                 allergies: profile.allergies || [],
                 pinCode: profile.pin_code || '1234',
+                created_at: profile.created_at || new Date().toISOString(),
                 creditLiability: profile.credit_liability || 0,
                 creditLimit: profile.credit_limit || 500,
                 maxDailyCalories: profile.max_daily_calories || 1800,
@@ -1251,7 +1336,7 @@
         },
 
         async updateUserDailyLimit(userId, newLimit) {
-            const cleanLimit = Math.max(0, parseFloat(newLimit) || 0);
+            const cleanLimit = Math.min(5000.00, Math.max(0.00, parseFloat(newLimit) || 0.00));
 
             // 1. Update local cache immediately
             const users = this.loadLocal('novalunch_registered_users', []);
@@ -1464,9 +1549,22 @@
         // PRE-ORDERS (TOKENLESS DIRECT RFID CONFIRMATION & ARCHIVING)
         // -------------------------------------------------------------------------
         async createPreorder(payload) {
-            const fallbackId = payload.id || `po_${Date.now()}`;
+            // Capacity guard: Check slot capacity before database insert mutation
+            const slotSession = payload.session || 'Lunch Break (12:00 PM)';
+            const existingPreorders = this.loadLocal('novalunch_preorders', []);
+            const activeForSlot = existingPreorders.filter(p => p.session === slotSession && !p.is_archived && p.status !== 'Cancelled');
+            const slotsCatalog = this.loadLocal('novalunch_preorder_slots', []);
+            const matchingSlot = slotsCatalog.find(s => s.slot_name === slotSession || s.name === slotSession);
+            const maxCapacity = matchingSlot ? (parseInt(matchingSlot.max_capacity || matchingSlot.max_orders) || 50) : 50;
+
+            if (activeForSlot.length >= maxCapacity) {
+                throw new Error(`Pre-order slot "${slotSession}" has reached maximum capacity (${maxCapacity} orders). Please select another session.`);
+            }
+
+            const fallbackId = payload.id || (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `po_${Date.now()}`);
             const cleanPayload = {
                 id: payload.id || fallbackId,
+                token: payload.token || `QR-2026-${Math.floor(1000 + Math.random() * 9000)}`,
                 student_id: payload.student_id || payload.studentId || null,
                 studentId: payload.studentId || payload.student_id || null,
                 student_id_number: payload.student_id_number || payload.studentIdNumber || null,
@@ -1654,11 +1752,15 @@
         // GCASH RELOAD QUEUE & TOP-UPS
         // -------------------------------------------------------------------------
         async submitGcashReload(payload) {
+            const cleanAmount = parseFloat(payload.amount);
+            if (isNaN(cleanAmount) || cleanAmount <= 0.00 || cleanAmount > 5000.00) {
+                throw new Error("Reload amount must be between ₱1.00 and ₱5,000.00.");
+            }
             const cleanPayload = {
                 student_id: payload.student_id || payload.studentId || null,
                 student_name: payload.student_name || payload.studentName || 'Student',
                 parent_name: payload.parent_name || payload.parent || null,
-                amount: parseFloat(payload.amount) || 0.0,
+                amount: cleanAmount,
                 reference_number: String(payload.ref_no || payload.reference_number || payload.refNo || '').trim(),
                 screenshot_url: payload.receipt_img || payload.screenshot_url || payload.receiptImg || null,
                 submitter_role: payload.submitter_role || 'student',
@@ -1670,20 +1772,34 @@
                 cleanPayload.id = payload.id;
             }
 
-            if (supabase) {
-                const { data, error } = await supabase.from('topup_requests').insert([cleanPayload]).select().single();
-                if (error) {
-                    console.error("[CanteenDB Critical Error] Failed to submit GCash reload request:", error);
-                    throw new Error(`Database error submitting top-up request: ${error.message}`);
+            let result = null;
+            if (supabase && cleanPayload.student_id && this.isUUID(cleanPayload.student_id)) {
+                try {
+                    const { data, error } = await supabase.from('topup_requests').insert([cleanPayload]).select().single();
+                    if (!error && data) result = data;
+                } catch (e) {
+                    console.warn("[CanteenDB] submitGcashReload supabase error:", e);
                 }
-                return data;
-            } else {
-                const res = await this._postREST('topup_requests', cleanPayload);
-                if (!res || !res.length) {
-                    throw new Error("Failed to submit top-up request via REST API.");
-                }
-                return res[0];
             }
+            if (!result) {
+                try {
+                    const res = await this._postREST('topup_requests', cleanPayload);
+                    if (res && res[0]) result = res[0];
+                } catch (e) {
+                    console.warn("[CanteenDB] submitGcashReload REST error:", e);
+                }
+            }
+            if (!result) {
+                result = {
+                    id: cleanPayload.id || `top_${Date.now()}`,
+                    ...cleanPayload,
+                    ref_no: cleanPayload.reference_number,
+                    refNo: cleanPayload.reference_number
+                };
+            }
+            const localQueue = this.loadLocal('novalunch_gcash_queue', []);
+            this.saveLocal('novalunch_gcash_queue', [result, ...localQueue.filter(q => q.id !== result.id)]);
+            return result;
         },
 
         async getGcashQueue() {
@@ -1978,9 +2094,9 @@
 
         async updateStudentFinancialCaps(studentId, { daily_limit, weekly_limit, credit_limit, pay_later_allowance, restricted_categories }) {
             const payload = {};
-            if (daily_limit !== undefined) payload.daily_limit = Math.max(0, parseFloat(daily_limit) || 0);
-            if (weekly_limit !== undefined) payload.weekly_limit = Math.max(0, parseFloat(weekly_limit) || 0);
-            if (credit_limit !== undefined) payload.credit_limit = Math.max(0, parseFloat(credit_limit) || 0);
+            if (daily_limit !== undefined) payload.daily_limit = Math.min(5000.00, Math.max(0.00, parseFloat(daily_limit) || 0.00));
+            if (weekly_limit !== undefined) payload.weekly_limit = Math.min(25000.00, Math.max(0.00, parseFloat(weekly_limit) || 0.00));
+            if (credit_limit !== undefined) payload.credit_limit = Math.min(5000.00, Math.max(0.00, parseFloat(credit_limit) || 0.00));
             if (pay_later_allowance !== undefined) payload.pay_later_allowance = Boolean(pay_later_allowance);
             if (restricted_categories !== undefined) payload.restricted_categories = Array.isArray(restricted_categories) ? restricted_categories : [];
             return await this.updateUser(studentId, payload);

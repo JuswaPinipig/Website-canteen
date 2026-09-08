@@ -169,6 +169,7 @@ class DatabaseManager:
         self._lock = threading.Lock()
         self._init_sqlite()
         self.sync_remote_accounts()
+        self.sync_remote_catalog()
         self.sync_worker = OfflineSyncWorker(self)
         self.sync_worker.start()
 
@@ -257,6 +258,35 @@ class DatabaseManager:
                             print(f"[DB MANAGER] ☁️ Synced {len(profiles)} accounts from Supabase cloud.")
             except Exception as e:
                 print(f"[DB NOTICE] Supabase sync deferred (offline/cached): {e}")
+        threading.Thread(target=_fetch, daemon=True).start()
+
+    def sync_remote_catalog(self):
+        def _fetch():
+            global POS_CATALOG_DATABASE
+            try:
+                url = f"{SUPABASE_URL}/rest/v1/products?select=id,name,category,price,stock,stock_quantity,is_available,available,status"
+                req = urllib.request.Request(url, headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {SUPABASE_ANON_KEY}"})
+                with urllib.request.urlopen(req, timeout=4) as resp:
+                    if resp.status == 200:
+                        products = json.loads(resp.read().decode('utf-8'))
+                        if products and isinstance(products, list):
+                            for p in products:
+                                name = p.get("name")
+                                if not name:
+                                    continue
+                                price = float(p.get("price", 35.0))
+                                stock = int(p.get("stock") or p.get("stock_quantity") or 50)
+                                cat = p.get("category", "MEAL")
+                                avail = p.get("available", p.get("is_available", True))
+                                stat = p.get("status", "active")
+                                entry = {"name": name, "category": cat, "price": price, "stock": stock, "available": avail, "status": stat}
+                                POS_CATALOG_DATABASE[name] = entry
+                                POS_CATALOG_DATABASE[name.lower()] = entry
+                                POS_CATALOG_DATABASE[name.replace(" ", "_")] = entry
+                                POS_CATALOG_DATABASE[name.lower().replace(" ", "_")] = entry
+                            print(f"[DB MANAGER] ☁️ Synced {len(products)} products from Supabase cloud catalog.")
+            except Exception as e:
+                print(f"[DB NOTICE] Remote catalog sync deferred: {e}")
         threading.Thread(target=_fetch, daemon=True).start()
 
     def find_student_by_rfid(self, raw_uid):
@@ -459,6 +489,7 @@ class OfflineSyncWorker(threading.Thread):
                     with urllib.request.urlopen(req, timeout=5) as resp:
                         if resp.status in (200, 201):
                             resp_body = resp.read().decode('utf-8')
+                            items_saved = True
                             try:
                                 created_data = json.loads(resp_body) if resp_body else []
                                 created_order = created_data[0] if isinstance(created_data, list) and created_data else (created_data if isinstance(created_data, dict) else {})
@@ -468,7 +499,9 @@ class OfflineSyncWorker(threading.Thread):
                                         "order_id": created_id,
                                         "product_name": itm.get("name", "Item"),
                                         "unit_price": float(itm.get("price", 0.0)),
-                                        "quantity": int(itm.get("qty", 1))
+                                        "quantity": int(itm.get("qty", 1)),
+                                        "total_price": round(float(itm.get("price", 0.0)) * int(itm.get("qty", 1)), 2),
+                                        "subtotal": round(float(itm.get("price", 0.0)) * int(itm.get("qty", 1)), 2)
                                     } for itm in items]
                                     items_req = urllib.request.Request(
                                         f"{SUPABASE_URL}/rest/v1/order_items",
@@ -480,14 +513,32 @@ class OfflineSyncWorker(threading.Thread):
                                         },
                                         method="POST"
                                     )
-                                    with urllib.request.urlopen(items_req, timeout=5):
-                                        pass
-                            except Exception:
-                                pass
+                                    with urllib.request.urlopen(items_req, timeout=5) as items_resp:
+                                        if items_resp.status not in (200, 201):
+                                            items_saved = False
+                            except Exception as items_ex:
+                                items_saved = False
+                                print(f"[EDGE SYNC] ⚠️ Order items push failed: {items_ex}")
 
-                            c.execute("UPDATE pending_transactions SET sync_status = 'SYNCED' WHERE transaction_id = ?", (tx_id,))
-                            conn.commit()
-                            print(f"[EDGE SYNC] ☁️ Replayed offline transaction to cloud: {tx_id}")
+                            # Cloud Wallet Deduction for offline RFID orders
+                            if user_uuid and pm == 'rfid':
+                                try:
+                                    rpc_url = f"{SUPABASE_URL}/rest/v1/rpc/deduct_wallet_balance"
+                                    rpc_req = urllib.request.Request(
+                                        rpc_url,
+                                        data=json.dumps({"p_user_id": user_uuid, "p_amount": float(total_amt)}).encode('utf-8'),
+                                        headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {SUPABASE_ANON_KEY}", "Content-Type": "application/json"},
+                                        method="POST"
+                                    )
+                                    with urllib.request.urlopen(rpc_req, timeout=4) as rpc_resp:
+                                        pass
+                                except Exception as rpc_err:
+                                    print(f"[EDGE SYNC] Wallet deduction notice: {rpc_err}")
+
+                            if items_saved:
+                                c.execute("UPDATE pending_transactions SET sync_status = 'SYNCED' WHERE transaction_id = ?", (tx_id,))
+                                conn.commit()
+                                print(f"[EDGE SYNC] ☁️ Replayed offline transaction to cloud: {tx_id}")
                 except urllib.error.HTTPError as http_err:
                     err_body = ""
                     try:
@@ -564,26 +615,40 @@ class CameraThread(threading.Thread):
             except Exception:
                 pass
         self.cap = None
-        print("[CAMERA] Running in High-Fidelity Synthetic Vision mode.")
+        self.simulation_enabled = False
+        print("[CAMERA] Running in Camera Sensor Standby mode.")
 
     def toggle_manual(self):
         with self.lock:
             self.manual_enabled = not self.manual_enabled
             return self.manual_enabled
 
+    def toggle_simulation(self):
+        with self.lock:
+            self.simulation_enabled = not getattr(self, 'simulation_enabled', False)
+            return self.simulation_enabled
+
     def _generate_synthetic_frame(self, angle_deg):
         h, w = 480, 640
-        canvas = np.full((h, w, 3), (30, 35, 45), dtype=np.uint8)
+        canvas = np.full((h, w, 3), (25, 30, 40), dtype=np.uint8)
 
         # Platform grid
         for x in range(0, w, 40):
-            cv2.line(canvas, (x, 0), (x, h), (45, 50, 65), 1)
+            cv2.line(canvas, (x, 0), (x, h), (38, 44, 58), 1)
         for y in range(0, h, 40):
-            cv2.line(canvas, (0, y), (w, y), (45, 50, 65), 1)
+            cv2.line(canvas, (0, y), (w, y), (38, 44, 58), 1)
 
         # Tray boundary
-        cv2.rectangle(canvas, (100, 70), (540, 410), (60, 65, 80), 2)
-        cv2.putText(canvas, "NOVALUNCH SCANNING ZONE (SYNTHETIC FEED)", (130, 95), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (160, 175, 200), 1)
+        cv2.rectangle(canvas, (100, 70), (540, 410), (55, 65, 85), 2)
+
+        if not getattr(self, 'simulation_enabled', False):
+            # Standby mode — safe, no phantom food detections
+            cv2.putText(canvas, "NOVALUNCH AI TRAY SCANNER - STANDBY", (140, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (140, 165, 200), 1)
+            cv2.putText(canvas, "Place meal tray under camera sensor", (155, 235), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (200, 220, 240), 1)
+            cv2.putText(canvas, "(Live Optical Sensor Ready)", (210, 265), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (100, 130, 160), 1)
+            return canvas, []
+
+        cv2.putText(canvas, "NOVALUNCH SCANNING ZONE (DEMO SIMULATION)", (130, 95), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (160, 175, 200), 1)
 
         # Sweeping cyan laser line
         sweep_y = int(80 + (320 * (math.sin(math.radians(angle_deg)) + 1.0) / 2.0))
@@ -793,15 +858,52 @@ class CameraThread(threading.Thread):
             self.cap.release()
 
 # ==============================================================================
-# AUDIO & SPEECH ANNOUNCEMENT ENGINE (MUTED)
+# AUDIO & SPEECH ANNOUNCEMENT ENGINE (SYNTHESIZED & PLATFORM TTS)
 # ==============================================================================
 def speak_text(text):
-    # Sounds and voice announcements muted per user kiosk setup
-    pass
+    if not text:
+        return
+    def _run_tts():
+        try:
+            import subprocess, platform
+            sys_os = platform.system()
+            clean_text = str(text).replace("'", "").replace('"', "")
+            if sys_os == "Darwin":
+                subprocess.run(["say", "-r", "190", clean_text], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4)
+            elif sys_os == "Linux":
+                subprocess.run(["espeak", "-s", "160", clean_text], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4)
+            elif sys_os == "Windows":
+                ps_script = f"Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('{clean_text}')"
+                subprocess.run(["powershell", "-NoProfile", "-Command", ps_script], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4)
+        except Exception:
+            pass
+    t = threading.Thread(target=_run_tts, daemon=True)
+    t.start()
 
 def create_synthesized_sounds():
-    # Sound effects disabled per user kiosk setup
-    return {"success": None, "tick": None}
+    try:
+        if not pygame.mixer.get_init():
+            pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
+        
+        sample_rate = 44100
+        # Tick beep (880 Hz, 60ms)
+        n_samples_tick = int(sample_rate * 0.06)
+        t_tick = np.linspace(0, 0.06, n_samples_tick, endpoint=False)
+        wave_tick = (0.25 * np.sin(2 * np.pi * 880 * t_tick) * 32767).astype(np.int16)
+        stereo_tick = np.column_stack((wave_tick, wave_tick))
+        tick_sound = pygame.sndarray.make_sound(stereo_tick)
+
+        # Success chime (587 Hz -> 880 Hz, 160ms)
+        n_samples_succ = int(sample_rate * 0.16)
+        t_succ = np.linspace(0, 0.16, n_samples_succ, endpoint=False)
+        freq_ramp = np.linspace(587.33, 880.0, n_samples_succ)
+        wave_succ = (0.30 * np.sin(2 * np.pi * freq_ramp * t_succ) * 32767).astype(np.int16)
+        stereo_succ = np.column_stack((wave_succ, wave_succ))
+        succ_sound = pygame.sndarray.make_sound(stereo_succ)
+
+        return {"success": succ_sound, "tick": tick_sound}
+    except Exception as e:
+        return {"success": None, "tick": None}
 
 # ==============================================================================
 # REAL-TIME KIOSK HTTP REST & SERVER-SENT EVENTS (SSE) SERVER (PORT 8085)
@@ -1044,16 +1146,33 @@ class KioskHTTPRequestHandler(BaseHTTPRequestHandler):
                 action = req_data.get("action", "")
                 if _GLOBAL_KIOSK_REF is not None:
                     if action == "reset":
+                        _GLOBAL_KIOSK_REF.cart_manual_override_lock = False
                         _GLOBAL_KIOSK_REF.transition_to_state(STATE_IDLE)
                     elif action == "scan":
                         _GLOBAL_KIOSK_REF.execute_simulation_step(2)
                     elif action == "pay":
+                        _GLOBAL_KIOSK_REF.cart_manual_override_lock = False
                         _GLOBAL_KIOSK_REF.execute_simulation_step(4)
                     elif action == "pay_later":
+                        _GLOBAL_KIOSK_REF.cart_manual_override_lock = False
                         _GLOBAL_KIOSK_REF.execute_pay_later_checkout()
+                    elif action == "update_cart":
+                        new_cart = req_data.get("cart", [])
+                        _GLOBAL_KIOSK_REF.cart_items = new_cart
+                        _GLOBAL_KIOSK_REF.cart_manual_override_lock = True
+                        _GLOBAL_KIOSK_REF.total_amount = sum(float(item.get("price", 0)) * int(item.get("qty", 1)) for item in new_cart)
+                        _GLOBAL_KIOSK_REF.notify_pos_update()
                     elif action in ["confirm_payment", "complete_checkout"]:
+                        _GLOBAL_KIOSK_REF.cart_manual_override_lock = False
                         st = req_data.get("student")
                         amt = float(req_data.get("amount", _GLOBAL_KIOSK_REF.total_amount))
+                        passed_cart = req_data.get("cart")
+                        if passed_cart and isinstance(passed_cart, list):
+                            _GLOBAL_KIOSK_REF.cart_items = passed_cart
+                        
+                        order_number = req_data.get("order_number") or req_data.get("orderNo")
+                        is_synced = req_data.get("synced_cloud", False)
+
                         if st and isinstance(st, dict):
                             student_id = st.get("studentId") or st.get("student_id_number") or st.get("id", "STU-2026")
                             student_name = st.get("name") or st.get("full_name", "Student")
@@ -1069,14 +1188,22 @@ class KioskHTTPRequestHandler(BaseHTTPRequestHandler):
                             }
                             # Deduct balance in local database cache
                             _GLOBAL_KIOSK_REF.db_manager.deduct_student_balance(student_id, amt)
-                            tx_id = f"TXN_{int(time.time())}_{student_id.replace('-', '')}"
+                            tx_id = order_number or f"TXN_{int(time.time())}_{student_id.replace('-', '')}"
                             _GLOBAL_KIOSK_REF.db_manager.record_transaction(
                                 tx_id, student_id, _GLOBAL_KIOSK_REF.cart_items, amt,
                                 _GLOBAL_KIOSK_REF.latest_tray_image, payment_method="rfid"
                             )
+                            if is_synced:
+                                try:
+                                    conn = sqlite3.connect(_GLOBAL_KIOSK_REF.db_manager.sqlite_path)
+                                    conn.execute("UPDATE pending_transactions SET sync_status = 'SYNCED' WHERE transaction_id = ?", (tx_id,))
+                                    conn.commit()
+                                    conn.close()
+                                except Exception:
+                                    pass
 
                         _GLOBAL_KIOSK_REF.total_amount = amt
-                        _GLOBAL_KIOSK_REF.status_message = "Payment have been confirmed please claim your order."
+                        _GLOBAL_KIOSK_REF.status_message = "Payment confirmed. Please claim your meal."
                         _GLOBAL_KIOSK_REF.current_state = STATE_SETTLEMENT
                         _GLOBAL_KIOSK_REF.state_timer = time.time()
                         _GLOBAL_KIOSK_REF.notify_pos_update()
@@ -1154,19 +1281,19 @@ class NovaLunchKioskGUI:
             except Exception:
                 pass
 
-        # Typography System
-        self.font_brand_sub = pygame.font.SysFont("Helvetica Neue", 11, bold=True)
-        self.font_title = pygame.font.SysFont("Helvetica Neue", 20, bold=True)
-        self.font_subtitle = pygame.font.SysFont("Helvetica Neue", 13)
-        self.font_subtitle_bold = pygame.font.SysFont("Helvetica Neue", 13, bold=True)
-        self.font_header = pygame.font.SysFont("Helvetica Neue", 16, bold=True)
-        self.font_body = pygame.font.SysFont("Helvetica Neue", 14)
-        self.font_body_bold = pygame.font.SysFont("Helvetica Neue", 14, bold=True)
-        self.font_large = pygame.font.SysFont("Helvetica Neue", 28, bold=True)
-        self.font_footer = pygame.font.SysFont("Helvetica Neue", 12)
-        self.font_timer_large = pygame.font.SysFont("Helvetica Neue", 34, bold=True)
-        self.font_timer_badge = pygame.font.SysFont("Helvetica Neue", 13, bold=True)
-        self.font_badge = pygame.font.SysFont("Helvetica Neue", 12, bold=True)
+        # Distance-Legible Typography System (Optimized for 2–3 ft standing distance)
+        self.font_brand_sub = pygame.font.SysFont("Helvetica Neue", 13, bold=True)
+        self.font_title = pygame.font.SysFont("Helvetica Neue", 22, bold=True)
+        self.font_subtitle = pygame.font.SysFont("Helvetica Neue", 15)
+        self.font_subtitle_bold = pygame.font.SysFont("Helvetica Neue", 15, bold=True)
+        self.font_header = pygame.font.SysFont("Helvetica Neue", 18, bold=True)
+        self.font_body = pygame.font.SysFont("Helvetica Neue", 16)
+        self.font_body_bold = pygame.font.SysFont("Helvetica Neue", 16, bold=True)
+        self.font_large = pygame.font.SysFont("Helvetica Neue", 32, bold=True)
+        self.font_footer = pygame.font.SysFont("Helvetica Neue", 13)
+        self.font_timer_large = pygame.font.SysFont("Helvetica Neue", 38, bold=True)
+        self.font_timer_badge = pygame.font.SysFont("Helvetica Neue", 14, bold=True)
+        self.font_badge = pygame.font.SysFont("Helvetica Neue", 13, bold=True)
 
         # State Variables
         self.current_state = STATE_IDLE
@@ -1177,6 +1304,7 @@ class NovaLunchKioskGUI:
         self.state_timer = 0.0
         self.status_message = "Welcome to NovaLunch! Tap Student RFID Card to begin."
         self.latest_tray_image = ""
+        self.cart_manual_override_lock = False
 
         # Stability & Motion
         self.countdown_remaining = 5.0
@@ -1295,6 +1423,7 @@ class NovaLunchKioskGUI:
             self.greet_audio_spoken = False
             self.stable_start_time = 0.0
             self.last_detection_hash = ""
+            self.cart_manual_override_lock = False
             self.status_message = "Welcome to NovaLunch! Tap Student RFID Card to begin."
 
         elif new_state == STATE_PREORDER_ANNOUNCEMENT:
@@ -1373,6 +1502,21 @@ class NovaLunchKioskGUI:
         if not self.active_student or self.total_amount <= 0:
             return
 
+        # Check if Pay Later is permitted for this student
+        if self.active_student.get("pay_later_allowance") is False or self.active_student.get("pay_later_pre_authorized") is False:
+            self.status_message = "🚫 PAY LATER DISABLED — PARENT/ADMIN PERMISSION REQUIRED"
+            speak_text("Pay later is disabled for this account. Please settle with cash or card reload.")
+            self.notify_pos_update()
+            return
+
+        # Check ₱1,000 credit ceiling
+        cur_liability = float(self.active_student.get("pay_later_balance", 0.0) or self.active_student.get("credit_liability", 0.0))
+        if cur_liability + self.total_amount > 1000.0:
+            self.status_message = "🚫 PAY LATER CEILING REACHED (₱1,000 MAX) — SETTLEMENT REQUIRED"
+            speak_text("Credit limit exceeded. Please settle account balance at cashier.")
+            self.notify_pos_update()
+            return
+
         # Check 5x Pay Later limit per student
         current_pay_later_count = self.active_student.get("pay_later_count", 0)
         if current_pay_later_count >= 5:
@@ -1385,7 +1529,7 @@ class NovaLunchKioskGUI:
         tx_id = f"TXN_PAYLATER_{int(time.time())}_{student_id.replace('-', '')}"
 
         self.active_student["pay_later_count"] = current_pay_later_count + 1
-        self.active_student["pay_later_balance"] = self.active_student.get("pay_later_balance", 0.0) + self.total_amount
+        self.active_student["pay_later_balance"] = cur_liability + self.total_amount
 
         # Persist updated pay-later count & liability to accounts cache
         students = self.db_manager.load_accounts()
@@ -1393,6 +1537,7 @@ class NovaLunchKioskGUI:
             if s.get("student_id_number") == student_id or s.get("id") == student_id:
                 s["pay_later_count"] = self.active_student["pay_later_count"]
                 s["pay_later_balance"] = self.active_student["pay_later_balance"]
+                s["credit_liability"] = self.active_student["pay_later_balance"]
                 break
         self.db_manager.save_accounts(students)
 
@@ -1415,9 +1560,18 @@ class NovaLunchKioskGUI:
                 return  # Hardware debounce
             self.rfid_anti_passback_cache[clean] = now
 
+            # Prevent mid-transaction overwrite by another card during active countdown
+            if self.current_state in [STATE_STABILITY_COUNTDOWN, STATE_SETTLEMENT] and self.active_student:
+                active_uid = str(self.active_student.get("rfidUid") or self.active_student.get("rfid_uid") or "").strip()
+                if active_uid and clean != active_uid:
+                    self.status_message = "⚠️ TRANSACTION IN PROGRESS — PLEASE WAIT FOR PREVIOUS ORDER"
+                    self.notify_pos_update()
+                    return
+
             student = self.db_manager.find_student_by_rfid(clean)
             if student:
                 self.active_student = student
+                self.cart_manual_override_lock = False
                 bal = float(student.get("balance", 0.0))
                 if bal <= 0:
                     self.status_message = f"⚠️ Low/Zero Balance (₱{bal:.2f}). You may use Pay Later at Cashier."
@@ -1434,15 +1588,18 @@ class NovaLunchKioskGUI:
                 self.transition_to_state(STATE_ERROR)
             return
 
-        # Keyboard/simulation advance
-        if self.current_state in [STATE_IDLE, STATE_ERROR]:
-            self.execute_simulation_step(1)
+        # Keyboard / simulation step navigation (requires explicit simulation advance)
+        if self.current_state == STATE_IDLE:
+            self.status_message = "⚠️ Please tap an RFID badge to begin transaction."
+            self.notify_pos_update()
+        elif self.current_state == STATE_ERROR:
+            self.transition_to_state(STATE_IDLE)
         elif self.current_state == STATE_PREORDER_ANNOUNCEMENT:
             self.transition_to_state(STATE_GREET)
         elif self.current_state == STATE_GREET:
-            self.execute_simulation_step(2)
+            self.transition_to_state(STATE_SCANNING)
         elif self.current_state == STATE_SCANNING:
-            self.execute_simulation_step(3)
+            self.transition_to_state(STATE_STABILITY_COUNTDOWN)
         elif self.current_state == STATE_STABILITY_COUNTDOWN:
             self.transition_to_state(STATE_SCANNING)
         elif self.current_state == STATE_SETTLEMENT:
@@ -1994,10 +2151,13 @@ class NovaLunchKioskGUI:
                         self.execute_simulation_step(4)
                     elif event.key == pygame.K_c:
                         self.camera_thread.toggle_manual()
+                    elif event.key == pygame.K_d:
+                        sim_state = self.camera_thread.toggle_simulation()
+                        self.status_message = f"Demo Synthetic AI Simulation: {'ENABLED' if sim_state else 'DISABLED'}"
 
-                    if event.unicode and (event.unicode.isalnum() or event.unicode in ['-', '_']):
+                    if event.unicode and (event.unicode.isalnum() or event.unicode in ['-', '_', ':']):
                         now = time.time()
-                        if now - self.last_key_time > 0.4:
+                        if now - self.last_key_time > 1.2:
                             self.rfid_scan_buffer = ""
                         self.rfid_scan_buffer += event.unicode
                         self.last_key_time = now
@@ -2029,7 +2189,7 @@ class NovaLunchKioskGUI:
             elif self.current_state in [STATE_GREET, STATE_SCANNING]:
                 if now - self.state_timer >= 20.0:
                     self.transition_to_state(STATE_IDLE)
-                else:
+                elif not self.cart_manual_override_lock:
                     live_items = self.camera_thread.get_latest_detections()
                     if live_items:
                         agg_items = aggregate_detections(live_items)

@@ -4,3 +4,10 @@ __pycache__/
 *.pyc
 .DS_Store
 Website-canteen/
+
+# Local SQLite Edge Databases
+*.db
+*.db-shm
+*.db-wal
+src/database/*.db*
+database/*.db*
