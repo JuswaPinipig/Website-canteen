@@ -2980,14 +2980,10 @@
                                         </div>
                                     </div>
                                 </div>
-                                <div className="pt-2 border-t border-white/[0.08] flex items-center justify-between">
+                                <div className="pt-2 border-t border-white/[0.08] flex items-center">
                                     <span className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold border flex items-center gap-1.5 ${roleBadge.style}`}>
                                         <RoleBadgeIcon className="w-3 h-3" />
                                         {roleBadge.label}
-                                    </span>
-                                    <span className="text-[10px] font-mono text-emerald-400 font-semibold flex items-center gap-1">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                                        Live
                                     </span>
                                 </div>
                             </div>
@@ -3102,24 +3098,8 @@
 
                         {/* PINNED FOOTER CONTROLS */}
                         <div className="p-3.5 border-t border-white/[0.12] space-y-2 shrink-0 bg-black/50">
-                            <div className="flex items-center justify-between text-[10.5px]">
-                                {isCloudConnected ? (
-                                    <button
-                                        type="button"
-                                        onClick={onRefreshCloud}
-                                        className="min-h-[32px] text-emerald-300 bg-emerald-950/50 border border-emerald-500/30 px-2.5 py-1 rounded-xl flex items-center gap-1.5 font-mono font-semibold transition-all hover:bg-emerald-900/60 cursor-pointer sidebar-focus-ring"
-                                        title="Connected to Supabase PostgreSQL Database"
-                                    >
-                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                                        <span>Cloud Active</span>
-                                    </button>
-                                ) : (
-                                    <span className="min-h-[32px] text-slate-300 bg-slate-900/80 border border-white/20 px-2.5 py-1 rounded-xl font-mono font-semibold flex items-center gap-1.5">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                                        <span>Local Mode</span>
-                                    </span>
-                                )}
-                                <span className="text-white/50 font-mono text-[10px]">v2026.4</span>
+                            <div className="flex items-center justify-end text-[10.5px]">
+                                <span className="text-white/40 font-mono text-[10px]">v2026.4</span>
                             </div>
 
                             <button
@@ -9477,21 +9457,6 @@
                                         <h1 className="font-outfit text-2xl lg:text-3xl font-bold text-slate-900">
                                             Hello, <span className="text-brand-700">{studentName}</span>
                                         </h1>
-                                        {isCloudConnected ? (
-                                            <Tooltip text="Connected to Saint Joseph College Live Cloud Database" position="bottom">
-                                                <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-2xs cursor-help">
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                                                    Cloud Active
-                                                </span>
-                                            </Tooltip>
-                                        ) : (
-                                            <Tooltip text="Running in High-Speed Local Cache Mode" position="bottom">
-                                                <span className="bg-slate-100 text-slate-600 border border-slate-200 text-[10px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 cursor-help">
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-                                                    Local Mode
-                                                </span>
-                                            </Tooltip>
-                                        )}
                                     </div>
                                     <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
                                         <span className="font-medium">Student ID: <strong className="text-slate-800">{studentIdNum}</strong></span>
@@ -13891,12 +13856,7 @@
                                     {isSyncingOffline ? "Syncing..." : offlineQueueCount > 0 ? `Sync (${offlineQueueCount} Pending)` : "Online & Synced"}
                                 </button>
 
-                                <button
-                                    onClick={() => setReconcileModalOpen(true)}
-                                    className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-amber-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
-                                >
-                                    <Icon.FileText className="w-3.5 h-3.5 text-amber-400" /> End Shift Z-Read
-                                </button>
+
                             </div>
                         </header>
 
