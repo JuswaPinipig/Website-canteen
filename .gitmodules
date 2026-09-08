@@ -1,0 +1,3 @@
+# Git submodules configuration
+# The ui-ux-pro-max submodule has been removed as it was not configured with a valid URL.
+# If you need to re-add a submodule, use: git submodule add <repository-url> <path>
