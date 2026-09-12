@@ -472,6 +472,8 @@ class OfflineSyncWorker(threading.Thread):
                 }
                 if user_uuid:
                     order_payload["user_id"] = user_uuid
+                if matched_st:
+                    order_payload["student_name"] = matched_st.get("full_name") or matched_st.get("name") or "Student Member"
 
                 try:
                     url = f"{SUPABASE_URL}/rest/v1/orders"

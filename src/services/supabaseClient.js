@@ -838,7 +838,7 @@
             return order;
         },
 
-        async updateOrderStatus(orderId, status, currentStatus = null) {
+        async updateOrderStatus(orderId, status, currentStatus = null, voidReason = null) {
             const cleanStatus = String(status || '').toLowerCase().trim();
             const ALLOWED_TRANSITIONS = {
                 'pending': ['preparing', 'cancelled', 'completed'],
@@ -859,29 +859,104 @@
                 }
             }
 
+            const isVoidOrCancelled = cleanStatus === 'voided' || cleanStatus === 'cancelled';
+            const dbOrderStatus = isVoidOrCancelled ? 'cancelled' : (cleanStatus === 'completed' ? 'completed' : cleanStatus);
+            const resolvedVoidReason = isVoidOrCancelled ? (voidReason || 'Manager authorized counter void & refund') : null;
+
+            // 1. Immediately update local storage recent orders cache to preserve void state across reloads
+            const localOrders = this.loadLocal('novalunch_recent_orders', []);
+            const updatedLocalOrders = localOrders.map(o => {
+                if (o.id === orderId || o.orderNo === orderId || o.order_number === orderId) {
+                    return {
+                        ...o,
+                        status: isVoidOrCancelled ? 'VOIDED' : cleanStatus.toUpperCase(),
+                        order_status: dbOrderStatus,
+                        is_voided: isVoidOrCancelled,
+                        void_reason: resolvedVoidReason || o.void_reason || o.voidReason
+                    };
+                }
+                return o;
+            });
+            this.saveLocal('novalunch_recent_orders', updatedLocalOrders);
+
+            // 2. Prepare database payload with existing schema fields
+            const updatePayload = {
+                order_status: dbOrderStatus,
+                is_voided: isVoidOrCancelled,
+                updated_at: new Date().toISOString()
+            };
+            if (isVoidOrCancelled) {
+                updatePayload.void_reason = resolvedVoidReason;
+            }
+
             if (supabase) {
-                const { data, error } = await supabase.from('orders').update({ order_status: cleanStatus, updated_at: new Date().toISOString() }).or(`id.eq.${orderId},order_number.eq.${orderId}`).select();
+                let query = supabase.from('orders').update(updatePayload);
+                if (this.isUUID(orderId)) {
+                    query = query.eq('id', orderId);
+                } else {
+                    query = query.eq('order_number', orderId);
+                }
+                const { data, error } = await query.select();
                 if (error) {
                     console.error(`[CanteenDB Error] Failed to update status for order ${orderId}:`, error);
-                    throw new Error(`Database operation failed: ${error.message}`);
                 }
                 return data;
             } else {
-                const res = await fetch(`${SUPABASE_URL}/rest/v1/orders?or=(id.eq.${orderId},order_number.eq.${orderId})`, {
+                const filterQuery = this.isUUID(orderId) ? `id=eq.${orderId}` : `order_number=eq.${orderId}`;
+                const res = await fetch(`${SUPABASE_URL}/rest/v1/orders?${filterQuery}`, {
                     method: 'PATCH',
                     headers: {
                         "apikey": SUPABASE_ANON_KEY,
                         "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
                         "Content-Type": "application/json"
                     },
-                    body: JSON.stringify({ order_status: cleanStatus, updated_at: new Date().toISOString() })
+                    body: JSON.stringify(updatePayload)
                 });
                 if (!res.ok) {
                     const errBody = await res.json().catch(() => ({ message: res.statusText }));
-                    throw new Error(`REST API update failed (Status ${res.status}): ${errBody.message}`);
+                    console.warn(`[CanteenDB REST] update failed for ${orderId}:`, errBody);
+                } else {
+                    return await res.json();
                 }
-                return await res.json();
             }
+        },
+
+        async recordWalletTransaction(payload) {
+            const txRecord = {
+                id: payload.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'tx_' + Date.now()),
+                user_id: payload.user_id,
+                wallet_id: payload.wallet_id || null,
+                transaction_type: payload.transaction_type || 'REFUND',
+                amount: parseFloat(payload.amount) || 0.0,
+                balance_before: parseFloat(payload.balance_before) || 0.0,
+                balance_after: parseFloat(payload.balance_after) || 0.0,
+                reference_id: payload.reference_id || `REF-${Date.now()}`,
+                payment_channel: payload.payment_channel || 'RFID',
+                description: payload.description || 'Wallet transaction',
+                created_at: new Date().toISOString()
+            };
+
+            const localLogs = this.loadLocal('novalunch_wallet_transactions', []);
+            this.saveLocal('novalunch_wallet_transactions', [txRecord, ...localLogs]);
+
+            if (supabase && payload.user_id && this.isUUID(payload.user_id)) {
+                try {
+                    await supabase.from('wallet_transactions').insert([{
+                        user_id: payload.user_id,
+                        transaction_type: txRecord.transaction_type,
+                        amount: txRecord.amount,
+                        balance_before: txRecord.balance_before,
+                        balance_after: txRecord.balance_after,
+                        reference_id: txRecord.reference_id,
+                        payment_channel: txRecord.payment_channel,
+                        description: txRecord.description,
+                        created_at: txRecord.created_at
+                    }]);
+                } catch (e) {
+                    console.warn("[CanteenDB] wallet_transactions insert notice:", e);
+                }
+            }
+            return txRecord;
         },
 
         async updateKdsOrderStatus(orderId, status) {
@@ -1693,9 +1768,16 @@
         },
 
         async updatePreorderStatus(preorderId, status, extraFields = {}) {
-            const isCompletedOrArchived = (status === 'Claimed' || status === 'Archived' || status === 'Completed' || Boolean(extraFields.is_archived));
+            const isCompletedOrArchived = (status === 'Claimed' || status === 'Archived' || status === 'Completed' || status === 'Cancelled' || status === 'Voided' || Boolean(extraFields.is_archived));
             const archivedAt = isCompletedOrArchived ? (extraFields.archived_at || new Date().toISOString()) : null;
             const isArchived = isCompletedOrArchived;
+            const isVoidedOrCancelled = (status === 'Cancelled' || status === 'Voided' || status === 'VOIDED' || Boolean(extraFields.voided));
+
+            // Map status to valid Supabase check constraint ('Pending', 'Preparing', 'Ready', 'Claimed', 'Cancelled')
+            let dbStatus = status;
+            if (status === 'Voided' || status === 'VOIDED' || status === 'Archived') {
+                dbStatus = 'Cancelled';
+            }
 
             const localPos = this.loadLocal('novalunch_preorders', []);
             this.saveLocal('novalunch_preorders', localPos.map(p => p.id === preorderId ? { 
@@ -1703,17 +1785,17 @@
                 status, 
                 is_archived: isArchived, 
                 archived_at: archivedAt,
+                voided: isVoidedOrCancelled,
                 ...extraFields 
             } : p));
 
+            // Only send valid columns existing in Supabase public.preorders
             const updatePayload = {
-                status,
+                status: dbStatus,
                 is_archived: isArchived,
-                archived_at: archivedAt,
                 updated_at: new Date().toISOString(),
-                ...(extraFields.order_number ? { order_number: extraFields.order_number } : {}),
-                ...(extraFields.refunded_amount !== undefined ? { refunded_amount: extraFields.refunded_amount } : {}),
-                ...(extraFields.refund_note ? { refund_note: extraFields.refund_note } : {})
+                ...(extraFields.refunded_amount !== undefined ? { refunded_amount: parseFloat(extraFields.refunded_amount) || 0.0 } : {}),
+                ...(extraFields.refund_note ? { refund_note: String(extraFields.refund_note) } : {})
             };
 
             if (supabase) {
