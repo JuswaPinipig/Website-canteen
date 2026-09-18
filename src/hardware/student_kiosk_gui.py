@@ -575,15 +575,28 @@ def get_yolo_model(pt_path="src/assets/models/novalunch_yolo.pt"):
     if YOLO_ATTEMPTED:
         return None
     YOLO_ATTEMPTED = True
-    if not os.path.exists(pt_path) and os.path.exists("novalunch_yolo.pt"):
-        pt_path = "novalunch_yolo.pt"
-    if os.path.exists(pt_path):
+
+    candidates = [
+        pt_path,
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "models", "novalunch_yolo.pt"),
+        os.path.join(os.getcwd(), "src", "assets", "models", "novalunch_yolo.pt"),
+        "novalunch_yolo.pt"
+    ]
+    resolved_path = None
+    for p in candidates:
+        if p and os.path.exists(p):
+            resolved_path = p
+            break
+
+    if resolved_path:
         try:
             from ultralytics import YOLO
-            YOLO_MODEL = YOLO(pt_path)
-            print(f"[AI VISION] 🟢 Ultralytics YOLO model loaded: {pt_path}")
+            YOLO_MODEL = YOLO(resolved_path)
+            print(f"[AI VISION] 🟢 Ultralytics YOLO model loaded: {resolved_path}")
         except Exception as e:
             print(f"[AI VISION WARN] YOLO load error: {e}")
+    else:
+        print("[AI VISION WARN] YOLO model weights not found in standard asset paths.")
     return YOLO_MODEL
 
 class CameraThread(threading.Thread):
@@ -611,14 +624,15 @@ class CameraThread(threading.Thread):
                     ret, f = c.read()
                     if ret and f is not None:
                         self.cap = c
+                        self.simulation_enabled = False
                         print(f"[CAMERA] 🟢 Hardware stream initialized on index {idx}.")
                         return
                     c.release()
             except Exception:
                 pass
         self.cap = None
-        self.simulation_enabled = False
-        print("[CAMERA] Running in Camera Sensor Standby mode.")
+        self.simulation_enabled = True
+        print("[CAMERA] 🟢 Hardware camera not detected. Running with Synthetic AI Simulation.")
 
     def toggle_manual(self):
         with self.lock:
@@ -708,7 +722,7 @@ class CameraThread(threading.Thread):
                         if model is not None:
                             self.ai_engine_name = "YOLO11-OBB Vision"
                             try:
-                                results = model(frame, conf=0.30, verbose=False)
+                                results = model(frame, imgsz=640, conf=0.20, verbose=False)
                                 for r in results:
                                     # 1. Check for OBB (Oriented Bounding Box) predictions (novalunch_yolo.pt is yolo11n-obb)
                                     obb_data = getattr(r, 'obb', None)
@@ -765,28 +779,38 @@ class CameraThread(threading.Thread):
                                                 "conf": conf
                                             })
                             except Exception as e:
-                                pass
+                                print(f"[AI VISION WARN] Detection inference error: {e}")
 
-                        # Optional fallback when no YOLO model is loaded at all
-                        if model is None and not detections:
-                            self.ai_engine_name = "Native Vision"
-                            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                            _, thresh = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-                            contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                            valid = [c for c in contours if cv2.contourArea(c) > 6000]
-                            for i, c in enumerate(valid[:2]):
-                                x, y, bw, bh = cv2.boundingRect(c)
-                                detections.append({
-                                    "id": f"contour-{i}",
-                                    "ai_label": "tray_item",
-                                    "name": f"Scanned Item #{i+1}",
-                                    "category": "ITEM",
-                                    "qty": 1,
-                                    "price": 35.00,
-                                    "stock": 50,
-                                    "bbox": [x, y, bw, bh],
-                                    "conf": 0.80
-                                })
+                        # Optical contour fallback for general food items placed on counter
+                        if not detections:
+                            try:
+                                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                                blurred = cv2.GaussianBlur(gray, (7, 7), 0)
+                                _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+                                contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                                min_area = (w_f * h_f) * 0.02
+                                max_area = (w_f * h_f) * 0.65
+                                valid = [c for c in contours if min_area < cv2.contourArea(c) < max_area]
+                                for i, c in enumerate(valid[:2]):
+                                    x, y, bw, bh = cv2.boundingRect(c)
+                                    # Ensure item is reasonably within counter scanning zone
+                                    if x > w_f * 0.05 and (x + bw) < w_f * 0.95 and y > h_f * 0.05:
+                                        detections.append({
+                                            "id": f"contour-{i}",
+                                            "ai_label": "tray_item",
+                                            "name": f"Scanned Meal Item #{i+1}",
+                                            "category": "MEAL",
+                                            "qty": 1,
+                                            "price": 35.00,
+                                            "stock": 50,
+                                            "is_near_expiry": False,
+                                            "bbox": [x, y, bw, bh],
+                                            "conf": 0.82
+                                        })
+                                if detections and model is None:
+                                    self.ai_engine_name = "Native Vision"
+                            except Exception:
+                                pass
 
                         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                         self.null_frame_count = 0
@@ -1161,8 +1185,24 @@ class KioskHTTPRequestHandler(BaseHTTPRequestHandler):
                     elif action == "update_cart":
                         new_cart = req_data.get("cart", [])
                         _GLOBAL_KIOSK_REF.cart_items = new_cart
-                        _GLOBAL_KIOSK_REF.cart_manual_override_lock = True
+                        _GLOBAL_KIOSK_REF.cart_manual_override_lock = bool(new_cart)
                         _GLOBAL_KIOSK_REF.total_amount = sum(float(item.get("price", 0)) * int(item.get("qty", 1)) for item in new_cart)
+                        st_payload = req_data.get("student")
+                        if st_payload and isinstance(st_payload, dict):
+                            _GLOBAL_KIOSK_REF.active_student = {
+                                "id": st_payload.get("studentId") or st_payload.get("id", "SJC-1001"),
+                                "name": st_payload.get("name", "Student"),
+                                "email": st_payload.get("email", "student@sjc.edu.ph"),
+                                "rfidUid": st_payload.get("rfidUid") or st_payload.get("rfid_uid", "0009401737"),
+                                "balance": float(st_payload.get("balance", 250.0)),
+                                "daily_limit": float(st_payload.get("daily_limit", 300.0))
+                            }
+                        if new_cart:
+                            if _GLOBAL_KIOSK_REF.current_state in [STATE_IDLE, STATE_GREET]:
+                                _GLOBAL_KIOSK_REF.current_state = STATE_SCANNING
+                            _GLOBAL_KIOSK_REF.status_message = f"🟢 Live POS Cart Synced: {len(new_cart)} item(s) (₱{_GLOBAL_KIOSK_REF.total_amount:.2f})"
+                        else:
+                            _GLOBAL_KIOSK_REF.status_message = "Welcome to NovaLunch! Tap Student RFID Card to begin."
                         _GLOBAL_KIOSK_REF.notify_pos_update()
                     elif action in ["confirm_payment", "complete_checkout"]:
                         _GLOBAL_KIOSK_REF.cart_manual_override_lock = False
@@ -1353,13 +1393,13 @@ class NovaLunchKioskGUI:
             "kiosk_state": STATE_NAMES.get(self.current_state, "UNKNOWN"),
             "current_state_id": self.current_state,
             "student": self.active_student if is_active_session else None,
-            "cart": list(self.cart_items) if is_active_session else [],
-            "detections": detections if is_active_session else [],
+            "cart": list(self.cart_items) if is_active_session else aggregate_detections(detections),
+            "detections": detections,
             "ai_engine": ai_engine,
             "camera_online": True,
             "fps": fps,
-            "total_amount": round(self.total_amount, 2) if is_active_session else 0.0,
-            "items_count": sum(i.get("qty", 1) for i in self.cart_items) if is_active_session else 0,
+            "total_amount": round(self.total_amount, 2) if is_active_session else sum(i["price"] * i.get("qty", 1) for i in aggregate_detections(detections)),
+            "items_count": sum(i.get("qty", 1) for i in self.cart_items) if is_active_session else sum(i.get("qty", 1) for i in aggregate_detections(detections)),
             "countdown_remaining": round(self.countdown_remaining, 1) if is_active_session else 0.0,
             "status_message": self.status_message,
             "preorders_count": len(self.active_preorders) if is_active_session else 0,
@@ -1382,12 +1422,21 @@ class NovaLunchKioskGUI:
                 if accounts:
                     st = accounts[0]
                     self.active_student = {
-                        "id": st.get("student_id_number"),
-                        "name": st.get("full_name"),
-                        "email": st.get("email"),
-                        "rfidUid": st.get("rfid_uid"),
-                        "balance": float(st.get("balance", 200.0)),
-                        "daily_limit": float(st.get("daily_limit", 200.0))
+                        "id": st.get("student_id_number", "SJC-1001"),
+                        "name": st.get("full_name", "Adrian Nonog"),
+                        "email": st.get("email", "student@sjc.edu.ph"),
+                        "rfidUid": st.get("rfid_uid", "0009401737"),
+                        "balance": float(st.get("balance", 250.0)),
+                        "daily_limit": float(st.get("daily_limit", 300.0))
+                    }
+                else:
+                    self.active_student = {
+                        "id": "SJC-1001",
+                        "name": "Adrian Nonog",
+                        "email": "student@sjc.edu.ph",
+                        "rfidUid": "0009401737",
+                        "balance": 250.0,
+                        "daily_limit": 300.0
                     }
             if self.active_student:
                 self.active_preorders = self.db_manager.get_active_preorders(self.active_student["id"], self.active_student.get("name"))
@@ -1400,6 +1449,27 @@ class NovaLunchKioskGUI:
 
         elif step == 2:
             # Step 2: AI Scan
+            if not self.active_student:
+                accounts = self.db_manager.load_accounts()
+                if accounts:
+                    st = accounts[0]
+                    self.active_student = {
+                        "id": st.get("student_id_number", "SJC-1001"),
+                        "name": st.get("full_name", "Adrian Nonog"),
+                        "email": st.get("email", "student@sjc.edu.ph"),
+                        "rfidUid": st.get("rfid_uid", "0009401737"),
+                        "balance": float(st.get("balance", 250.0)),
+                        "daily_limit": float(st.get("daily_limit", 300.0))
+                    }
+                else:
+                    self.active_student = {
+                        "id": "SJC-1001",
+                        "name": "Adrian Nonog",
+                        "email": "student@sjc.edu.ph",
+                        "rfidUid": "0009401737",
+                        "balance": 250.0,
+                        "daily_limit": 300.0
+                    }
             self.transition_to_state(STATE_SCANNING)
 
         elif step == 3:
@@ -1691,25 +1761,58 @@ class NovaLunchKioskGUI:
                 surface = pygame.surfarray.make_surface(resized.swapaxes(0, 1))
                 self.screen.blit(surface, (34, 150))
 
-                # Draw Reticles only when active (NOT in STATE_IDLE standby)
-                if self.current_state != STATE_IDLE and self.active_student:
-                    detections = self.camera_thread.get_latest_detections() or self.cart_items
+                # Draw Boundary Reticles for all detected food items (both active and standby)
+                detections = self.camera_thread.get_latest_detections() or self.cart_items
+                if detections:
+                    h_f, w_f = cam_frame.shape[:2]
+                    scale_x = 682.0 / float(w_f)
+                    scale_y = 410.0 / float(h_f)
+
+                    is_active_session = (self.current_state != STATE_IDLE and self.active_student is not None)
+
                     for item in detections:
                         bx, by, bw, bh = item.get("bbox", [100, 100, 150, 150])
-                        scale_x, scale_y = 682.0 / 640.0, 410.0 / 480.0
-                        rx, ry = 34 + int(bx * scale_x), 150 + int(by * scale_y)
-                        rw, rh = max(40, int(bw * scale_x)), max(30, int(bh * scale_y))
+                        rx = max(34, min(34 + 682 - 40, 34 + int(bx * scale_x)))
+                        ry = max(150, min(150 + 410 - 30, 150 + int(by * scale_y)))
+                        rw = max(40, min(682 - (rx - 34), int(bw * scale_x)))
+                        rh = max(30, min(410 - (ry - 150), int(bh * scale_y)))
 
-                        pygame.draw.rect(self.screen, COLOR_ROSE_VIBRANT, (rx, ry, rw, rh), width=2, border_radius=6)
+                        box_color = COLOR_ROSE_VIBRANT if is_active_session else COLOR_CYAN_HUD
+                        pygame.draw.rect(self.screen, box_color, (rx, ry, rw, rh), width=2, border_radius=6)
+
+                        # High-tech corner bracket notches
+                        notch = min(12, min(rw, rh) // 3)
+                        notch_color = COLOR_WHITE if is_active_session else COLOR_GOLD_ACCENT
+                        pygame.draw.line(self.screen, notch_color, (rx, ry), (rx + notch, ry), 3)
+                        pygame.draw.line(self.screen, notch_color, (rx, ry), (rx, ry + notch), 3)
+                        pygame.draw.line(self.screen, notch_color, (rx + rw, ry), (rx + rw - notch, ry), 3)
+                        pygame.draw.line(self.screen, notch_color, (rx + rw, ry), (rx + rw, ry + notch), 3)
+                        pygame.draw.line(self.screen, notch_color, (rx, ry + rh), (rx + notch, ry + rh), 3)
+                        pygame.draw.line(self.screen, notch_color, (rx, ry + rh), (rx, ry + rh - notch), 3)
+                        pygame.draw.line(self.screen, notch_color, (rx + rw, ry + rh), (rx + rw - notch, ry + rh), 3)
+                        pygame.draw.line(self.screen, notch_color, (rx + rw, ry + rh), (rx + rw, ry + rh - notch), 3)
+
                         conf_pct = int(item.get('conf', 0.95) * 100)
                         tag_str = f" {item['name']} ({conf_pct}%) • ₱{item['price']:.2f} "
                         tag_surf = self.font_subtitle_bold.render(tag_str, True, COLOR_WHITE)
-                        tag_bg = pygame.Rect(rx, ry - 22, tag_surf.get_width() + 4, 22)
-                        pygame.draw.rect(self.screen, COLOR_MAROON_DARK, tag_bg, border_radius=4)
-                        self.screen.blit(tag_surf, (rx + 2, ry - 20))
-                else:
-                    # In Standby mode, show clean camera feed with a sleek standby badge overlay
-                    standby_badge = self.font_subtitle_bold.render("STANDBY MODE • TAP STUDENT RFID CARD TO BEGIN SCANNING", True, COLOR_GOLD_LIGHT)
+                        tag_y = ry - 24 if ry >= 174 else ry + rh + 2
+                        tag_bg = pygame.Rect(rx, tag_y, tag_surf.get_width() + 6, 22)
+                        tag_bg_color = COLOR_MAROON_DARK if is_active_session else (15, 23, 42)
+                        pygame.draw.rect(self.screen, tag_bg_color, tag_bg, border_radius=4)
+                        self.screen.blit(tag_surf, (rx + 3, tag_y + 2))
+
+                # In Standby mode, show sleek status badge overlay
+                if self.current_state == STATE_IDLE:
+                    if detections:
+                        standby_badge = self.font_subtitle_bold.render(
+                            f"🟢 AI FOOD DETECTED ({len(detections)}) • TAP STUDENT RFID CARD TO CHECKOUT",
+                            True, COLOR_GOLD_LIGHT
+                        )
+                    else:
+                        standby_badge = self.font_subtitle_bold.render(
+                            "STANDBY MODE • PLACE TRAY OR TAP STUDENT RFID CARD",
+                            True, COLOR_GOLD_LIGHT
+                        )
                     sbg_w = standby_badge.get_width() + 28
                     sbg_rect = pygame.Rect(video_area.centerx - sbg_w // 2, video_area.bottom - 44, sbg_w, 32)
                     pygame.draw.rect(self.screen, COLOR_MAROON_DARK, sbg_rect, border_radius=16)
@@ -1891,7 +1994,26 @@ class NovaLunchKioskGUI:
         self.screen.blit(self.font_brand_sub.render("PRICE", True, COLOR_TEXT_MUTED), (1165, 168))
         pygame.draw.line(self.screen, COLOR_CARD_BORDER, (775, 188), (1235, 188), 1)
 
-        if self.current_state == STATE_IDLE or not self.cart_items:
+        standby_detections = aggregate_detections(self.camera_thread.get_latest_detections()) if self.current_state == STATE_IDLE else []
+        if self.current_state == STATE_IDLE and standby_detections:
+            for idx, item in enumerate(standby_detections[:5]):
+                row_y = 200 + (idx * 44)
+                if idx % 2 == 0:
+                    pygame.draw.rect(self.screen, COLOR_CARD_ALT, (775, row_y - 2, 460, 38), border_radius=6)
+                cat_tag = self.font_brand_sub.render(f"[{item.get('category', 'ITEM')}]", True, COLOR_CYAN_HUD)
+                self.screen.blit(cat_tag, (785, row_y + 9))
+
+                name = self.font_body_bold.render(item["name"], True, COLOR_TEXT_MAIN)
+                qty = self.font_body.render(f"x{item.get('qty', 1)}", True, COLOR_TEXT_MAIN)
+                price = self.font_body_bold.render(f"₱{item['price'] * item.get('qty', 1):.2f}", True, COLOR_GOLD_ACCENT)
+
+                self.screen.blit(name, (840, row_y + 8))
+                self.screen.blit(qty, (1065, row_y + 8))
+                self.screen.blit(price, (1165, row_y + 8))
+
+            auth_hint = self.font_subtitle_bold.render("🟢 Food Detected • Tap Student RFID to Authenticate & Pay", True, COLOR_EMERALD)
+            self.screen.blit(auth_hint, (750 + (510 - auth_hint.get_width()) // 2, 435))
+        elif not self.cart_items:
             empty = self.font_body.render("Standby Mode: Tap Student RFID Card", True, COLOR_TEXT_MUTED)
             self.screen.blit(empty, (750 + (510 - empty.get_width()) // 2, 280))
             hint = self.font_subtitle.render("Place food items on counter after card is tapped.", True, COLOR_TEXT_MUTED)
@@ -2181,7 +2303,7 @@ class NovaLunchKioskGUI:
             now = time.time()
             if self.current_state == STATE_IDLE:
                 # Standby Mode: Do NOT scan food items or update cart until student taps card
-                if self.cart_items:
+                if self.cart_items and not self.cart_manual_override_lock:
                     self.cart_items = []
                     self.total_amount = 0.0
 
@@ -2223,6 +2345,9 @@ class NovaLunchKioskGUI:
                         cnt = len(self.cart_items)
                         self.status_message = f"🟢 Scanned {cnt} item(s) (₱{self.total_amount:.2f}) — Sent to Cashier POS"
                         self.current_state = STATE_SCANNING
+                        if self.cart_items:
+                            item_names = [f"{it.get('qty', 1)} {it['name']}" for it in self.cart_items]
+                            speak_text(f"Detected: {', '.join(item_names)}. Total is {int(self.total_amount)} pesos.")
                         self.notify_pos_update()
 
             elif self.current_state == STATE_SETTLEMENT and (now - self.state_timer >= 3.0):

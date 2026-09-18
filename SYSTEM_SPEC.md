@@ -115,48 +115,65 @@ python3 src/ai_engine/inspect_yolo_model.py src/assets/models/novalunch_yolo.pt
 
 ---
 
-## 4. Visual Design System & UI Specifications
+## 4. Visual Design System & UI Specifications (Apple HIG × Anti-AI-Slop)
 
-### 4.1 Color Tokens & Semantics
-```yaml
-Primary Brand:
-  SJC Crimson: "#7B1E22"          # Primary buttons, active tabs, brand focus
-  Crimson Hover: "#5C1016"        # Interactive hover state
-  Crimson Subtle: "#FFF7F7"       # Soft alert background
-Accent:
-  Amber Gold: "#D97706"           # Wallet balances, star ratings, premium badges
-  Amber Cream: "#FEF3C7"          # Caution / warning pill background
-Surface & Canvas:
-  Slate Canvas: "#F8FAFC"         # Root app background
-  Glass Card: "rgba(255, 255, 255, 0.85)" # Translucent frosted surface (blur 16px)
-  Glass Border: "rgba(226, 232, 240, 0.8)"# Hairline 1px border
-  Text Primary: "#0F172A"         # High-contrast slate typography
-  Text Muted: "#64748B"           # Metadata, timestamps, column labels
-Status:
-  Emerald Green: "#10B981"        # Paid orders, fresh inventory, approved top-ups
-  Rose Danger: "#E11D48"          # Allergen violations, voided tickets
-  Cyan HUD: "#06B6D4"             # Camera targeting bounding boxes
-```
+> Master UI/UX Reference: See full specification at [`DESIGN_SYSTEM.md`](file:///Users/louiseadrianvnonog/PROJMAN/Website-canteen/DESIGN_SYSTEM.md) and workspace rule at [`.agents/rules/ui-ux-design-system.md`](file:///Users/louiseadrianvnonog/PROJMAN/Website-canteen/.agents/rules/ui-ux-design-system.md).
 
-### 4.2 Typography Hierarchy
-- **Display Font:** `Outfit, Inter, sans-serif` (700 weight, `2.25rem`) — Header titles, large wallet balances.
-- **Headline Font:** `Outfit, Inter, sans-serif` (600 weight, `1.5rem`) — Section headers, modal titles.
-- **Body Font:** `Inter, sans-serif` (400/500 weight, `0.95rem`) — Catalog listings, order items, descriptions.
-- **Label / Tag Font:** `Inter, sans-serif` (600 weight, `0.75rem`, uppercase, tracking-wider) — Badges, column headers.
+### 4.1 Executive Philosophy & The 4 Laws of Anti-AI-Slop Visual Hygiene
+1. **Strict Zero-Emoji Policy [CRITICAL]**:
+   - Raw Unicode emojis (`🍱`, `⚡`, `🎉`, `🗑`, `⚠️`, `💡`, `📍`, `👋`, `💳`, etc.) are **strictly prohibited** across all production portal markup, headers, navigation items, toasts, banners, badges, empty states, and table cells.
+   - All visual semantics must use standardized Lucide SVG vector components (`Icon.Utensils`, `Icon.MapPin`, `Icon.Package`, `Icon.AlertTriangle`, `Icon.CheckCircle2`, `Icon.Info`, `Icon.XCircle`, `Icon.Clock`, `Icon.DollarSign`, `Icon.Users`, `Icon.ShieldCheck`, `Icon.Activity`, `Icon.CreditCard`, `Icon.QrCode`, etc.) at optical sizes (`12px`, `14px`, `16px`, `20px`) with fixed `strokeWidth={2}`.
+2. **Confident Copywriting (Elimination of Explanatory Clutter)**:
+   - Interfaces must not narrate their own operations. Remove repetitive subtitles, parenthetical helpers (*"Click here to..."*, *"Please note that..."*), and defensive legalistic blurbs under action headers.
+   - Use active verbs (`Reload`, `Transfer`, `Export`, `Claim`) and single-word status badges (`Active`, `Cleared`, `Locked`, `Pending`).
+3. **Eradication of Browser & Platform Artifacts**:
+   - Strip native number input spinners (`appearance: textfield; -webkit-appearance: none;`).
+   - Implement Apple-standard brand focus rings: `outline: none; box-shadow: 0 0 0 2px var(--color-canvas), 0 0 0 4px var(--color-accent-subtle); border-color: var(--color-brand-primary);`.
+4. **Surface-First Hierarchy Over Drop-Shadow Stacking**:
+   - Ban arbitrary heavy CSS drop shadows (`box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1)`).
+   - Express elevation through tinted translucent materials, subtle hairline borders (`1px solid rgba(0, 0, 0, 0.08)` or `rgba(255, 255, 255, 0.12)`), and surface contrast (Base `#F8FAFC` vs Surface `#FFFFFF`).
 
-### 4.3 Component Geometry & Depth
-- **Cards (`.enterprise-card`):** `rounded-2xl` (`20px`), `backdrop-filter: blur(16px)`, border `1px solid rgba(226, 232, 240, 0.8)`.
-- **Buttons & Inputs:** `rounded-xl` (`12px`), active press scale `scale(0.98)`.
-- **Badges & Tabs:** `rounded-full` (`9999px`).
+### 4.2 Dmitry Sergushkin's 11 Sidebar Masterclass Heuristics
+1. **Content Prioritization**: Single-line concise route labels without collapse tricks that obscure daily work.
+2. **Quick Search**: Native search field (`bg-slate-200/60 dark:bg-slate-800/60 rounded-xl px-3 py-1.5`) below app identifier with instant filtering.
+3. **Identity Capsule**: iOS-style identity card pinned with avatar, name, org, and `ChevronsUpDown` account switcher.
+4. **Subtle Hierarchy & Tracking**: Section divider labels styled with uppercase micro-tracking: `text-[10px] font-bold text-slate-400 uppercase tracking-widest px-3 py-1`.
+5. **System Vitality Indicator**: Dedicated telemetry pill (*"Terminal Online • Node SJC-01"*).
+6. **Single Active Focus**: Calm, tinted pill selection (`bg-brand-50 text-brand-700 font-semibold rounded-xl`).
+7. **Calibrated Badges**: Numeric pills truncate cleanly (`9+`, `99+`) with accent status dot and tabular numerals (`font-variant-numeric: tabular-nums`).
+8. **Adaptive Fluid Collapse**: Full labels on desktop; tablet icon-only dock rail with instant hover tooltips (`offset-x: 8px`).
+9. **Predictable Grouping**: Grouped logically into Operational, Administrative, and Configuration modules.
+10. **Keyboard Ergonomics**: Global hotkeys (`⌘1`, `⌘2`, `⌘K`) mapped with typographic glyph tags.
+11. **Minimalist Action Bar**: Clean bottom edge with hairline border and single-stroke SVG vector icons (`Icon.LogOut`).
 
-### 4.4 Iconography & No-Emoji Policy (Strict Visual Discipline)
-- **Zero Raw Emojis Rule [CRITICAL]:** Raw Unicode emojis (e.g. `👋`, `🍱`, `📍`, `⚠️`, `🚫`, `💡`, `✨`, `🎉`, etc.) are **strictly prohibited** across all production portal markup, headers, navigation items, toasts, banners, badges, and empty states. Emojis degrade institutional credibility and produce inconsistent cross-platform rendering artifacts.
-- **Standardized Lucide SVG Icons Only:** All visual semantics, status indicators, and actions MUST use official Lucide SVG vector icon components (`Icon.Utensils`, `Icon.MapPin`, `Icon.Package`, `Icon.AlertTriangle`, `Icon.CheckCircle2`, `Icon.Info`, `Icon.XCircle`, `Icon.Clock`, `Icon.DollarSign`, `Icon.Users`, `Icon.ShieldCheck`, `Icon.Activity`, `Icon.CreditCard`, `Icon.QrCode`, etc.).
-- **Icon Sizing & Weight Standards:**
-  - Standard Nav & Header Icons: `w-4 h-4` (`16px`), `strokeWidth={2}`.
-  - Large Metric & Category Icons: `w-5 h-5` (`20px`) or `w-6 h-6` (`24px`).
-  - Compact Sub-Labels & Inline Badges: `w-3 h-3` (`12px`) or `w-3.5 h-3.5` (`14px`).
-- **Semantic Status Dots & Badges:** Use calibrated badge pills (`bg-emerald-100 text-emerald-800`, `bg-rose-100 text-rose-800`, `bg-amber-100 text-amber-900`) with colored pulsating dots (`w-1.5 h-1.5 rounded-full`) instead of emoji icons.
+### 4.3 Apple HIG Core System Tokens & Architecture
+- **Typography Scale**: Display Large (34pt / -0.4px tracking), Title 1 (28pt / -0.3px), Title 2 (22pt / -0.2px), Title 3 (20pt / -0.15px), Headline/Body (17pt / -0.4px), Callout (16pt / -0.3px), Subheadline (15pt / -0.2px), Footnote (13pt / -0.1px), Caption 1 (12pt / 0px), Caption 2 (11pt / +0.1px), Micro/Overline (10pt / +0.6px uppercase).
+  - *Font Pairing*: **Outfit** / SF Pro Display for hero numbers, balances, and prominent titles; **Inter** / SF Pro Text for functional metadata and lists.
+- **Spatial Grid & Hit Target**: All interactive touchpoints must maintain a minimum `44 × 44 pt` bounding box. Layout offsets strictly follow the 8pt structural grid (`4px`, `8px`, `16px`, `24px`, `32px`, `48px`, `64px`).
+- **Continuous Squircle Geometry**: Modal/Sheet shells (`rounded-3xl` / 24-28px), Content cards (`rounded-2xl` / 16-20px), Inputs/Settings rows (`rounded-xl` / 12-14px), CTAs/Badges (`rounded-full` / 9999px).
+- **Materials & Translucency**:
+  - Canvas Underlay: `#F8FAFC` (Slate Canvas light) / `#090D16` (dark).
+  - Frosted Glass: `rgba(255, 255, 255, 0.85); backdrop-filter: blur(20px) saturate(180%); border: 1px solid rgba(226, 232, 240, 0.8);`.
+  - Brand Primary: `#7B1E22` (SJC Crimson), Brand Hover: `#631418`.
+
+### 4.4 Component-Level Design Architecture
+- **Pattern A (Wallet-Style Transaction Cell)**: Ban raw data tables for consumer/student logs. Display transactions as Apple Wallet visual cells (`40 × 40 px` rounded-2xl icon square + bold title / muted subline + tabular-nums right-aligned amount with muted chevron).
+- **Pattern B (Apple Health Progress & Biometric Tile)**: 8px rounded-full gradient progress track + side-by-side metric sub-cards + uppercase overline tags.
+- **Pattern C (iOS Grouped Settings Cell)**: Unified `rounded-2xl` container with hairline inner dividers indented past the icon (`ml-14`) and genuine iOS toggle switches (`w-12 h-7`).
+- **Pattern D (Dynamic Floating Action Pill)**: Translucent, centered floating pill (`bottom-6 inset-x-0 mx-auto w-[92%] max-w-lg`) with item counter badge, subtotal, and tactile brand button.
+
+### 4.5 Micro-Interactions, Spring Dynamics & Self-Auditor
+- **Spring Physics**: Modals (Mass 1.0, Stiffness 300, Damping 30), Buttons (Mass 0.5, Stiffness 400, Damping 25), Toggles (Mass 0.8, Stiffness 350, Damping 28).
+- **Tap Feedback**: `.interactive-tap:active { transform: scale(0.97); filter: brightness(0.96); }`.
+- **Pre-Flight AI Checklist**:
+  1. Zero raw emojis?
+  2. 44pt minimum touch target?
+  3. Confident, concise copywriting?
+  4. Spring tap feedback (`active:scale-[0.97]`)?
+  5. Smooth squircle geometry (16-24px)?
+  6. Frosted vibrancy with hairline border?
+  7. Tabular numerals for financial amounts?
+  8. Apple Wallet list cells instead of raw data tables?
 
 ---
 
