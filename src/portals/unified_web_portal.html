@@ -11215,39 +11215,33 @@
                                     </div>
 
                                     {/* QUICK STATS & PARENT OVERSIGHT PILLARS */}
-                                    <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <div className="enterprise-card p-5 rounded-3xl bg-white border border-slate-200/90 shadow-2xs flex flex-col justify-between space-y-3">
+                                    <div className="lg:col-span-7 flex flex-col justify-between">
+                                        <div className="enterprise-card p-6 rounded-3xl bg-white border border-slate-200/80 shadow-2xs flex flex-col justify-between space-y-4 h-full">
                                             <div className="flex items-center justify-between">
-                                                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider font-mono">Today's Remaining Cap</span>
-                                                <div className="w-7 h-7 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center">
-                                                    <Icon.ShieldCheck className="w-3.5 h-3.5" />
+                                                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider font-mono">Today's Spending Allowance</span>
+                                                <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center">
+                                                    <Icon.ShieldCheck className="w-4 h-4" />
                                                 </div>
                                             </div>
                                             <div>
-                                                <div className="font-outfit text-2xl font-bold text-slate-900">₱{remainingDailyCap.toFixed(2)}</div>
-                                                <div className="text-[11px] text-slate-400 mt-0.5">Parent limit: ₱{safeLimit.toFixed(2)} / day</div>
-                                            </div>
-                                            <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                                                <div
-                                                    className="bg-amber-500 h-full rounded-full transition-all"
-                                                    style={{ width: `${Math.min(100, Math.max(0, (dailySpent / (safeLimit || 1)) * 100))}%` }}
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <div className="enterprise-card p-5 rounded-3xl bg-white border border-slate-200/90 shadow-2xs flex flex-col justify-between space-y-3">
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider font-mono">Instant Counter Tap</span>
-                                                <div className="w-7 h-7 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
-                                                    <Icon.Zap className="w-3.5 h-3.5" />
+                                                <div className="font-outfit text-3xl font-extrabold text-slate-900 tabular-nums">₱{remainingDailyCap.toFixed(2)}</div>
+                                                <div className="text-xs text-slate-500 mt-1 flex items-center justify-between">
+                                                    <span>Spent today: ₱{dailySpent.toFixed(2)}</span>
+                                                    <span>Parent limit: ₱{safeLimit.toFixed(2)} / day</span>
                                                 </div>
                                             </div>
-                                            <div>
-                                                <div className="text-xs font-semibold text-slate-900">Zero-Friction Checkout</div>
-                                                <div className="text-[11px] text-slate-500 mt-0.5">Physical 125kHz badge authorized at all canteen counters & kiosks.</div>
-                                            </div>
-                                            <div className="text-[10px] font-mono text-emerald-700 font-bold flex items-center gap-1 bg-emerald-50 px-2 py-1 rounded-lg w-fit">
-                                                <Icon.Check className="w-3 h-3 text-emerald-600" /> RFID Hardware Ready
+                                            <div className="space-y-1.5 pt-1">
+                                                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                                                    <div
+                                                        className="bg-amber-500 h-full rounded-full transition-all"
+                                                        style={{ width: `${Math.min(100, Math.max(0, (dailySpent / (safeLimit || 1)) * 100))}%` }}
+                                                    />
+                                                </div>
+                                                <div className="flex justify-between text-[10px] font-mono text-slate-400">
+                                                    <span>₱0.00</span>
+                                                    <span>{Math.round(Math.min(100, Math.max(0, (dailySpent / (safeLimit || 1)) * 100)))}% used</span>
+                                                    <span>₱{safeLimit.toFixed(2)}</span>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -22306,126 +22300,133 @@
                         })()}
                     </main>
 
-                    {/* MODAL: HUMAN-CENTRIC ENTERPRISE ACCOUNT EDIT DRAWER / MODAL */}
+                    {/* MODAL: APPLE 2026 HUMAN-CENTRIC EDIT ACCOUNT MODAL */}
                     <CustomModal
                         isOpen={editAccountModalOpen}
                         onClose={() => { setEditAccountModalOpen(false); setEditAccountError(''); }}
-                        title={editingUser ? "Edit Account" : "Edit Profile"}
-                        subtitle={editingUser ? editingUser.name : ""}
-                        icon={Icon.Edit}
-                        iconBg="bg-slate-100 text-slate-700"
+                        title="Edit Account"
+                        subtitle=""
+                        icon={Icon.User}
+                        iconBg="bg-slate-100/90 text-slate-700 border-slate-200/60"
                         size="2xl"
                     >
                         {editingUser && (
                             <div className="space-y-4">
-                                {/* PROFILE CONTEXT HEADER CARD */}
-                                <div className="p-4 rounded-3xl bg-slate-50/70 border border-slate-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3.5">
-                                    <div className="flex items-center gap-3.5">
-                                        <div className="w-12 h-12 rounded-2xl bg-slate-900 text-white font-semibold text-lg flex items-center justify-center shadow-2xs shrink-0">
+                                {/* 1. APPLE PROFILE HERO CARD */}
+                                <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/70 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                                    <div className="flex items-center gap-3.5 min-w-0">
+                                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 text-white font-outfit font-bold text-lg flex items-center justify-center shadow-xs shrink-0 select-none">
                                             {editFirstName ? editFirstName.charAt(0).toUpperCase() : (editingUser.name ? editingUser.name.charAt(0).toUpperCase() : "U")}
                                         </div>
-                                        <div>
+                                        <div className="min-w-0">
                                             <div className="flex items-center gap-2 flex-wrap">
-                                                <h4 className="font-outfit font-bold text-base text-slate-900 leading-tight tracking-tight">
+                                                <h4 className="font-outfit font-bold text-base text-slate-900 leading-tight tracking-tight truncate">
                                                     {editFirstName || editLastName ? `${editFirstName} ${editLastName}`.trim() : editingUser.name}
                                                 </h4>
-                                                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${editRole.toLowerCase() === 'admin' ? 'bg-purple-50 text-purple-700 border border-purple-200/60' :
-                                                    editRole.toLowerCase() === 'cashier' || editRole.toLowerCase() === 'staff' ? 'bg-amber-50 text-amber-700 border border-amber-200/60' :
-                                                        editRole.toLowerCase() === 'parent' ? 'bg-blue-50 text-blue-700 border border-blue-200/60' :
-                                                            editRole.toLowerCase() === 'teacher' ? 'bg-teal-50 text-teal-700 border border-teal-200/60' :
-                                                                'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
-                                                    }`}>
+                                                <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-200/70 text-slate-700">
                                                     {editRole}
                                                 </span>
-                                                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${editStatus === 'active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60' :
-                                                    editStatus === 'suspended' ? 'bg-amber-50 text-amber-700 border border-amber-200/60' :
-                                                        'bg-slate-100 text-slate-600 border border-slate-200/80'
-                                                    }`}>
-                                                    {editStatus}
+                                                <span className={`px-2 py-0.5 rounded-md text-[11px] font-semibold ${
+                                                    editStatus === 'active' ? 'bg-emerald-100 text-emerald-800' :
+                                                    editStatus === 'suspended' ? 'bg-amber-100 text-amber-800' :
+                                                    'bg-slate-200/70 text-slate-600'
+                                                }`}>
+                                                    {editStatus.charAt(0).toUpperCase() + editStatus.slice(1)}
                                                 </span>
                                             </div>
-                                            <div className="flex items-center gap-2 text-[11px] text-slate-500 font-mono mt-0.5">
-                                                <span>ID: <strong className="text-slate-700">{editStudentId || editingUser.studentId || 'N/A'}</strong></span>
+                                            <div className="flex items-center gap-2 text-xs text-slate-500 font-mono mt-1 truncate">
+                                                <span className="shrink-0 text-slate-700 font-semibold">ID: {editStudentId || editingUser.studentId || 'N/A'}</span>
                                                 <span>•</span>
-                                                <span className="truncate max-w-[200px]">{editEmail || editingUser.email}</span>
+                                                <span className="truncate">{editEmail || editingUser.email}</span>
                                             </div>
                                         </div>
                                     </div>
 
-                                    {/* QUICK METRICS PILLS */}
-                                    <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
+                                    {/* QUICK METRICS CAPSULE */}
+                                    <div className="flex items-center gap-3 w-full sm:w-auto justify-start sm:justify-end shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200/60">
                                         {editRole.toLowerCase() === 'student' ? (
                                             <>
-                                                <div className="px-3 py-1.5 rounded-xl bg-white border border-slate-200/80 text-right shadow-2xs">
-                                                    <div className="text-[9px] uppercase font-semibold text-slate-400">Balance</div>
-                                                    <div className="font-outfit font-semibold text-emerald-700 text-xs tabular-nums">₱{parseFloat(editBalance || 0).toFixed(2)}</div>
+                                                <div className="text-left sm:text-right">
+                                                    <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Balance</div>
+                                                    <div className="font-outfit font-bold text-xs text-emerald-700 tabular-nums">₱{parseFloat(editBalance || 0).toFixed(2)}</div>
                                                 </div>
-                                                <div className="px-3 py-1.5 rounded-xl bg-white border border-slate-200/80 text-right shadow-2xs">
-                                                    <div className="text-[9px] uppercase font-semibold text-slate-400">Daily Cap</div>
-                                                    <div className="font-outfit font-semibold text-slate-800 text-xs tabular-nums">₱{parseFloat(editDailyCap || 200).toFixed(2)}</div>
+                                                <div className="h-6 w-px bg-slate-200" />
+                                                <div className="text-left sm:text-right">
+                                                    <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Daily Cap</div>
+                                                    <div className="font-outfit font-bold text-xs text-slate-800 tabular-nums">₱{parseFloat(editDailyCap || 200).toFixed(2)}</div>
                                                 </div>
-                                                <div className="px-3 py-1.5 rounded-xl bg-white border border-slate-200/80 text-right shadow-2xs">
-                                                    <div className="text-[9px] uppercase font-semibold text-slate-400">RFID Card</div>
-                                                    <div className={`font-mono font-semibold text-xs ${editRfidUid ? 'text-slate-900' : 'text-amber-700'}`}>
-                                                        {editRfidUid ? 'Linked' : 'No Card'}
+                                                <div className="h-6 w-px bg-slate-200" />
+                                                <div className="text-left sm:text-right">
+                                                    <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">RFID</div>
+                                                    <div className="text-xs font-semibold text-slate-800 flex items-center sm:justify-end gap-1">
+                                                        <span className={`w-1.5 h-1.5 rounded-full ${editRfidUid ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                                                        <span>{editRfidUid ? 'Linked' : 'None'}</span>
                                                     </div>
                                                 </div>
                                             </>
                                         ) : ['cashier', 'staff', 'admin'].includes(editRole.toLowerCase()) ? (
-                                            <div className="px-3 py-1.5 rounded-xl bg-white border border-slate-200/80 text-right shadow-2xs">
-                                                <div className="text-[9px] uppercase font-semibold text-slate-400">POS Station / PIN</div>
+                                            <div className="text-left sm:text-right">
+                                                <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Station / PIN</div>
                                                 <div className="font-semibold text-slate-800 text-xs">{editDepartment || 'Main Register'} • PIN: {editManagerPin || '••••'}</div>
                                             </div>
                                         ) : (
-                                            <div className="px-3 py-1.5 rounded-xl bg-white border border-slate-200/80 text-right shadow-2xs">
-                                                <div className="text-[9px] uppercase font-semibold text-slate-400">Contact</div>
-                                                <div className="font-semibold text-slate-800 text-xs">{editPhone || 'No Phone Set'}</div>
+                                            <div className="text-left sm:text-right">
+                                                <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Contact</div>
+                                                <div className="font-semibold text-slate-800 text-xs">{editPhone || 'None'}</div>
                                             </div>
                                         )}
                                     </div>
                                 </div>
 
-                                {/* TABBED NAVIGATION */}
-                                <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-full border border-slate-200/80 overflow-x-auto">
+                                {/* 2. APPLE SEGMENTED TAB CONTROL */}
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 p-1 bg-slate-200/50 rounded-xl border border-slate-200/60">
                                     <button
                                         type="button"
                                         onClick={() => setEditAccountTab('identity')}
-                                        className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 whitespace-nowrap ${editAccountTab === 'identity' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-900'
-                                            }`}
+                                        className={`py-1.5 px-2 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer select-none active:scale-95 ${
+                                            editAccountTab === 'identity' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
+                                        }`}
                                     >
-                                        <Icon.User className="w-3.5 h-3.5" /> Identity & Contact
+                                        <Icon.User className="w-3.5 h-3.5 shrink-0" />
+                                        <span>Profile</span>
                                     </button>
 
-                                    {['student', 'teacher', 'cashier', 'staff'].includes(editRole.toLowerCase()) && (
+                                    {['student', 'teacher', 'cashier', 'staff'].includes(editRole.toLowerCase()) ? (
                                         <button
                                             type="button"
                                             onClick={() => setEditAccountTab('financials')}
-                                            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 whitespace-nowrap ${editAccountTab === 'financials' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-900'
-                                                }`}
+                                            className={`py-1.5 px-2 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer select-none active:scale-95 ${
+                                                editAccountTab === 'financials' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
+                                            }`}
                                         >
-                                            <Icon.DollarSign className="w-3.5 h-3.5" /> Financials & Limits
+                                            <Icon.DollarSign className="w-3.5 h-3.5 shrink-0" />
+                                            <span>Wallet</span>
                                         </button>
-                                    )}
+                                    ) : <div />}
 
                                     <button
                                         type="button"
                                         onClick={() => setEditAccountTab('rfid_security')}
-                                        className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 whitespace-nowrap ${editAccountTab === 'rfid_security' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-900'
-                                            }`}
+                                        className={`py-1.5 px-2 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer select-none active:scale-95 ${
+                                            editAccountTab === 'rfid_security' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
+                                        }`}
                                     >
-                                        <Icon.CreditCard className="w-3.5 h-3.5" /> RFID & Credentials
+                                        <Icon.CreditCard className="w-3.5 h-3.5 shrink-0" />
+                                        <span>Security</span>
                                     </button>
 
-                                    {['student', 'parent'].includes(editRole.toLowerCase()) && (
+                                    {['student', 'parent'].includes(editRole.toLowerCase()) ? (
                                         <button
                                             type="button"
                                             onClick={() => setEditAccountTab('dietary_family')}
-                                            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 whitespace-nowrap ${editAccountTab === 'dietary_family' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-900'
-                                                }`}
+                                            className={`py-1.5 px-2 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer select-none active:scale-95 ${
+                                                editAccountTab === 'dietary_family' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
+                                            }`}
                                         >
-                                            <Icon.Heart className="w-3.5 h-3.5" /> {editRole.toLowerCase() === 'student' ? 'Dietary & Guardian' : 'Linked Wards'}
+                                            <Icon.Heart className="w-3.5 h-3.5 shrink-0" />
+                                            <span>{editRole.toLowerCase() === 'student' ? 'Dietary' : 'Family'}</span>
                                         </button>
-                                    )}
+                                    ) : <div />}
                                 </div>
 
                                 {/* ERROR BANNER */}
@@ -22433,105 +22434,110 @@
                                     <div className="flex items-start gap-2.5 p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs font-semibold">
                                         <Icon.AlertCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
                                         <div className="flex-1">{editAccountError}</div>
-                                        <button type="button" onClick={() => setEditAccountError('')} className="text-rose-500 hover:text-rose-800">
+                                        <button type="button" onClick={() => setEditAccountError('')} className="text-rose-500 hover:text-rose-800 cursor-pointer">
                                             <Icon.X className="w-3.5 h-3.5" />
                                         </button>
                                     </div>
                                 )}
 
-                                {/* TAB 1: IDENTITY & CONTACT */}
+                                {/* TAB 1: PROFILE (IDENTITY & CONTACT) */}
                                 {editAccountTab === 'identity' && (
-                                    <div className="space-y-3.5 p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80">
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div className="space-y-3.5 p-4 bg-slate-50/70 rounded-2xl border border-slate-200/70">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                                             <div>
-                                                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                                                    First Name <span className="text-rose-600">*</span>
+                                                <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                                                    First Name
                                                 </label>
                                                 <input
                                                     type="text"
                                                     required
                                                     value={editFirstName}
                                                     onChange={(e) => { setEditFirstName(e.target.value); setEditAccountError(''); }}
-                                                    placeholder="First Name"
-                                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:ring-2 focus:ring-brand-500 transition-all"
+                                                    placeholder="First name"
+                                                    className="w-full bg-white hover:bg-slate-50/50 focus:bg-white border border-slate-200/80 focus:border-[#7B1E22] rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-900 transition-all outline-hidden focus:ring-2 focus:ring-[#7B1E22]/15 shadow-2xs"
                                                 />
                                             </div>
                                             <div>
-                                                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                                                    Last Name <span className="text-rose-600">*</span>
+                                                <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                                                    Last Name
                                                 </label>
                                                 <input
                                                     type="text"
                                                     required
                                                     value={editLastName}
                                                     onChange={(e) => { setEditLastName(e.target.value); setEditAccountError(''); }}
-                                                    placeholder="Last Name"
-                                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:ring-2 focus:ring-brand-500 transition-all"
+                                                    placeholder="Last name"
+                                                    className="w-full bg-white hover:bg-slate-50/50 focus:bg-white border border-slate-200/80 focus:border-[#7B1E22] rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-900 transition-all outline-hidden focus:ring-2 focus:ring-[#7B1E22]/15 shadow-2xs"
                                                 />
                                             </div>
                                         </div>
 
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                                             <div>
-                                                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                                                    Email Address <span className="text-rose-600">*</span>
+                                                <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                                                    Email
                                                 </label>
                                                 <input
                                                     type="email"
                                                     required
                                                     value={editEmail}
                                                     onChange={(e) => { setEditEmail(e.target.value); setEditAccountError(''); }}
-                                                    placeholder="user@sjc.edu.ph"
-                                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-900 focus:ring-2 focus:ring-brand-500 transition-all"
+                                                    placeholder="name@sjc.edu.ph"
+                                                    className="w-full bg-white hover:bg-slate-50/50 focus:bg-white border border-slate-200/80 focus:border-[#7B1E22] rounded-xl px-3.5 py-2 text-xs font-medium text-slate-900 transition-all outline-hidden focus:ring-2 focus:ring-[#7B1E22]/15 shadow-2xs"
                                                 />
                                             </div>
                                             <div>
-                                                <label className="block text-[11px] font-bold text-slate-700 mb-1">Mobile Contact Phone</label>
+                                                <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                                                    Phone
+                                                </label>
                                                 <input
                                                     type="text"
                                                     value={editPhone}
                                                     onChange={(e) => setEditPhone(e.target.value)}
                                                     placeholder="0917-123-4567"
-                                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 focus:ring-2 focus:ring-brand-500 transition-all"
+                                                    className="w-full bg-white hover:bg-slate-50/50 focus:bg-white border border-slate-200/80 focus:border-[#7B1E22] rounded-xl px-3.5 py-2 text-xs font-mono font-medium text-slate-900 transition-all outline-hidden focus:ring-2 focus:ring-[#7B1E22]/15 shadow-2xs"
                                                 />
                                             </div>
                                         </div>
 
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                                             <div>
-                                                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                                                    Account Role
+                                                <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                                                    Role
                                                 </label>
-                                                <select
-                                                    value={editRole}
-                                                    onChange={(e) => setEditRole(e.target.value)}
-                                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:ring-2 focus:ring-brand-500 transition-all"
-                                                >
-                                                    <option value="Student">Student</option>
-                                                    <option value="Cashier">Staff / Cashier</option>
-                                                    <option value="Parent">Parent / Guardian</option>
-                                                    <option value="Teacher">Faculty / Teacher</option>
-                                                    <option value="Admin">System Administrator</option>
-                                                </select>
+                                                <div className="relative">
+                                                    <select
+                                                        value={editRole}
+                                                        onChange={(e) => setEditRole(e.target.value)}
+                                                        className="w-full bg-white hover:bg-slate-50/50 focus:bg-white border border-slate-200/80 focus:border-[#7B1E22] rounded-xl pl-3.5 pr-8 py-2 text-xs font-semibold text-slate-900 appearance-none transition-all outline-hidden focus:ring-2 focus:ring-[#7B1E22]/15 shadow-2xs cursor-pointer"
+                                                    >
+                                                        <option value="Student">Student</option>
+                                                        <option value="Cashier">Staff / Cashier</option>
+                                                        <option value="Parent">Parent / Guardian</option>
+                                                        <option value="Teacher">Faculty / Teacher</option>
+                                                        <option value="Admin">System Administrator</option>
+                                                    </select>
+                                                    <Icon.ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                                </div>
                                             </div>
                                             <div>
-                                                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                                                    {editRole.toLowerCase() === 'student' ? 'Grade Level & Section' : editRole.toLowerCase() === 'cashier' ? 'Assigned POS Register / Station' : editRole.toLowerCase() === 'teacher' ? 'Faculty Department' : 'Section / Affiliation'}
+                                                <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                                                    {editRole.toLowerCase() === 'student' ? 'Grade & Section' : editRole.toLowerCase() === 'cashier' ? 'Assigned Register' : editRole.toLowerCase() === 'teacher' ? 'Department' : 'Affiliation'}
                                                 </label>
                                                 <input
                                                     type="text"
                                                     value={editDepartment}
                                                     onChange={(e) => setEditDepartment(e.target.value)}
-                                                    placeholder={editRole.toLowerCase() === 'student' ? 'e.g. SHS - STEM 12-A' : editRole.toLowerCase() === 'cashier' ? 'e.g. Main Canteen POS 1' : 'e.g. Science & Math Dept'}
-                                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-brand-500 transition-all"
+                                                    placeholder={editRole.toLowerCase() === 'student' ? 'SHS - STEM 12-A' : editRole.toLowerCase() === 'cashier' ? 'POS Counter #01' : 'Department'}
+                                                    className="w-full bg-white hover:bg-slate-50/50 focus:bg-white border border-slate-200/80 focus:border-[#7B1E22] rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-900 transition-all outline-hidden focus:ring-2 focus:ring-[#7B1E22]/15 shadow-2xs"
                                                 />
                                             </div>
                                         </div>
 
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                                             <div>
-                                                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                                                    ID / Reference Number <span className="text-rose-600">*</span>
+                                                <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                                                    ID / Reference Number
                                                 </label>
                                                 <input
                                                     type="text"
@@ -22539,120 +22545,111 @@
                                                     value={editStudentId}
                                                     onChange={(e) => { setEditStudentId(e.target.value); setEditAccountError(''); }}
                                                     placeholder="2026-00001"
-                                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-bold text-brand-700 focus:ring-2 focus:ring-brand-500 transition-all"
+                                                    className="w-full bg-white hover:bg-slate-50/50 focus:bg-white border border-slate-200/80 focus:border-[#7B1E22] rounded-xl px-3.5 py-2 text-xs font-mono font-bold text-slate-900 transition-all outline-hidden focus:ring-2 focus:ring-[#7B1E22]/15 shadow-2xs"
                                                 />
                                             </div>
                                             <div>
-                                                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                                                    Account Operational Status
+                                                <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                                                    Account Status
                                                 </label>
-                                                <select
-                                                    value={editStatus}
-                                                    onChange={(e) => setEditStatus(e.target.value)}
-                                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:ring-2 focus:ring-brand-500 transition-all"
-                                                >
-                                                    <option value="active">Active — Full access to POS and Kiosks</option>
-                                                    <option value="suspended">Suspended — Temporary lock on RFID & purchases</option>
-                                                    <option value="archived">Archived — Soft deleted from active directory</option>
-                                                </select>
+                                                <div className="relative">
+                                                    <select
+                                                        value={editStatus}
+                                                        onChange={(e) => setEditStatus(e.target.value)}
+                                                        className="w-full bg-white hover:bg-slate-50/50 focus:bg-white border border-slate-200/80 focus:border-[#7B1E22] rounded-xl pl-3.5 pr-8 py-2 text-xs font-semibold text-slate-900 appearance-none transition-all outline-hidden focus:ring-2 focus:ring-[#7B1E22]/15 shadow-2xs cursor-pointer"
+                                                    >
+                                                        <option value="active">Active</option>
+                                                        <option value="suspended">Suspended</option>
+                                                        <option value="archived">Archived</option>
+                                                    </select>
+                                                    <Icon.ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
                                 )}
 
-                                {/* TAB 2: FINANCIALS & LIMITS */}
+                                {/* TAB 2: WALLET (FINANCIALS & LIMITS) */}
                                 {editAccountTab === 'financials' && (
-                                    <div className="space-y-4 p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80">
-                                        {/* BALANCE EDITOR & QUICK INCREMENT CHIPS */}
-                                        <div className="p-3.5 bg-white rounded-xl border border-slate-200 space-y-2.5">
+                                    <div className="space-y-3.5 p-4 bg-slate-50/70 rounded-2xl border border-slate-200/70">
+                                        {/* BALANCE EDITOR */}
+                                        <div className="p-4 bg-white rounded-xl border border-slate-200/80 space-y-3 shadow-2xs">
                                             <div className="flex items-center justify-between">
                                                 <div>
-                                                    <label className="block text-[11px] font-bold text-slate-800">
-                                                        E-Wallet Balance (₱)
+                                                    <label className="block text-xs font-semibold text-slate-900">
+                                                        E-Wallet Balance
                                                     </label>
-                                                    <span className="text-[10px] text-slate-500">Live student spending credits available for canteen orders</span>
+                                                    <span className="text-[11px] text-slate-400 font-normal">Available spending credits</span>
                                                 </div>
-                                                <div className="font-outfit font-bold text-emerald-700 text-sm">
-                                                    Current: ₱{parseFloat(editBalance || 0).toFixed(2)}
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <div className="relative flex-1">
-                                                    <span className="absolute left-3 top-2 font-bold text-slate-400 text-xs">₱</span>
-                                                    <input
-                                                        type="number"
-                                                        step="0.01"
-                                                        min="0"
-                                                        value={editBalance}
-                                                        onChange={(e) => setEditBalance(e.target.value)}
-                                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-7 pr-3 py-2 text-xs font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-brand-500"
-                                                    />
+                                                <div className="font-outfit font-bold text-emerald-700 text-sm tabular-nums">
+                                                    ₱{parseFloat(editBalance || 0).toFixed(2)}
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-1.5 flex-wrap">
-                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Quick Adjust:</span>
+                                            <div className="relative">
+                                                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-semibold text-slate-400 text-xs">₱</span>
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    min="0"
+                                                    value={editBalance}
+                                                    onChange={(e) => setEditBalance(e.target.value)}
+                                                    className="w-full bg-slate-50/80 border border-slate-200/80 rounded-xl pl-8 pr-3.5 py-2 text-xs font-bold text-slate-900 focus:bg-white focus:border-[#7B1E22] transition-all outline-hidden focus:ring-2 focus:ring-[#7B1E22]/15"
+                                                />
+                                            </div>
+                                            <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
                                                 {[50, 100, 200, 500].map(amt => (
                                                     <button
                                                         key={amt}
                                                         type="button"
                                                         onClick={() => setEditBalance((prev) => (Math.max(0, parseFloat(prev) || 0) + amt).toFixed(2))}
-                                                        className="px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-lg text-[10px] font-bold transition-all btn-press"
+                                                        className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200/70 text-slate-800 rounded-lg text-[11px] font-semibold transition-all active:scale-95 cursor-pointer"
                                                     >
                                                         +₱{amt}
                                                     </button>
                                                 ))}
                                                 <button
                                                     type="button"
-                                                    onClick={() => setEditBalance((prev) => Math.max(0, (parseFloat(prev) || 0) - 50).toFixed(2))}
-                                                    className="px-2 py-0.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-800 rounded-lg text-[10px] font-bold transition-all btn-press"
-                                                >
-                                                    -₱50
-                                                </button>
-                                                <button
-                                                    type="button"
                                                     onClick={() => setEditBalance('0.00')}
-                                                    className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 rounded-lg text-[10px] font-bold transition-all btn-press ml-auto"
+                                                    className="px-2.5 py-1 text-rose-600 hover:bg-rose-50 rounded-lg text-[11px] font-semibold transition-all active:scale-95 cursor-pointer ml-auto"
                                                 >
-                                                    Reset ₱0
+                                                    Clear
                                                 </button>
                                             </div>
                                         </div>
 
-                                        {/* DAILY SPENDING CAP & PRESETS */}
-                                        <div className="p-3.5 bg-white rounded-xl border border-slate-200 space-y-2.5">
+                                        {/* DAILY SPENDING CAP */}
+                                        <div className="p-4 bg-white rounded-xl border border-slate-200/80 space-y-3 shadow-2xs">
                                             <div className="flex items-center justify-between">
                                                 <div>
-                                                    <label className="block text-[11px] font-bold text-slate-800">
-                                                        Daily Spending Limit (₱)
+                                                    <label className="block text-xs font-semibold text-slate-900">
+                                                        Daily Spending Limit
                                                     </label>
-                                                    <span className="text-[10px] text-slate-500">Maximum spending threshold enforced per calendar day at POS/Kiosks</span>
+                                                    <span className="text-[11px] text-slate-400 font-normal">Per-day threshold at POS & Kiosks</span>
                                                 </div>
-                                                <div className="font-outfit font-bold text-brand-700 text-xs">
-                                                    Cap: ₱{parseFloat(editDailyCap || 200).toFixed(2)}
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <div className="relative flex-1">
-                                                    <span className="absolute left-3 top-2 font-bold text-slate-400 text-xs">₱</span>
-                                                    <input
-                                                        type="number"
-                                                        step="1"
-                                                        min="0"
-                                                        value={editDailyCap}
-                                                        onChange={(e) => setEditDailyCap(e.target.value)}
-                                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-7 pr-3 py-2 text-xs font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-brand-500"
-                                                    />
+                                                <div className="font-outfit font-bold text-slate-900 text-xs tabular-nums">
+                                                    ₱{parseFloat(editDailyCap || 200).toFixed(2)}
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-1.5 flex-wrap">
-                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Presets:</span>
+                                            <div className="relative">
+                                                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-semibold text-slate-400 text-xs">₱</span>
+                                                <input
+                                                    type="number"
+                                                    step="1"
+                                                    min="0"
+                                                    value={editDailyCap}
+                                                    onChange={(e) => setEditDailyCap(e.target.value)}
+                                                    className="w-full bg-slate-50/80 border border-slate-200/80 rounded-xl pl-8 pr-3.5 py-2 text-xs font-bold text-slate-900 focus:bg-white focus:border-[#7B1E22] transition-all outline-hidden focus:ring-2 focus:ring-[#7B1E22]/15"
+                                                />
+                                            </div>
+                                            <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
                                                 {[100, 150, 200, 300, 500].map(cap => (
                                                     <button
                                                         key={cap}
                                                         type="button"
                                                         onClick={() => setEditDailyCap(cap.toFixed(2))}
-                                                        className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold border transition-all btn-press ${parseFloat(editDailyCap) === cap ? 'bg-brand-700 text-white border-brand-800 shadow-xs' : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
-                                                            }`}
+                                                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all active:scale-95 cursor-pointer ${
+                                                            parseFloat(editDailyCap) === cap ? 'bg-[#7B1E22] text-white shadow-xs' : 'bg-slate-100 hover:bg-slate-200/70 text-slate-700'
+                                                        }`}
                                                     >
                                                         ₱{cap}
                                                     </button>
@@ -22660,20 +22657,21 @@
                                                 <button
                                                     type="button"
                                                     onClick={() => setEditDailyCap('9999.00')}
-                                                    className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold border transition-all btn-press ${parseFloat(editDailyCap) >= 9999 ? 'bg-brand-700 text-white border-brand-800 shadow-xs' : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
-                                                        }`}
+                                                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all active:scale-95 cursor-pointer ${
+                                                        parseFloat(editDailyCap) >= 9999 ? 'bg-[#7B1E22] text-white shadow-xs' : 'bg-slate-100 hover:bg-slate-200/70 text-slate-700'
+                                                    }`}
                                                 >
-                                                    No Cap
+                                                    No Limit
                                                 </button>
                                             </div>
                                         </div>
 
-                                        {/* PAY-LATER CREDIT LINE & DEBT SETTLEMENT */}
-                                        <div className="p-3.5 bg-white rounded-xl border border-slate-200 space-y-3">
+                                        {/* EMERGENCY PAY-LATER */}
+                                        <div className="p-4 bg-white rounded-xl border border-slate-200/80 space-y-3 shadow-2xs">
                                             <div className="flex items-center justify-between">
                                                 <div>
-                                                    <div className="font-bold text-slate-900 text-xs">Emergency Pay-Later Credit Allowance</div>
-                                                    <div className="text-[10px] text-slate-500">Allow student to order food when balance is ₱0.00 up to credit limit</div>
+                                                    <div className="font-semibold text-slate-900 text-xs">Emergency Pay Later</div>
+                                                    <div className="text-[11px] text-slate-400">Allows ordering when balance is zero</div>
                                                 </div>
                                                 <label className="relative inline-flex items-center cursor-pointer">
                                                     <input
@@ -22682,31 +22680,31 @@
                                                         onChange={(e) => setEditPayLaterAllowance(e.target.checked)}
                                                         className="sr-only peer"
                                                     />
-                                                    <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-700"></div>
+                                                    <div className="w-10 h-6 bg-slate-200 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#7B1E22]"></div>
                                                 </label>
                                             </div>
 
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2 border-t border-slate-100">
                                                 <div>
-                                                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">Max Credit Limit (₱)</label>
+                                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Max Credit (₱)</label>
                                                     <input
                                                         type="number"
                                                         value={editCreditLimit}
                                                         onChange={(e) => setEditCreditLimit(e.target.value)}
-                                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-amber-900"
+                                                        className="w-full bg-slate-50/80 border border-slate-200/80 rounded-xl px-3.5 py-1.5 text-xs font-bold text-slate-900"
                                                     />
                                                 </div>
                                                 <div>
-                                                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">Current Unsettled Debt</label>
-                                                    <div className="flex items-center justify-between p-1.5 px-3 bg-amber-50/80 border border-amber-200 rounded-xl">
-                                                        <span className="font-outfit font-bold text-amber-950 text-xs">₱{parseFloat(editCreditLiability || 0).toFixed(2)}</span>
+                                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Unsettled Debt</label>
+                                                    <div className="flex items-center justify-between p-2 px-3 bg-slate-50 border border-slate-200/80 rounded-xl">
+                                                        <span className="font-outfit font-bold text-slate-900 text-xs tabular-nums">₱{parseFloat(editCreditLiability || 0).toFixed(2)}</span>
                                                         {parseFloat(editCreditLiability || 0) > 0 && (
                                                             <button
                                                                 type="button"
-                                                                onClick={() => { setEditCreditLiability('0.00'); showToast("Cleared unsettled debt liability to ₱0.00!", "info"); }}
-                                                                className="text-[10px] px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-bold transition-all btn-press"
+                                                                onClick={() => { setEditCreditLiability('0.00'); showToast("Debt cleared to ₱0.00", "info"); }}
+                                                                className="text-[10px] px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md font-semibold transition-all active:scale-95 cursor-pointer"
                                                             >
-                                                                Clear Debt (₱0)
+                                                                Clear Debt
                                                             </button>
                                                         )}
                                                     </div>
@@ -22714,12 +22712,12 @@
                                             </div>
                                         </div>
 
-                                        {/* SALARY DEDUCTION (FOR STAFF & TEACHERS) */}
+                                        {/* SALARY DEDUCTION */}
                                         {['teacher', 'cashier', 'staff'].includes(editRole.toLowerCase()) && (
-                                            <div className="p-3.5 bg-white rounded-xl border border-slate-200 flex items-center justify-between">
+                                            <div className="p-4 bg-white rounded-xl border border-slate-200/80 flex items-center justify-between shadow-2xs">
                                                 <div>
-                                                    <div className="font-bold text-slate-900 text-xs">Payroll Salary Deduction Eligible</div>
-                                                    <div className="text-[10px] text-slate-500">Allow staff meal expenses to be logged for semi-monthly payroll deduction</div>
+                                                    <div className="font-semibold text-slate-900 text-xs">Payroll Deduction</div>
+                                                    <div className="text-[11px] text-slate-400">Bill meal charges to payroll</div>
                                                 </div>
                                                 <label className="relative inline-flex items-center cursor-pointer">
                                                     <input
@@ -22728,55 +22726,59 @@
                                                         onChange={(e) => setEditSalaryDeductionEligible(e.target.checked)}
                                                         className="sr-only peer"
                                                     />
-                                                    <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-700"></div>
+                                                    <div className="w-10 h-6 bg-slate-200 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#7B1E22]"></div>
                                                 </label>
                                             </div>
                                         )}
                                     </div>
                                 )}
 
-                                {/* TAB 3: RFID & ACCESS SECURITY */}
+                                {/* TAB 3: SECURITY (RFID & CREDENTIALS) */}
                                 {editAccountTab === 'rfid_security' && (
-                                    <div className="space-y-4 p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80">
-                                        {/* RFID SMART BADGE INTEGRATION */}
-                                        <div className="p-3.5 bg-white rounded-xl border border-slate-200 space-y-3">
-                                            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-8 h-8 rounded-lg bg-brand-50 border border-brand-100 text-brand-700 flex items-center justify-center font-bold">
-                                                        <Icon.CreditCard className="w-4 h-4 text-brand-700" />
+                                    <div className="space-y-3.5 p-4 bg-slate-50/70 rounded-2xl border border-slate-200/70">
+                                        {/* RFID CARD */}
+                                        <div className="p-4 bg-white rounded-xl border border-slate-200/80 space-y-3.5 shadow-2xs">
+                                            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                                                <div className="flex items-center gap-2.5">
+                                                    <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
+                                                        <Icon.CreditCard className="w-4 h-4" />
                                                     </div>
                                                     <div>
-                                                        <div className="font-bold text-slate-900 text-xs">RFID Smart Badge UID</div>
-                                                        <div className="text-[10px] text-slate-500">Hardware card UID scanned by USB EM4100 / Mifare reader</div>
+                                                        <div className="font-semibold text-slate-900 text-xs">RFID Smart Badge</div>
+                                                        <div className="text-[11px] text-slate-400">10-digit decimal or hex UID</div>
                                                     </div>
                                                 </div>
-                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${editRfidUid ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-800 border-amber-200'
-                                                    }`}>
-                                                    {editRfidUid ? '● Card Linked' : 'No Card Assigned'}
+                                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider ${
+                                                    editRfidUid ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'
+                                                }`}>
+                                                    {editRfidUid ? 'Linked' : 'Not Linked'}
                                                 </span>
                                             </div>
 
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                                                 <div>
-                                                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Badge UID Number</label>
+                                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Badge UID</label>
                                                     <input
                                                         type="text"
                                                         value={editRfidUid}
                                                         onChange={(e) => setEditRfidUid(e.target.value.toUpperCase().trim())}
-                                                        placeholder="e.g. 0008839210 or 1A-2B-3C-4D"
-                                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-bold text-brand-700 focus:bg-white focus:ring-2 focus:ring-brand-500"
+                                                        placeholder="e.g. 0008839210"
+                                                        className="w-full bg-slate-50/80 border border-slate-200/80 rounded-xl px-3.5 py-2 text-xs font-mono font-bold text-slate-900 focus:bg-white focus:border-[#7B1E22] transition-all outline-hidden focus:ring-2 focus:ring-[#7B1E22]/15"
                                                     />
                                                 </div>
                                                 <div>
-                                                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Card Frequency / Standard</label>
-                                                    <select
-                                                        value={editRfidType}
-                                                        onChange={(e) => setEditRfidType(e.target.value)}
-                                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900"
-                                                    >
-                                                        <option value="125kHz EM4100">125kHz EM4100 (Standard SJC Student ID)</option>
-                                                        <option value="13.56MHz Mifare Classic">13.56MHz Mifare Classic / NFC</option>
-                                                    </select>
+                                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Card Standard</label>
+                                                    <div className="relative">
+                                                        <select
+                                                            value={editRfidType}
+                                                            onChange={(e) => setEditRfidType(e.target.value)}
+                                                            className="w-full bg-slate-50/80 border border-slate-200/80 rounded-xl pl-3.5 pr-8 py-2 text-xs font-semibold text-slate-900 appearance-none focus:bg-white transition-all outline-hidden cursor-pointer"
+                                                        >
+                                                            <option value="125kHz EM4100">125kHz EM4100 (Standard SJC ID)</option>
+                                                            <option value="13.56MHz Mifare Classic">13.56MHz Mifare Classic</option>
+                                                        </select>
+                                                        <Icon.ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                                    </div>
                                                 </div>
                                             </div>
 
@@ -22786,47 +22788,45 @@
                                                     onClick={() => {
                                                         const randomUid = '000' + Math.floor(1000000 + Math.random() * 9000000);
                                                         setEditRfidUid(randomUid);
-                                                        showToast(`Generated random RFID badge UID: ${randomUid}`, "info");
+                                                        showToast(`Assigned test badge UID: ${randomUid}`, "info");
                                                     }}
-                                                    className="px-3 py-1.5 bg-brand-50 hover:bg-brand-100 border border-brand-200 text-brand-800 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 btn-press"
+                                                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200/70 text-slate-800 rounded-xl text-xs font-semibold transition-all active:scale-95 cursor-pointer flex items-center gap-1.5"
                                                 >
-                                                    <Icon.Zap className="w-3.5 h-3.5 text-brand-700" /> Assign Random Card (Test)
+                                                    <Icon.Zap className="w-3.5 h-3.5 text-amber-600" /> Assign Test Card
                                                 </button>
                                                 {editRfidUid && (
                                                     <button
                                                         type="button"
-                                                        onClick={() => { setEditRfidUid(''); showToast("Unlinked RFID card UID from profile.", "warning"); }}
-                                                        className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-800 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 btn-press"
+                                                        onClick={() => { setEditRfidUid(''); showToast("Card unlinked", "warning"); }}
+                                                        className="px-3 py-1.5 text-rose-600 hover:bg-rose-50 rounded-xl text-xs font-semibold transition-all active:scale-95 cursor-pointer flex items-center gap-1.5"
                                                     >
-                                                        <Icon.Trash className="w-3.5 h-3.5 text-rose-600" /> Unlink Card
+                                                        <Icon.Trash className="w-3.5 h-3.5" /> Unlink
                                                     </button>
                                                 )}
                                             </div>
                                         </div>
 
-                                        {/* MANAGER / POS PIN CODE */}
+                                        {/* POS MANAGER PIN */}
                                         {['cashier', 'staff', 'admin'].includes(editRole.toLowerCase()) && (
-                                            <div className="p-3.5 bg-white rounded-xl border border-slate-200 space-y-3">
-                                                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                                                    <div>
-                                                        <div className="font-bold text-slate-900 text-xs">POS Terminal Manager PIN</div>
-                                                        <div className="text-[10px] text-slate-500">4-digit security PIN for cashier authorization and refunds</div>
-                                                    </div>
+                                            <div className="p-4 bg-white rounded-xl border border-slate-200/80 space-y-3 shadow-2xs">
+                                                <div className="border-b border-slate-100 pb-2">
+                                                    <div className="font-semibold text-slate-900 text-xs">POS Manager PIN</div>
+                                                    <div className="text-[11px] text-slate-400">4-digit security PIN for voids & overrides</div>
                                                 </div>
 
                                                 <div className="flex items-center gap-3">
-                                                    <div className="relative w-48">
+                                                    <div className="relative w-44">
                                                         <input
                                                             type={editShowPin ? "text" : "password"}
                                                             maxLength={4}
                                                             value={editManagerPin}
                                                             onChange={(e) => setEditManagerPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-bold tracking-widest text-slate-900 text-center"
+                                                            className="w-full bg-slate-50/80 border border-slate-200/80 rounded-xl px-3.5 py-2 text-xs font-mono font-bold tracking-widest text-slate-900 text-center focus:bg-white"
                                                         />
                                                         <button
                                                             type="button"
                                                             onClick={() => setEditShowPin(!editShowPin)}
-                                                            className="absolute right-2 top-2 text-slate-400 hover:text-slate-700 p-0.5"
+                                                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
                                                         >
                                                             {editShowPin ? <Icon.EyeOff className="w-3.5 h-3.5" /> : <Icon.Eye className="w-3.5 h-3.5" />}
                                                         </button>
@@ -22837,11 +22837,11 @@
                                                             const newPin = String(Math.floor(1000 + Math.random() * 9000));
                                                             setEditManagerPin(newPin);
                                                             setEditShowPin(true);
-                                                            showToast(`Generated new 4-digit PIN: ${newPin}`, "info");
+                                                            showToast(`Generated PIN: ${newPin}`, "info");
                                                         }}
-                                                        className="px-3 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-800 rounded-xl text-xs font-bold transition-all btn-press"
+                                                        className="px-3 py-2 bg-slate-100 hover:bg-slate-200/70 text-slate-800 rounded-xl text-xs font-semibold transition-all active:scale-95 cursor-pointer"
                                                     >
-                                                        Generate Safe PIN
+                                                        Generate PIN
                                                     </button>
                                                 </div>
                                             </div>
@@ -22849,30 +22849,24 @@
                                     </div>
                                 )}
 
-                                {/* TAB 4: DIETARY & FAMILY LINKS */}
+                                {/* TAB 4: DIETARY & GUARDIANS */}
                                 {editAccountTab === 'dietary_family' && (
-                                    <div className="space-y-4 p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80">
-                                        {/* ALLERGEN RESTRICTIONS (FOR STUDENTS) */}
+                                    <div className="space-y-3.5 p-4 bg-slate-50/70 rounded-2xl border border-slate-200/70">
+                                        {/* ALLERGEN RESTRICTIONS */}
                                         {editRole.toLowerCase() === 'student' && (
-                                            <div className="p-3.5 bg-white rounded-xl border border-slate-200 space-y-2.5">
+                                            <div className="p-4 bg-white rounded-xl border border-slate-200/80 space-y-3 shadow-2xs">
                                                 <div>
-                                                    <label className="block text-[11px] font-bold text-slate-900">
-                                                        Allergen & Health Restriction Tags
+                                                    <label className="block text-xs font-semibold text-slate-900">
+                                                        Dietary & Allergen Restrictions
                                                     </label>
-                                                    <span className="text-[10px] text-slate-500">Triggers automatic pop-up alerts during POS checkout & AI Tray scanning</span>
+                                                    <span className="text-[11px] text-slate-400 font-normal">Triggers safety checks during checkout</span>
                                                 </div>
-                                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-2 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+                                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                                                     {[
-                                                        { tag: 'Peanuts', icon: '' },
-                                                        { tag: 'Dairy', icon: '' },
-                                                        { tag: 'Gluten', icon: '' },
-                                                        { tag: 'Shellfish', icon: '' },
-                                                        { tag: 'Eggs', icon: '' },
-                                                        { tag: 'Soy', icon: '' },
-                                                        { tag: 'Fish', icon: '' },
-                                                        { tag: 'Tree Nuts', icon: '' },
-                                                        { tag: 'Sugar', icon: '' }
-                                                    ].map(({ tag, icon }) => {
+                                                        'Peanuts', 'Dairy', 'Gluten',
+                                                        'Shellfish', 'Eggs', 'Soy',
+                                                        'Fish', 'Tree Nuts', 'Sugar'
+                                                    ].map(tag => {
                                                         const isChecked = editAllergens.includes(tag);
                                                         return (
                                                             <button
@@ -22882,81 +22876,81 @@
                                                                     if (isChecked) setEditAllergens(editAllergens.filter(t => t !== tag));
                                                                     else setEditAllergens([...editAllergens, tag]);
                                                                 }}
-                                                                className={`flex items-center gap-2 p-2 rounded-xl border text-left font-bold transition-all text-xs btn-press ${isChecked ? 'bg-rose-50 border-rose-300 text-rose-800 shadow-2xs' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100/80'
-                                                                    }`}
+                                                                className={`flex items-center justify-between p-2.5 rounded-xl border text-xs font-semibold transition-all active:scale-95 cursor-pointer ${
+                                                                    isChecked ? 'bg-rose-50/80 border-rose-200 text-rose-800 shadow-2xs' : 'bg-slate-50/60 border-slate-200/60 text-slate-600 hover:bg-slate-100'
+                                                                }`}
                                                             >
-                                                                <span>{icon}</span>
-                                                                <span className="truncate">{tag}</span>
-                                                                {isChecked && <Icon.Check className="w-3.5 h-3.5 ml-auto text-rose-600 shrink-0" />}
+                                                                <span>{tag}</span>
+                                                                {isChecked && <Icon.Check className="w-3.5 h-3.5 text-rose-600 shrink-0" />}
                                                             </button>
                                                         );
                                                     })}
                                                 </div>
 
-                                                <div className="pt-2">
-                                                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Custom Dietary & Medical Notes</label>
+                                                <div className="pt-1">
+                                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Dietary Notes</label>
                                                     <textarea
                                                         rows={2}
                                                         value={editDietaryNotes}
                                                         onChange={(e) => setEditDietaryNotes(e.target.value)}
-                                                        placeholder="e.g. Mild lactose intolerance; asthma action plan on file with school nurse."
-                                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:bg-white focus:ring-2 focus:ring-brand-500"
+                                                        placeholder="Dietary details or medical considerations..."
+                                                        className="w-full bg-slate-50/80 border border-slate-200/80 rounded-xl p-3 text-xs text-slate-900 focus:bg-white focus:border-[#7B1E22] transition-all outline-hidden focus:ring-2 focus:ring-[#7B1E22]/15"
                                                     />
                                                 </div>
                                             </div>
                                         )}
 
-                                        {/* PARENT / GUARDIAN CONTACT DETAILS */}
-                                        <div className="p-3.5 bg-white rounded-xl border border-slate-200 space-y-3">
+                                        {/* GUARDIAN CONTACT */}
+                                        <div className="p-4 bg-white rounded-xl border border-slate-200/80 space-y-3 shadow-2xs">
                                             <div className="border-b border-slate-100 pb-2">
-                                                <div className="font-bold text-slate-900 text-xs">
-                                                    {editRole.toLowerCase() === 'parent' ? 'Linked Student / Ward Accounts' : 'Parent & Emergency Guardian Contact'}
-                                                </div>
-                                                <div className="text-[10px] text-slate-500">
-                                                    {editRole.toLowerCase() === 'parent' ? 'Select student account to link with this parent portal login' : 'Emergency contact info notified during top-ups and safety alerts'}
+                                                <div className="font-semibold text-slate-900 text-xs">
+                                                    {editRole.toLowerCase() === 'parent' ? 'Linked Children' : 'Guardian Contact'}
                                                 </div>
                                             </div>
 
                                             {editRole.toLowerCase() === 'parent' ? (
-                                                <div className="space-y-2">
-                                                    <label className="block text-[11px] font-bold text-slate-700">Attach Student / Child</label>
-                                                    <select
-                                                        value={editLinkedStudentId}
-                                                        onChange={(e) => {
-                                                            setEditLinkedStudentId(e.target.value);
-                                                            const match = registeredUsers.find(u => u.id === e.target.value || u.studentId === e.target.value);
-                                                            if (match) setEditGuardianName(match.name);
-                                                        }}
-                                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:bg-white"
-                                                    >
-                                                        <option value="">-- Select Registered Student --</option>
-                                                        {studentUsersList.map(stud => (
-                                                            <option key={stud.id} value={stud.studentId || stud.id}>
-                                                                {stud.name} ({stud.studentId || stud.id}) - ₱{(stud.balance || 0).toFixed(2)} Balance
-                                                            </option>
-                                                        ))}
-                                                    </select>
+                                                <div className="space-y-1.5">
+                                                    <label className="block text-[11px] font-semibold text-slate-500">Attach Student</label>
+                                                    <div className="relative">
+                                                        <select
+                                                            value={editLinkedStudentId}
+                                                            onChange={(e) => {
+                                                                setEditLinkedStudentId(e.target.value);
+                                                                const match = registeredUsers.find(u => u.id === e.target.value || u.studentId === e.target.value);
+                                                                if (match) setEditGuardianName(match.name);
+                                                            }}
+                                                            className="w-full bg-slate-50/80 border border-slate-200/80 rounded-xl pl-3.5 pr-8 py-2 text-xs font-semibold text-slate-900 appearance-none focus:bg-white transition-all outline-hidden cursor-pointer"
+                                                        >
+                                                            <option value="">-- Select Registered Student --</option>
+                                                            {studentUsersList.map(stud => (
+                                                                <option key={stud.id} value={stud.studentId || stud.id}>
+                                                                    {stud.name} ({stud.studentId || stud.id})
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                        <Icon.ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                                    </div>
                                                 </div>
                                             ) : (
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                                                     <div>
-                                                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Guardian Full Name</label>
+                                                        <label className="block text-[11px] font-semibold text-slate-500 mb-1">Guardian Name</label>
                                                         <input
                                                             type="text"
                                                             value={editGuardianName}
                                                             onChange={(e) => setEditGuardianName(e.target.value)}
-                                                            placeholder="e.g. Maria Santos Dela Cruz"
-                                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900"
+                                                            placeholder="Maria Santos"
+                                                            className="w-full bg-slate-50/80 border border-slate-200/80 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-900 focus:bg-white"
                                                         />
                                                     </div>
                                                     <div>
-                                                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Guardian Emergency Phone</label>
+                                                        <label className="block text-[11px] font-semibold text-slate-500 mb-1">Emergency Phone</label>
                                                         <input
                                                             type="text"
                                                             value={editGuardianPhone}
                                                             onChange={(e) => setEditGuardianPhone(e.target.value)}
-                                                            placeholder="e.g. 0918-765-4321"
-                                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono text-slate-900"
+                                                            placeholder="0918-765-4321"
+                                                            className="w-full bg-slate-50/80 border border-slate-200/80 rounded-xl px-3.5 py-2 text-xs font-mono text-slate-900 focus:bg-white"
                                                         />
                                                     </div>
                                                 </div>
@@ -22965,104 +22959,236 @@
                                     </div>
                                 )}
 
-                                {/* MODAL FOOTER ACTIONS */}
-                                <div className="flex items-center justify-between pt-3 border-t border-slate-200/80">
-                                    <ActionButton
-                                        variant="secondary"
+                                {/* 3. APPLE MODAL FOOTER */}
+                                <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-200/70">
+                                    <button
+                                        type="button"
                                         onClick={() => { setEditAccountModalOpen(false); setEditAccountError(''); }}
-                                        className="px-4 py-2"
+                                        className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-all active:scale-95 cursor-pointer"
                                     >
                                         Cancel
-                                    </ActionButton>
+                                    </button>
 
-                                    <div className="flex items-center gap-2">
-                                        <ActionButton
-                                            variant="primary"
-                                            onClick={handleSaveAccountEdit}
-                                            disabled={isSavingAccountEdit}
-                                            className="px-6 py-2.5 font-bold shadow-md flex items-center gap-2 btn-press"
-                                        >
-                                            {isSavingAccountEdit ? (
-                                                <>
-                                                    <Icon.Loader2 className="w-4 h-4 animate-spin" />
-                                                    <span>Saving Changes...</span>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Icon.Save className="w-4 h-4" />
-                                                    <span>Save Account Changes</span>
-                                                </>
-                                            )}
-                                        </ActionButton>
-                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={handleSaveAccountEdit}
+                                        disabled={isSavingAccountEdit}
+                                        className="px-5 py-2 rounded-xl text-xs font-semibold bg-[#7B1E22] hover:bg-[#5C1016] text-white transition-all shadow-xs active:scale-95 cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                                    >
+                                        {isSavingAccountEdit ? (
+                                            <>
+                                                <Icon.Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                <span>Saving…</span>
+                                            </>
+                                        ) : (
+                                            <span>Save Changes</span>
+                                        )}
+                                    </button>
                                 </div>
                             </div>
                         )}
                     </CustomModal>
 
-                    {/* MODAL: EDIT MENU PRODUCT */}
-                    <CustomModal isOpen={editProductModalOpen} onClose={() => { setEditProductModalOpen(false); setEditProductError(''); }} title="Edit Menu Item" subtitle="Update item details and stock" icon={Icon.Edit} size="md">
-                        <form onSubmit={handleSaveProductEdit} className="space-y-3">
+                    {/* MODAL: EDIT MENU PRODUCT (APPLE HIG 2026) */}
+                    <CustomModal
+                        isOpen={editProductModalOpen}
+                        onClose={() => { setEditProductModalOpen(false); setEditProductError(''); }}
+                        title="Edit Menu Item"
+                        subtitle=""
+                        icon={Icon.Utensils}
+                        iconBg="bg-slate-100/90 text-slate-700 border-slate-200/60"
+                        size="md"
+                    >
+                        <form onSubmit={handleSaveProductEdit} className="space-y-4">
                             {editProductError && (
-                                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs font-bold flex items-center gap-2">
+                                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs font-semibold flex items-center gap-2">
                                     <Icon.AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
                                     <span>{editProductError}</span>
                                 </div>
                             )}
-                            <div><label className="block font-semibold mb-1">Item Name</label><input type="text" value={editProdName} onChange={(e) => { setEditProdName(e.target.value); setEditProductError(''); }} className="w-full bg-slate-50 border rounded p-2 text-xs font-bold" /></div>
-                            <div>
-                                <label className="block font-semibold mb-1">Category</label>
-                                <select value={editProdCategory} onChange={(e) => setEditProdCategory(e.target.value)} className="w-full bg-slate-50 border rounded p-2 text-xs">
-                                    <option value="Meals & Mains">Meals & Mains</option>
-                                    <option value="Beverages">Beverages</option>
-                                    <option value="Snacks & Bakery">Snacks & Bakery</option>
-                                    <option value="Fruits & Healthy">Fruits & Healthy</option>
-                                </select>
-                            </div>
-                            <div className="grid grid-cols-2 gap-2">
-                                <div><label className="block font-semibold mb-1">Price (₱)</label><input type="number" step="0.01" value={editProdPrice} onChange={(e) => { setEditProdPrice(e.target.value); setEditProductError(''); }} className="w-full bg-slate-50 border rounded p-2 text-xs font-bold" /></div>
-                                <div><label className="block font-semibold mb-1">Stock Quantity</label><input type="number" value={editProdStock} onChange={(e) => { setEditProdStock(e.target.value); setEditProductError(''); }} className="w-full bg-slate-50 border rounded p-2 text-xs font-bold" /></div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-2">
-                                <div><label className="block font-semibold mb-1">Calories (kcal)</label><input type="number" value={editProdCalories} onChange={(e) => setEditProdCalories(e.target.value)} className="w-full bg-slate-50 border rounded p-2 text-xs font-bold" /></div>
-                                <div><label className="block font-semibold mb-1">Protein (g)</label><input type="text" value={editProdProtein} onChange={(e) => setEditProdProtein(e.target.value)} className="w-full bg-slate-50 border rounded p-2 text-xs font-bold" /></div>
-                            </div>
-                            <div>
-                                <label className="block font-semibold mb-1">Allergen Tags</label>
-                                <div className="grid grid-cols-4 gap-1 p-2 bg-slate-50 rounded border text-[11px]">
-                                    {['Peanuts', 'Tree Nuts', 'Dairy', 'Shellfish', 'Gluten', 'Eggs', 'Soy', 'Fish'].map(tag => (
-                                        <label key={tag} className="flex items-center gap-1 cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                checked={editProdAllergens.includes(tag)}
-                                                onChange={(e) => {
-                                                    if (e.target.checked) setEditProdAllergens(prev => [...prev, tag]);
-                                                    else setEditProdAllergens(prev => prev.filter(t => t !== tag));
-                                                }}
-                                                className="w-3 h-3 text-brand-700"
-                                            />
-                                            <span>{tag}</span>
-                                        </label>
-                                    ))}
+
+                            {/* 1. PRODUCT PREVIEW HERO CARD */}
+                            <div className="p-3.5 rounded-2xl bg-slate-50/80 border border-slate-200/70 flex items-center gap-3.5">
+                                <div className="w-14 h-14 rounded-xl overflow-hidden bg-slate-100 border border-slate-200/80 shadow-2xs shrink-0">
+                                    <img
+                                        src={editProdImg || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80"}
+                                        alt={editProdName}
+                                        onError={(e) => {
+                                            e.target.onerror = null;
+                                            e.target.src = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80";
+                                        }}
+                                        className="w-full h-full object-cover"
+                                    />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2">
+                                        <h4 className="font-outfit font-bold text-sm text-slate-900 leading-tight truncate">
+                                            {editProdName || "Untitled Item"}
+                                        </h4>
+                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-200/70 text-slate-700 shrink-0">
+                                            {editProdCategory}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-xs text-slate-500 font-mono mt-1">
+                                        <span className="font-outfit font-bold text-slate-900">₱{parseFloat(editProdPrice || 0).toFixed(2)}</span>
+                                        <span>•</span>
+                                        <span>{editProdStock || 0} in stock</span>
+                                    </div>
                                 </div>
                             </div>
-                            <div>
-                                <label className="block font-semibold mb-1">Product Image URL</label>
-                                <input type="text" value={editProdImg} onChange={(e) => setEditProdImg(e.target.value)} className="w-full bg-slate-50 border rounded p-2 text-xs font-mono" />
-                            </div>
-                            <div className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+
+                            {/* 2. FORM FIELDS (APPLE INSET GROUP) */}
+                            <div className="space-y-3.5 p-4 bg-slate-50/70 rounded-2xl border border-slate-200/70">
                                 <div>
-                                    <div className="font-bold text-slate-800">Menu Item Availability</div>
-                                    <div className="text-[11px] text-slate-500">Toggle whether item is active for purchase in POS</div>
+                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Item Name</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        value={editProdName}
+                                        onChange={(e) => { setEditProdName(e.target.value); setEditProductError(''); }}
+                                        placeholder="Item name"
+                                        className="w-full bg-white hover:bg-slate-50/50 focus:bg-white border border-slate-200/80 focus:border-[#7B1E22] rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-900 transition-all outline-hidden focus:ring-2 focus:ring-[#7B1E22]/15 shadow-2xs"
+                                    />
                                 </div>
-                                <label className="relative inline-flex items-center cursor-pointer">
-                                    <input type="checkbox" checked={editProdAvailable} onChange={(e) => setEditProdAvailable(e.target.checked)} className="sr-only peer" />
-                                    <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
-                                </label>
+
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Category</label>
+                                    <div className="relative">
+                                        <select
+                                            value={editProdCategory}
+                                            onChange={(e) => setEditProdCategory(e.target.value)}
+                                            className="w-full bg-white hover:bg-slate-50/50 focus:bg-white border border-slate-200/80 focus:border-[#7B1E22] rounded-xl pl-3.5 pr-8 py-2 text-xs font-semibold text-slate-900 appearance-none transition-all outline-hidden focus:ring-2 focus:ring-[#7B1E22]/15 shadow-2xs cursor-pointer"
+                                        >
+                                            <option value="Meals & Mains">Meals & Mains</option>
+                                            <option value="Beverages">Beverages</option>
+                                            <option value="Snacks & Bakery">Snacks & Bakery</option>
+                                            <option value="Fruits & Healthy">Fruits & Healthy</option>
+                                        </select>
+                                        <Icon.ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3.5">
+                                    <div>
+                                        <label className="block text-[11px] font-semibold text-slate-500 mb-1">Price (₱)</label>
+                                        <div className="relative">
+                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 font-semibold text-slate-400 text-xs">₱</span>
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                required
+                                                value={editProdPrice}
+                                                onChange={(e) => { setEditProdPrice(e.target.value); setEditProductError(''); }}
+                                                className="w-full bg-white hover:bg-slate-50/50 focus:bg-white border border-slate-200/80 focus:border-[#7B1E22] rounded-xl pl-7 pr-3 py-2 text-xs font-bold text-slate-900 transition-all outline-hidden focus:ring-2 focus:ring-[#7B1E22]/15 shadow-2xs"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[11px] font-semibold text-slate-500 mb-1">Stock Quantity</label>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            value={editProdStock}
+                                            onChange={(e) => { setEditProdStock(e.target.value); setEditProductError(''); }}
+                                            className="w-full bg-white hover:bg-slate-50/50 focus:bg-white border border-slate-200/80 focus:border-[#7B1E22] rounded-xl px-3.5 py-2 text-xs font-bold text-slate-900 transition-all outline-hidden focus:ring-2 focus:ring-[#7B1E22]/15 shadow-2xs"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3.5">
+                                    <div>
+                                        <label className="block text-[11px] font-semibold text-slate-500 mb-1">Calories (kcal)</label>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            value={editProdCalories}
+                                            onChange={(e) => setEditProdCalories(e.target.value)}
+                                            className="w-full bg-white hover:bg-slate-50/50 focus:bg-white border border-slate-200/80 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-900 transition-all outline-hidden focus:ring-2 focus:ring-[#7B1E22]/15 shadow-2xs"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[11px] font-semibold text-slate-500 mb-1">Protein</label>
+                                        <input
+                                            type="text"
+                                            value={editProdProtein}
+                                            onChange={(e) => setEditProdProtein(e.target.value)}
+                                            placeholder="e.g. 12g"
+                                            className="w-full bg-white hover:bg-slate-50/50 focus:bg-white border border-slate-200/80 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-900 transition-all outline-hidden focus:ring-2 focus:ring-[#7B1E22]/15 shadow-2xs"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1.5">Allergen Tags</label>
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                                        {['Peanuts', 'Tree Nuts', 'Dairy', 'Shellfish', 'Gluten', 'Eggs', 'Soy', 'Fish'].map(tag => {
+                                            const isChecked = editProdAllergens.includes(tag);
+                                            return (
+                                                <button
+                                                    key={tag}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        if (isChecked) setEditProdAllergens(prev => prev.filter(t => t !== tag));
+                                                        else setEditProdAllergens(prev => [...prev, tag]);
+                                                    }}
+                                                    className={`py-1.5 px-2 rounded-lg border text-[11px] font-semibold transition-all flex items-center justify-between active:scale-95 cursor-pointer ${
+                                                        isChecked
+                                                            ? 'bg-rose-50 border-rose-200 text-rose-800 shadow-2xs'
+                                                            : 'bg-white border-slate-200/80 text-slate-600 hover:bg-slate-50'
+                                                    }`}
+                                                >
+                                                    <span className="truncate">{tag}</span>
+                                                    {isChecked && <Icon.Check className="w-3 h-3 text-rose-600 shrink-0 ml-1" />}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Product Image URL</label>
+                                    <input
+                                        type="text"
+                                        value={editProdImg}
+                                        onChange={(e) => setEditProdImg(e.target.value)}
+                                        placeholder="https://images.unsplash.com/..."
+                                        className="w-full bg-white hover:bg-slate-50/50 focus:bg-white border border-slate-200/80 rounded-xl px-3.5 py-2 text-xs font-mono text-slate-700 transition-all outline-hidden focus:ring-2 focus:ring-[#7B1E22]/15 shadow-2xs truncate"
+                                    />
+                                </div>
+
+                                <div className="flex items-center justify-between p-3.5 bg-white rounded-xl border border-slate-200/80 shadow-2xs">
+                                    <div>
+                                        <div className="font-semibold text-slate-900 text-xs">Item Availability</div>
+                                        <div className="text-[11px] text-slate-400">Available for ordering on POS & Kiosks</div>
+                                    </div>
+                                    <label className="relative inline-flex items-center cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={editProdAvailable}
+                                            onChange={(e) => setEditProdAvailable(e.target.checked)}
+                                            className="sr-only peer"
+                                        />
+                                        <div className="w-10 h-6 bg-slate-200 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#7B1E22]"></div>
+                                    </label>
+                                </div>
                             </div>
-                            <div className="flex gap-2 pt-3 border-t">
-                                <ActionButton variant="secondary" onClick={() => { setEditProductModalOpen(false); setEditProductError(''); }} className="w-1/3 py-2">Cancel</ActionButton>
-                                <ActionButton variant="primary" type="submit" className="w-2/3 py-2 font-bold">Update Catalog Item</ActionButton>
+
+                            {/* 3. APPLE MODAL FOOTER */}
+                            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-200/70">
+                                <button
+                                    type="button"
+                                    onClick={() => { setEditProductModalOpen(false); setEditProductError(''); }}
+                                    className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-all active:scale-95 cursor-pointer"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="px-5 py-2 rounded-xl text-xs font-semibold bg-[#7B1E22] hover:bg-[#5C1016] text-white transition-all shadow-xs active:scale-95 cursor-pointer flex items-center gap-1.5"
+                                >
+                                    <span>Save Item</span>
+                                </button>
                             </div>
                         </form>
                     </CustomModal>
