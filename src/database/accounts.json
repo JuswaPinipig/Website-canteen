@@ -1,0 +1,137 @@
+{
+  "students": [
+    {
+      "full_name": "Joshua Lupisan",
+      "email": "joshua.student@sjc.edu.ph",
+      "secondary_email": "student@gmail.com",
+      "password": "Student123!",
+      "role": "student",
+      "student_id_number": "2023-01900",
+      "rfid_uid": "0009401737",
+      "pin_code": "1234",
+      "balance": 250.0,
+      "daily_limit": 250.0,
+      "pay_later_count": 0,
+      "pay_later_balance": 0.0
+    },
+    {
+      "full_name": "Sophia Dela Cruz",
+      "email": "sophia.student@sjc.edu.ph",
+      "password": "Student123!",
+      "role": "student",
+      "student_id_number": "2023-01988",
+      "rfid_uid": "7B-3E-11-F4",
+      "pin_code": "1234",
+      "balance": 200.0,
+      "daily_limit": 200.0,
+      "pay_later_count": 0,
+      "pay_later_balance": 0.0
+    },
+    {
+      "full_name": "Mark Anthony Santos",
+      "email": "mark.student@sjc.edu.ph",
+      "password": "Student123!",
+      "role": "student",
+      "student_id_number": "2023-02104",
+      "rfid_uid": "5C-2A-88-D1",
+      "pin_code": "1234",
+      "balance": 200.0,
+      "daily_limit": 200.0,
+      "pay_later_count": 0,
+      "pay_later_balance": 0.0
+    },
+    {
+      "full_name": "Beatriz Ramos",
+      "email": "beatriz.student@sjc.edu.ph",
+      "password": "Student123!",
+      "role": "student",
+      "student_id_number": "2023-03011",
+      "rfid_uid": "3D-11-99-B0",
+      "pin_code": "1234",
+      "balance": 200.0,
+      "daily_limit": 200.0,
+      "pay_later_count": 0,
+      "pay_later_balance": 0.0
+    },
+    {
+      "full_name": "Stark Aguilar",
+      "email": "StarkAg@sjc.edu.ph",
+      "password": "Student123!",
+      "role": "student",
+      "student_id_number": "2026-71797",
+      "rfid_uid": "0009458633",
+      "pin_code": "1234",
+      "balance": 200.0,
+      "daily_limit": 200.0,
+      "pay_later_count": 0,
+      "pay_later_balance": 0.0
+    },
+    {
+      "full_name": "Keith Canilang",
+      "email": "KeithC@sjc.edu.ph",
+      "password": "Student123!",
+      "role": "student",
+      "student_id_number": "2026-27168",
+      "rfid_uid": "0009631295",
+      "pin_code": "1234",
+      "balance": 200.0,
+      "daily_limit": 200.0,
+      "pay_later_count": 0,
+      "pay_later_balance": 0.0
+    },
+    {
+      "full_name": "Frieren Aguilar",
+      "email": "frierenaguilar@sjc.edu.ph",
+      "password": "Student123!",
+      "role": "student",
+      "student_id_number": "2026-68351",
+      "rfid_uid": "0009596092",
+      "pin_code": "1234",
+      "balance": 200.0,
+      "daily_limit": 200.0,
+      "pay_later_count": 0,
+      "pay_later_balance": 0.0
+    }
+  ],
+  "parents": [
+    {
+      "full_name": "Maria Santos",
+      "email": "parent.maria@sjc.edu.ph",
+      "secondary_email": "parent@gmail.com",
+      "password": "Parent123!",
+      "role": "parent",
+      "linked_students": [
+        "2023-01900",
+        "2023-01988"
+      ]
+    },
+    {
+      "full_name": "Carlos Dela Cruz",
+      "email": "parent.carlos@sjc.edu.ph",
+      "password": "Parent123!",
+      "role": "parent",
+      "linked_students": [
+        "2023-01900"
+      ]
+    }
+  ],
+  "cashiers": [
+    {
+      "full_name": "Elena Rostata (POS #01)",
+      "email": "cashier.pos@sjc.edu.ph",
+      "secondary_email": "cashier@gmail.com",
+      "password": "Cashier123!",
+      "role": "cashier",
+      "terminal": "POS Terminal #01"
+    }
+  ],
+  "admins": [
+    {
+      "full_name": "System Administrator",
+      "email": "admin.system@sjc.edu.ph",
+      "secondary_email": "admin@gmail.com",
+      "password": "Admin123!",
+      "role": "admin"
+    }
+  ]
+}

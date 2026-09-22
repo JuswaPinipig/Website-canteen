@@ -1295,6 +1295,7 @@ DECLARE
     v_curr_bal  NUMERIC(10,2);
     v_new_debt  NUMERIC(10,2);
     v_new_bal   NUMERIC(10,2);
+    v_wallet_id UUID;
 BEGIN
     IF p_repayment_amount <= 0 THEN
         RETURN jsonb_build_object('success', false, 'error', 'Repayment amount must be positive');
@@ -1309,7 +1310,7 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', 'Student profile not found');
     END IF;
 
-    PERFORM 1 FROM public.wallets WHERE user_id = p_student_id FOR UPDATE;
+    SELECT id INTO v_wallet_id FROM public.wallets WHERE user_id = p_student_id FOR UPDATE;
 
     v_new_debt := GREATEST(0.00, ROUND(COALESCE(v_curr_debt, 0.00) - p_repayment_amount, 2));
 
@@ -1339,11 +1340,13 @@ BEGIN
         WHERE id = p_student_id;
     END IF;
 
-    INSERT INTO public.wallet_transactions (
-        user_id, transaction_type, amount, balance_before, balance_after, payment_channel, description
-    ) VALUES (
-        p_student_id, 'PAY_LATER_SETTLEMENT', p_repayment_amount, v_curr_bal, v_new_bal, UPPER(p_payment_method), 'Pay Later emergency debt repayment clearance'
-    );
+    IF v_wallet_id IS NOT NULL THEN
+        INSERT INTO public.wallet_transactions (
+            wallet_id, user_id, transaction_type, amount, balance_before, balance_after, payment_method, payment_channel, description
+        ) VALUES (
+            v_wallet_id, p_student_id, 'purchase', p_repayment_amount, v_curr_bal, v_new_bal, LOWER(p_payment_method), UPPER(p_payment_method), 'Pay Later emergency debt repayment clearance'
+        );
+    END IF;
 
     RETURN jsonb_build_object('success', true, 'remaining_liability', v_new_debt, 'new_balance', v_new_bal);
 END;

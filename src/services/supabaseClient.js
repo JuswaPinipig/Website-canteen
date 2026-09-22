@@ -762,26 +762,210 @@
             return cleanLiability;
         },
 
-        async settleStudentDebt(userId, amountPaid, paymentMethod = 'cash', cashierId = null) {
+        async settleStudentDebt(userId, amountPaid, paymentMethod = 'cash', cashierId = null, settledOrderIds = []) {
             const cleanAmount = parseFloat(amountPaid) || 0;
+            const method = String(paymentMethod || 'cash').toLowerCase();
+            const isRfid = method === 'rfid';
+            const isWaiver = method === 'waiver';
+
+            // 1. Fetch current wallet and profile
+            let wallet = null;
+            let profile = null;
+            if (this.isUUID(userId)) {
+                wallet = await this.getWalletByUserId(userId).catch(() => null);
+                profile = await this.getProfileById(userId).catch(() => null);
+            }
+
+            const currentDebt = wallet && wallet.credit_liability !== undefined && wallet.credit_liability !== null
+                ? (parseFloat(wallet.credit_liability) || 0)
+                : (profile && profile.credit_liability !== undefined ? (parseFloat(profile.credit_liability) || 0) : 0);
+
+            const currentBal = wallet && wallet.balance !== undefined && wallet.balance !== null
+                ? (parseFloat(wallet.balance) || 0)
+                : (profile && profile.balance !== undefined ? (parseFloat(profile.balance) || 0) : 0);
+
+            const newDebt = isWaiver ? 0 : Math.max(0, currentDebt - cleanAmount);
+            let newBal = currentBal;
+            if (isRfid) {
+                newBal = Math.max(0, currentBal - cleanAmount);
+            }
+
+            // 2. Try Supabase RPC first if applicable
+            let rpcSucceeded = false;
             if (supabase && this.isUUID(userId)) {
                 try {
                     const { data, error } = await supabase.rpc('settle_pay_later_liability', {
                         p_student_id: userId,
                         p_repayment_amount: cleanAmount,
-                        p_payment_method: paymentMethod.toLowerCase()
+                        p_payment_method: method
                     });
-                    if (!error && data && data.success) return data;
+                    if (!error && data && data.success) {
+                        rpcSucceeded = true;
+                    } else if (error) {
+                        console.warn("[CanteenDB] RPC settle_pay_later_liability fallback triggered:", error.message || error);
+                    }
                 } catch (e) {
-                    console.warn("[CanteenDB] RPC settle_pay_later_liability fallback:", e);
+                    console.warn("[CanteenDB] RPC settle_pay_later_liability catch fallback:", e);
                 }
             }
-            // Fallback update
-            const wallet = await this.getWalletByUserId(userId).catch(() => null);
-            const currentDebt = wallet ? (parseFloat(wallet.credit_liability) || 0) : 0;
-            const newDebt = Math.max(0, currentDebt - cleanAmount);
-            await this.updateStudentCreditLiability(userId, newDebt);
-            return { success: true, remaining_liability: newDebt };
+
+            // 3. Resilient Database Updates to ensure persistence on cloud refresh
+            if (!rpcSucceeded && this.isUUID(userId)) {
+                const nowIso = new Date().toISOString();
+
+                // 3a. Update or create Wallets table record (handles newly made accounts)
+                const walletUpdate = {
+                    user_id: userId,
+                    credit_liability: newDebt,
+                    updated_at: nowIso
+                };
+                if (isRfid) {
+                    walletUpdate.balance = newBal;
+                }
+
+                let activeWalletId = wallet ? wallet.id : null;
+
+                if (supabase) {
+                    try {
+                        const { data: upsertData, error: wErr } = await supabase.from('wallets')
+                            .upsert(walletUpdate, { onConflict: 'user_id' })
+                            .select()
+                            .single();
+                        if (upsertData && upsertData.id) {
+                            activeWalletId = upsertData.id;
+                        }
+                        if (wErr) {
+                            console.warn("[CanteenDB] Supabase wallets upsert warning:", wErr);
+                        }
+                    } catch (e) { }
+                }
+
+                // Direct REST PATCH/POST fallback for wallets
+                try {
+                    const resPatch = await fetch(`${SUPABASE_URL}/rest/v1/wallets?user_id=eq.${userId}`, {
+                        method: 'PATCH',
+                        headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json", "Prefer": "return=representation" },
+                        body: JSON.stringify(walletUpdate)
+                    });
+                    if (resPatch.ok && !activeWalletId) {
+                        const rows = await resPatch.json().catch(() => []);
+                        if (rows && rows[0] && rows[0].id) activeWalletId = rows[0].id;
+                    }
+                } catch (e) { }
+
+                // 3b. Update Profiles table
+                const profileUpdate = {
+                    credit_liability: newDebt,
+                    pay_later_count: newDebt === 0 ? 0 : undefined,
+                    updated_at: nowIso
+                };
+                if (isRfid) {
+                    profileUpdate.balance = newBal;
+                }
+
+                if (supabase) {
+                    try {
+                        const { error: pErr } = await supabase.from('profiles').update(profileUpdate).eq('id', userId);
+                        if (pErr) {
+                            console.warn("[CanteenDB] Supabase profiles update error:", pErr);
+                        }
+                    } catch (e) { }
+                }
+
+                // Direct REST PATCH fallback for profiles
+                try {
+                    await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
+                        method: 'PATCH',
+                        headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json" },
+                        body: JSON.stringify(profileUpdate)
+                    });
+                } catch (e) { }
+
+                // 3c. Insert into wallet_transactions if paying via RFID (resolves wallet ID for new accounts)
+                if (isRfid) {
+                    if (!activeWalletId) {
+                        const fresh = await this.getWalletByUserId(userId).catch(() => null);
+                        if (fresh && fresh.id) activeWalletId = fresh.id;
+                    }
+
+                    if (activeWalletId) {
+                        const txn = {
+                            wallet_id: activeWalletId,
+                            user_id: userId,
+                            transaction_type: 'purchase',
+                            amount: cleanAmount,
+                            balance_before: currentBal,
+                            balance_after: newBal,
+                            payment_channel: 'RFID',
+                            payment_method: 'rfid',
+                            description: 'Pay Later emergency credit balance repayment (Settled via RFID)'
+                        };
+                        if (supabase) {
+                            try {
+                                await supabase.from('wallet_transactions').insert([txn]);
+                            } catch (e) { }
+                        }
+                        try {
+                            await fetch(`${SUPABASE_URL}/rest/v1/wallet_transactions`, {
+                                method: 'POST',
+                                headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json" },
+                                body: JSON.stringify(txn)
+                            });
+                        } catch (e) { }
+                    }
+                }
+
+                // 3d. Mark any settled orders in Supabase
+                const validOrderIds = Array.isArray(settledOrderIds)
+                    ? settledOrderIds.filter(id => this.isUUID(id))
+                    : [];
+                if (validOrderIds.length > 0 && supabase) {
+                    try {
+                        await supabase.from('orders')
+                            .update({ order_status: 'completed', payment_status: 'paid', updated_at: nowIso })
+                            .in('id', validOrderIds);
+                    } catch (e) { }
+                }
+            }
+
+            // 4. Update LocalStorage cache for immediate persistence
+            try {
+                const users = this.loadLocal('novalunch_registered_users', []);
+                const updatedUsers = users.map(u => {
+                    if (u.id === userId || u.studentId === userId) {
+                        return {
+                            ...u,
+                            balance: isRfid ? newBal : u.balance,
+                            credit_liability: newDebt,
+                            creditLiability: newDebt,
+                            pay_later_count: newDebt === 0 ? 0 : u.pay_later_count,
+                            payLaterCount: newDebt === 0 ? 0 : u.payLaterCount
+                        };
+                    }
+                    return u;
+                });
+                this.saveLocal('novalunch_registered_users', updatedUsers);
+
+                const currentSession = this.loadLocal('novalunch_user_session', null);
+                if (currentSession && (currentSession.id === userId || currentSession.studentId === userId)) {
+                    currentSession.balance = isRfid ? newBal : currentSession.balance;
+                    currentSession.credit_liability = newDebt;
+                    currentSession.creditLiability = newDebt;
+                    if (newDebt === 0) {
+                        currentSession.pay_later_count = 0;
+                        currentSession.payLaterCount = 0;
+                    }
+                    this.saveLocal('novalunch_user_session', currentSession);
+                }
+            } catch (e) {
+                console.warn("[CanteenDB] Local storage update error in settleStudentDebt:", e);
+            }
+
+            return {
+                success: true,
+                remaining_liability: newDebt,
+                new_balance: newBal
+            };
         },
 
         // -------------------------------------------------------------------------

@@ -101,8 +101,8 @@ python3 src/ai_engine/inspect_yolo_model.py src/assets/models/novalunch_yolo.pt
 ## 3. Product Scope, Personas & Operating Context
 
 ### 3.1 Target Personas
-1. **Students**: View live menus, check e-wallet balance, pre-order for recess/lunch breaks, generate dynamic QR codes, request SOS top-ups, dispute incorrect charges, and checkout via 2-tap RFID.
-2. **Parents**: Monitor student nutrition, set daily/weekly spending caps, configure allergen guardrails, reload wallets via GCash receipts, and download monthly PDF statements.
+1. **Students**: Check e-wallet balance and transactions, view parent-placed meal pre-orders & pickup claim tokens, generate dynamic QR codes, request SOS top-ups, dispute incorrect charges, and checkout in-person at physical kiosks via 2-tap RFID.
+2. **Parents**: Browse live canteen menus and nutrition, place advance meal pre-orders for recess/lunch breaks, set daily/weekly spending caps, configure allergen guardrails, reload wallets via GCash receipts, and download monthly PDF statements.
 3. **Cashiers**: Operate the POS terminal, synchronize with AI tray scans, lookup RFID cards, apply institutional discounts, process split payments, dispatch KDS tickets, and perform Shift Z-Read cash reconciliations.
 4. **Administrators**: Manage menu catalogs, track FIFO inventory batches and spoilage, provision user accounts, approve GCash reloads, resolve meal disputes, export SIS tuition billing batches, and configure global governance policies.
 5. **Faculty / Staff**: Campus employees with meal purchases billed to accumulated payroll salary deduction.
@@ -196,7 +196,7 @@ python3 src/ai_engine/inspect_yolo_model.py src/assets/models/novalunch_yolo.pt
 | Feature / Domain | Student | Parent | Cashier | Admin | Observed Authorization Guard |
 |---|:---:|:---:|:---:|:---:|---|
 | **View Menu Catalog & Nutrition** | Read-Only | Read-Only | Read-Only | Full CRUD | Client-side tab filter; Supabase RLS Public Read |
-| **Place Pre-Orders** | Create / View Own | View Linked | Fulfill / Claim | Full CRUD / Archive | Client role filter; filtered by `student_id` |
+| **Place Pre-Orders** | Denied (Pickup Claim Only) | Create (Linked) / View | Fulfill / Claim | Full CRUD / Archive | Client role filter; filtered by `parent_id` / `student_id` |
 | **View e-Wallet Balance & Logs** | Own Profile | Linked Children | Scan-Lookup Only | Full View / Edit | Supabase `wallets` & `wallet_transactions` |
 | **Adjust Daily Spending Limits** | Denied | Allowed (Linked) | Override with PIN | Allowed (All) | Client-side modal + Supabase `profiles.daily_limit` |
 | **Configure Dietary & Allergen Caps**| Denied | Allowed (Linked) | View Warning | Allowed (All) | `profiles.allergies` & `profiles.restricted_categories` |
@@ -233,10 +233,11 @@ python3 src/ai_engine/inspect_yolo_model.py src/assets/models/novalunch_yolo.pt
          ▼                    ▼                                      ▼                    ▼
   [1. STUDENT FLOW]    [2. PARENT FLOW]                       [3. CASHIER POS]     [4. ADMIN FLOW]
   - Menu & Nutrition   - Link Children                        - AI Live Tray Scan  - Catalog & Batches
-  - Break Pre-Orders   - Daily/Weekly Spending Caps           - RFID Badge Lookup  - FIFO Spoilage
-  - Wallet & History   - Allergen Guardrails                  - Discounts & Splits - User Provisioning
-  - SOS Top-Up Request - GCash Reload Receipts                - Shift Z-Read Close - SIS Tuition Export
-  - Meal Disputes      - Monthly PDF Statements               - KDS Dispatch       - Governance Rules
+  - RFID Kiosk Tap     - Break Pre-Orders                     - RFID Badge Lookup  - FIFO Spoilage
+  - Claim Express Tray - Daily/Weekly Spending Caps           - Discounts & Splits - User Provisioning
+  - Wallet & History   - Allergen Guardrails                  - Shift Z-Read Close - SIS Tuition Export
+  - SOS Top-Up Request - GCash Reload Receipts                - KDS Dispatch       - Governance Rules
+  - Meal Disputes      - Monthly PDF Statements
 ```
 
 ---
@@ -251,7 +252,7 @@ python3 src/ai_engine/inspect_yolo_model.py src/assets/models/novalunch_yolo.pt
 | **STU-04: Food Placement & AI Scan** | Student places food tray under overhead camera. | Tray inside geometric ROI; lighting stable. | YOLOv8 detects food items, calculates subtotal & nutrition, checks allergens. | `ai_detection_logs` (confidence score & bounding boxes) | If unrecognized, marks as "Unknown Item" & prompts Cashier Assist. |
 | **STU-05: Summary & Diff Lock** | Detections stabilize (1.5s countdown). | Stable bounding box count; no tray movement. | Freezes cart, computes discount/tax, activates Frame Diff Watchdog. | UI Cart State Lock | If item removed or swapped, Watchdog restarts 1.5s stabilization. |
 | **STU-06: Kiosk 2nd Tap (Settle)** | Student re-taps identical RFID card to confirm order. | `Tap2_RFID === Tap1_RFID`; `balance >= total` or Pay Later eligible. | Atomically deducts wallet (`fn_deduct_wallet_balance`), decrements FIFO stock. | `orders`, `order_items`, `wallet_transactions`, `kds_tickets` | If insufficient funds, prompts Pay Later or displays shortage alert. |
-| **STU-07: Break Pre-Ordering** | Student selects menu items, pickup break slot (e.g. Recess), submits. | `slot_capacity > current_booked`; `balance >= total`. | Deducts wallet balance, generates 6-digit claim token & QR code. | `preorders (status = 'PENDING', token = 'PO-XXXXXX')` | If slot full, prompts selection of alternate break session. |
+| **STU-07: Pre-Order Reservation Pass** | Student checks "Pre-Order Reservations" modal in portal. | Parent placed advance pre-order for student. | Displays express pickup pass with shelf slot (Shelf B2), status stepper, and 6-digit claim token. | Client UI state (`preorders` query filtered by `studentId`) | If no reservations, directs student to view live menu or tap at physical kiosk. |
 | **STU-08: Pre-Order Pickup** | Student presents dynamic QR / token at counter cubby (Shelf B2). | Cashier scans QR; token matches pending preorder. | Cashier hands over meal; marks preorder as claimed/archived. | `preorders (status = 'CLAIMED', claimed_at = NOW())` | If already claimed, flags duplicate claim warning. |
 | **STU-09: SOS Emergency Top-Up** | Student clicks "Request SOS Reload", enters amount (`₱100.00`). | Linked parent account exists. | Dispatches instant push notification & email request to parent. | `notifications (type = 'SOS_TOPUP_REQUEST')` | If unlinked, prompts student to share Student ID with parent. |
 | **STU-10: Meal Dispute Filing** | Student flags incorrect charge on recent order, uploads note. | Order completed within last 48 hours. | Logs dispute entry in queue for Admin review. | `meal_disputes (status = 'PENDING_REVIEW')` | Admin investigates tray capture; issues wallet refund if approved. |
