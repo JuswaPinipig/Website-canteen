@@ -2022,13 +2022,31 @@
             if (isNaN(cleanAmount) || cleanAmount <= 0.00 || cleanAmount > 5000.00) {
                 throw new Error("Reload amount must be between ₱1.00 and ₱5,000.00.");
             }
+            const cleanRef = String(payload.ref_no || payload.reference_number || payload.refNo || '').trim();
+            if (!cleanRef) {
+                throw new Error("GCash Reference Number is required.");
+            }
+            const cleanReceipt = payload.receipt_img || payload.screenshot_url || payload.receiptImg || null;
+            if (!cleanReceipt) {
+                throw new Error("Payment proof screenshot is required.");
+            }
+
+            const localQueue = this.loadLocal('novalunch_gcash_queue', []);
+            const isLocalDup = localQueue.some(q => {
+                const existingRef = String(q.reference_number || q.ref_no || q.refNo || '').trim().toLowerCase();
+                return existingRef === cleanRef.toLowerCase() && q.status !== 'Rejected' && q.status !== 'REJECTED';
+            });
+            if (isLocalDup) {
+                throw new Error(`Duplicate GCash Reference Number '${cleanRef}' has already been submitted.`);
+            }
+
             const cleanPayload = {
                 student_id: payload.student_id || payload.studentId || null,
                 student_name: payload.student_name || payload.studentName || 'Student',
                 parent_name: payload.parent_name || payload.parent || null,
                 amount: cleanAmount,
-                reference_number: String(payload.ref_no || payload.reference_number || payload.refNo || '').trim(),
-                screenshot_url: payload.receipt_img || payload.screenshot_url || payload.receiptImg || null,
+                reference_number: cleanRef,
+                screenshot_url: cleanReceipt,
                 submitter_role: payload.submitter_role || 'student',
                 status: payload.status || 'Pending',
                 created_at: payload.date ? new Date(payload.date).toISOString() : new Date().toISOString()
@@ -2063,7 +2081,6 @@
                     refNo: cleanPayload.reference_number
                 };
             }
-            const localQueue = this.loadLocal('novalunch_gcash_queue', []);
             this.saveLocal('novalunch_gcash_queue', [result, ...localQueue.filter(q => q.id !== result.id)]);
             return result;
         },
