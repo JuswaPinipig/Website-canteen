@@ -81,6 +81,38 @@ class NovaLunchPortalHandler(SimpleHTTPRequestHandler):
         self._send_cors(200)
         self.end_headers()
 
+    def translate_path(self, path):
+        original = super().translate_path(path)
+        if os.path.exists(original):
+            return original
+
+        # If not found directly under ROOT_DIR, check under ROOT_DIR/src/
+        rel = os.path.relpath(original, ROOT_DIR)
+        src_path = os.path.join(ROOT_DIR, "src", rel)
+        if os.path.exists(src_path):
+            return src_path
+
+        # If requested /services/ or /assets/ specifically
+        parts = rel.split(os.sep)
+        if parts and parts[0] in ["services", "assets", "portals", "hardware", "ai_engine", "database"]:
+            alt = os.path.join(ROOT_DIR, "src", *parts)
+            if os.path.exists(alt):
+                return alt
+
+        return original
+
+    def do_HEAD(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        if path in ["/", "/index.html", "/pos", "/cashier"]:
+            portal_path = os.path.join(ROOT_DIR, "src", "portals", "unified_web_portal.html")
+            if os.path.exists(portal_path):
+                self._send_cors(200, "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(os.path.getsize(portal_path)))
+                self.end_headers()
+                return
+        return super().do_HEAD()
+
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path

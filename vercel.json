@@ -1,0 +1,11 @@
+{
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/services/(.*)", "destination": "/src/services/$1" },
+    { "source": "/assets/(.*)", "destination": "/src/assets/$1" },
+    { "source": "/portals/(.*)", "destination": "/src/portals/$1" },
+    { "source": "/database/(.*)", "destination": "/src/database/$1" },
+    { "source": "/ai_engine/(.*)", "destination": "/src/ai_engine/$1" },
+    { "source": "/", "destination": "/src/portals/unified_web_portal.html" }
+  ]
+}

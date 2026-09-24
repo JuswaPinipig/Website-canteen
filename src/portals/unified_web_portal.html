@@ -73,7 +73,12 @@
 
     <!-- Supabase JS Client & Canteen Service Layer -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="../services/supabaseClient.js"></script>
+    <script src="../services/supabaseClient.js" onerror="this.onerror=null; this.src='/src/services/supabaseClient.js';"></script>
+    <script>
+        if (typeof window !== 'undefined' && !window.CanteenDB) {
+            document.write('<script src="/src/services/supabaseClient.js"><\/script>');
+        }
+    </script>
 
     <!-- React 18 & Babel CDN -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
@@ -1617,37 +1622,37 @@
         ];
 
         const INITIAL_MOCK_MENU = [
-            { id: "p1", name: "Classic Cheeseburger", category: "Meals & Mains", station: "Hot Kitchen", price: 75.00, costPrice: 45.00, stock: 50, aiLabel: "burger", unit: "Grilled Beef Patty & Cheese", calories: 480, protein: "24g", allergens: ["Dairy", "Gluten"], mealWindows: ["LUNCH", "SNACK", "ALL_DAY"], recipe: [{ ingredientId: 'ing_1', qtyRequired: 1 }, { ingredientId: 'ing_2', qtyRequired: 1 }, { ingredientId: 'ing_3', qtyRequired: 1 }], img: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=400&q=80", barcode: "480000000001", available: true, productType: "packaged_good", expiryStatus: "active" },
-            { id: "p2", name: "Crispy Chicken Rice Bowl", category: "Meals & Mains", station: "Hot Kitchen", price: 85.00, costPrice: 50.00, stock: 60, aiLabel: "fried_chicken", unit: "Plated Rice & Gravy", calories: 520, protein: "28g", allergens: ["Gluten"], mealWindows: ["LUNCH", "ALL_DAY"], recipe: [{ ingredientId: 'ing_4', qtyRequired: 1 }, { ingredientId: 'ing_5', qtyRequired: 0.2 }], img: "https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?auto=format&fit=crop&w=400&q=80", barcode: "480000000002", available: true, productType: "ulam_meal", expiryStatus: "active" },
-            { id: "p3", name: "Ham & Cheese Sandwich", category: "Snacks & Bakery", station: "Assembly / Bakery", price: 45.00, costPrice: 25.00, stock: 40, aiLabel: "sandwich", unit: "Toasted Whole Wheat", calories: 310, protein: "14g", allergens: ["Dairy", "Gluten"], mealWindows: ["BREAKFAST", "SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1528735602780-2552fd46c7af?auto=format&fit=crop&w=400&q=80", barcode: "480000000003", available: true, productType: "ulam_meal", expiryStatus: "near_expiry", hoursUntilExpiry: 1.2, batchNo: "BATCH-20260730-LUNCH" },
-            { id: "p4", name: "Mineral Water (500ml)", category: "Beverages", station: "Cold Prep / Beverages", price: 20.00, costPrice: 10.00, stock: 150, aiLabel: "water_bottle", unit: "Chilled Bottle", calories: 0, protein: "0g", allergens: [], mealWindows: ["BREAKFAST", "LUNCH", "SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1523362628745-0c100150b504?auto=format&fit=crop&w=400&q=80", barcode: "480000000004", available: true, productType: "packaged_good", expiryStatus: "active" },
-            { id: "p5", name: "Iced Fruit Juice (350ml)", category: "Beverages", station: "Cold Prep / Beverages", price: 30.00, costPrice: 15.00, stock: 80, aiLabel: "juice_box", unit: "Freshly Pressed Cup", calories: 120, protein: "1g", allergens: ["Sugar"], mealWindows: ["BREAKFAST", "LUNCH", "SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?auto=format&fit=crop&w=400&q=80", barcode: "480000000005", available: true, productType: "packaged_good", expiryStatus: "active" },
-            { id: "p6", name: "Fresh Red Apple", category: "Fruits & Healthy", station: "Cold Prep / Beverages", price: 25.00, costPrice: 15.00, stock: 40, aiLabel: "apple", unit: "Organic Whole Fruit", calories: 95, protein: "0.5g", allergens: [], mealWindows: ["BREAKFAST", "LUNCH", "SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?auto=format&fit=crop&w=400&q=80", barcode: "480000000006", available: true, productType: "packaged_good", expiryStatus: "active" },
-            { id: "p7", name: "Beef Pares w/ Garlic Rice", category: "Meals & Mains", station: "Hot Kitchen", price: 90.00, costPrice: 55.00, stock: 25, aiLabel: "beef_pares", unit: "Slow-cooked Beef Tenderloin", calories: 580, protein: "32g", allergens: ["Soy"], mealWindows: ["LUNCH", "ALL_DAY"], recipe: [{ ingredientId: 'ing_5', qtyRequired: 0.2 }], img: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80", barcode: "480000000007", available: true, productType: "ulam_meal", expiryStatus: "near_expiry", hoursUntilExpiry: 0.8, batchNo: "BATCH-20260730-PARES" },
+            { id: "a1111111-1111-1111-1111-111111111111", name: "Classic Cheeseburger", category: "Meals & Mains", station: "Hot Kitchen", price: 75.00, costPrice: 45.00, stock: 50, aiLabel: "burger", unit: "Grilled Beef Patty & Cheese", calories: 480, protein: "24g", allergens: ["Dairy", "Gluten"], mealWindows: ["LUNCH", "SNACK", "ALL_DAY"], recipe: [{ ingredientId: 'ing_1', qtyRequired: 1 }, { ingredientId: 'ing_2', qtyRequired: 1 }, { ingredientId: 'ing_3', qtyRequired: 1 }], img: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=400&q=80", barcode: "480000000001", available: true, productType: "packaged_good", expiryStatus: "active" },
+            { id: "a2222222-2222-2222-2222-222222222222", name: "Crispy Chicken Rice Bowl", category: "Meals & Mains", station: "Hot Kitchen", price: 85.00, costPrice: 50.00, stock: 60, aiLabel: "fried_chicken", unit: "Plated Rice & Gravy", calories: 520, protein: "28g", allergens: ["Gluten"], mealWindows: ["LUNCH", "ALL_DAY"], recipe: [{ ingredientId: 'ing_4', qtyRequired: 1 }, { ingredientId: 'ing_5', qtyRequired: 0.2 }], img: "https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?auto=format&fit=crop&w=400&q=80", barcode: "480000000002", available: true, productType: "ulam_meal", expiryStatus: "active" },
+            { id: "a3333333-3333-3333-3333-333333333333", name: "Ham & Cheese Sandwich", category: "Snacks & Bakery", station: "Assembly / Bakery", price: 45.00, costPrice: 25.00, stock: 40, aiLabel: "sandwich", unit: "Toasted Whole Wheat", calories: 310, protein: "14g", allergens: ["Dairy", "Gluten"], mealWindows: ["BREAKFAST", "SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1528735602780-2552fd46c7af?auto=format&fit=crop&w=400&q=80", barcode: "480000000003", available: true, productType: "ulam_meal", expiryStatus: "near_expiry", hoursUntilExpiry: 1.2, batchNo: "BATCH-20260730-LUNCH" },
+            { id: "a4444444-4444-4444-4444-444444444444", name: "Mineral Water (500ml)", category: "Beverages", station: "Cold Prep / Beverages", price: 20.00, costPrice: 10.00, stock: 150, aiLabel: "water_bottle", unit: "Chilled Bottle", calories: 0, protein: "0g", allergens: [], mealWindows: ["BREAKFAST", "LUNCH", "SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1523362628745-0c100150b504?auto=format&fit=crop&w=400&q=80", barcode: "480000000004", available: true, productType: "packaged_good", expiryStatus: "active" },
+            { id: "a5555555-5555-5555-5555-555555555555", name: "Iced Fruit Juice (350ml)", category: "Beverages", station: "Cold Prep / Beverages", price: 30.00, costPrice: 15.00, stock: 80, aiLabel: "juice_box", unit: "Freshly Pressed Cup", calories: 120, protein: "1g", allergens: ["Sugar"], mealWindows: ["BREAKFAST", "LUNCH", "SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?auto=format&fit=crop&w=400&q=80", barcode: "480000000005", available: true, productType: "packaged_good", expiryStatus: "active" },
+            { id: "a6666666-6666-6666-6666-666666666666", name: "Fresh Red Apple", category: "Fruits & Healthy", station: "Cold Prep / Beverages", price: 25.00, costPrice: 15.00, stock: 40, aiLabel: "apple", unit: "Organic Whole Fruit", calories: 95, protein: "0.5g", allergens: [], mealWindows: ["BREAKFAST", "LUNCH", "SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?auto=format&fit=crop&w=400&q=80", barcode: "480000000006", available: true, productType: "packaged_good", expiryStatus: "active" },
+            { id: "a7777777-7777-7777-7777-777777777777", name: "Beef Pares w/ Garlic Rice", category: "Meals & Mains", station: "Hot Kitchen", price: 90.00, costPrice: 55.00, stock: 25, aiLabel: "beef_pares", unit: "Slow-cooked Beef Tenderloin", calories: 580, protein: "32g", allergens: ["Soy"], mealWindows: ["LUNCH", "ALL_DAY"], recipe: [{ ingredientId: 'ing_5', qtyRequired: 0.2 }], img: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80", barcode: "480000000007", available: true, productType: "ulam_meal", expiryStatus: "near_expiry", hoursUntilExpiry: 0.8, batchNo: "BATCH-20260730-PARES" },
             { id: "p8", name: "Choco Chip Cookie", category: "Snacks & Bakery", station: "Assembly / Bakery", price: 18.00, costPrice: 9.00, stock: 90, aiLabel: "cookie", unit: "Freshly Baked Cookie", calories: 190, protein: "2g", allergens: ["Sugar", "Dairy", "Gluten"], mealWindows: ["SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1499636136210-6f4ee915583e?auto=format&fit=crop&w=400&q=80", barcode: "480000000008", available: true, productType: "packaged_good", expiryStatus: "near_expiry", daysUntilExpiry: 2, batchNo: "BATCH-2026-LOT88" },
-            { id: "p9", name: "Spaghetti Bolognese", category: "Meals & Mains", station: "Hot Kitchen", price: 65.00, costPrice: 35.00, stock: 30, aiLabel: "spaghetti", unit: "Sweet-style Pinoy Pasta", calories: 440, protein: "18g", allergens: ["Dairy", "Gluten"], mealWindows: ["LUNCH", "SNACK", "ALL_DAY"], recipe: [{ ingredientId: 'ing_6', qtyRequired: 0.15 }, { ingredientId: 'ing_7', qtyRequired: 0.15 }], img: "https://images.unsplash.com/photo-1551183053-bf91a1d81141?auto=format&fit=crop&w=400&q=80", barcode: "480000000009", available: true, productType: "ulam_meal", expiryStatus: "active" },
+            { id: "a9999999-9999-9999-9999-999999999999", name: "Spaghetti Bolognese", category: "Meals & Mains", station: "Hot Kitchen", price: 65.00, costPrice: 35.00, stock: 30, aiLabel: "spaghetti", unit: "Sweet-style Pinoy Pasta", calories: 440, protein: "18g", allergens: ["Dairy", "Gluten"], mealWindows: ["LUNCH", "SNACK", "ALL_DAY"], recipe: [{ ingredientId: 'ing_6', qtyRequired: 0.15 }, { ingredientId: 'ing_7', qtyRequired: 0.15 }], img: "https://images.unsplash.com/photo-1551183053-bf91a1d81141?auto=format&fit=crop&w=400&q=80", barcode: "480000000009", available: true, productType: "ulam_meal", expiryStatus: "active" },
             { id: "p10", name: "Buttercream Crackers", category: "Snacks & Bakery", station: "Assembly / Bakery", price: 35.00, costPrice: 20.00, stock: 50, aiLabel: "Buttercream_Biscuits", unit: "Packaged Biscuits (25g)", calories: 150, protein: "2g", allergens: ["Gluten", "Dairy"], mealWindows: ["BREAKFAST", "SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1590080875515-8a3a8dc5735e?auto=format&fit=crop&w=400&q=80", barcode: "480000000010", available: true, productType: "packaged_good", expiryStatus: "active" },
             { id: "p11", name: "Jack 'n Jill Magic Chips", category: "Snacks & Bakery", station: "Assembly / Bakery", price: 25.00, costPrice: 15.00, stock: 45, aiLabel: "Jack_And_Jill_Magic_Chips", unit: "Cheese Cracker Snack (28g)", calories: 140, protein: "2g", allergens: ["Gluten", "Dairy"], mealWindows: ["BREAKFAST", "SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1566478989037-eec170784d0b?auto=format&fit=crop&w=400&q=80", barcode: "480000000011", available: true, productType: "packaged_good", expiryStatus: "active" },
-            { id: "p12", name: "Buttercream Biscuits", category: "Snacks & Bakery", station: "Assembly / Bakery", price: 30.00, costPrice: 15.00, stock: 0, aiLabel: "Buttercream_Biscuits", unit: "Vanilla Cream Biscuits", calories: 160, protein: "2g", allergens: ["Gluten", "Dairy"], mealWindows: ["SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80", barcode: "480000000012", available: true, productType: "packaged_good", expiryStatus: "active" }
+            { id: "111ac6f3-cca3-479e-86a1-1d1edd28a945", name: "Buttercream Biscuits", category: "Snacks & Bakery", station: "Assembly / Bakery", price: 30.00, costPrice: 15.00, stock: 0, aiLabel: "Buttercream_Biscuits", unit: "Vanilla Cream Biscuits", calories: 160, protein: "2g", allergens: ["Gluten", "Dairy"], mealWindows: ["SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80", barcode: "480000000012", available: true, productType: "packaged_good", expiryStatus: "active" }
         ];
 
         const INITIAL_USERS = [
             // 1. STUDENTS (6 Active Accounts)
-            { id: "u101", email: "joshua.student@sjc.edu.ph", secondaryEmail: "student@gmail.com", studentId: "2023-01900", name: "Joshua Lupisan", role: "Student", department: "Grade 11 - STEM A", rfidUid: "0009401737", rfidType: "125kHz EM4100", dailyCap: 250.00, balance: 1105.00, creditLiability: 0.00, creditLimit: 500.00, payLaterAllowance: true, payLaterCount: 0, status: "active", guardian: "Maria Santos Dela Cruz", allergies: ["Sugar"] },
-            { id: "u102", email: "sophia.student@sjc.edu.ph", studentId: "2023-01988", name: "Sophia Dela Cruz", role: "Student", department: "Grade 9 - St. Therese", rfidUid: "0008839211", rfidType: "125kHz EM4100", dailyCap: 250.00, balance: 420.00, creditLiability: 0.00, creditLimit: 500.00, payLaterAllowance: true, payLaterCount: 0, status: "active", guardian: "Carlos Dela Cruz", allergies: ["Peanuts"] },
-            { id: "u103", email: "mark.student@sjc.edu.ph", studentId: "2023-02104", name: "Mark Anthony Santos", role: "Student", department: "Grade 12 - ABM B", rfidUid: "0008839212", rfidType: "125kHz EM4100", dailyCap: 150.00, balance: 85.00, creditLiability: 75.00, creditLimit: 500.00, payLaterAllowance: true, payLaterCount: 1, status: "active", guardian: "Elena Santos", allergies: [] },
-            { id: "u104", email: "beatriz.student@sjc.edu.ph", studentId: "2023-03011", name: "Beatriz Ramos", role: "Student", department: "Grade 10 - St. Joseph", rfidUid: "0008839213", rfidType: "125kHz EM4100", dailyCap: 200.00, balance: 120.00, creditLiability: 0.00, creditLimit: 500.00, payLaterAllowance: false, payLaterCount: 0, status: "active", guardian: "Roberto Ramos", allergies: ["Dairy"] },
+            { id: "c653fe97-2934-4fae-a8f6-18ebb4754886", email: "student@gmail.com", secondaryEmail: "joshua.student@sjc.edu.ph", studentId: "2023-01900", name: "Joshua Lupisan", role: "Student", department: "Grade 11 - STEM A", rfidUid: "0009401737", rfidType: "125kHz EM4100", dailyCap: 250.00, balance: 1105.00, creditLiability: 0.00, creditLimit: 500.00, payLaterAllowance: true, payLaterCount: 0, status: "active", guardian: "Maria Santos Dela Cruz", allergies: ["Sugar"] },
+            { id: "991e3f6e-6a5d-4e45-a2ae-7015cc9334bc", email: "sophia.student@sjc.edu.ph", studentId: "2023-01988", name: "Sophia Dela Cruz", role: "Student", department: "Grade 9 - St. Therese", rfidUid: "0008839211", rfidType: "125kHz EM4100", dailyCap: 250.00, balance: 420.00, creditLiability: 0.00, creditLimit: 500.00, payLaterAllowance: true, payLaterCount: 0, status: "active", guardian: "Carlos Dela Cruz", allergies: ["Peanuts"] },
+            { id: "9bd9e2a0-1a82-4d8a-a112-0308f2fedd03", email: "mark.student@sjc.edu.ph", studentId: "2023-02104", name: "Mark Anthony Santos", role: "Student", department: "Grade 12 - ABM B", rfidUid: "0008839212", rfidType: "125kHz EM4100", dailyCap: 150.00, balance: 85.00, creditLiability: 75.00, creditLimit: 500.00, payLaterAllowance: true, payLaterCount: 1, status: "active", guardian: "Elena Santos", allergies: [] },
+            { id: "814e5c22-5edb-4b4a-9296-405560bbe503", email: "beatriz.student@sjc.edu.ph", studentId: "2023-03011", name: "Beatriz Ramos", role: "Student", department: "Grade 10 - St. Joseph", rfidUid: "0008839213", rfidType: "125kHz EM4100", dailyCap: 200.00, balance: 120.00, creditLiability: 0.00, creditLimit: 500.00, payLaterAllowance: false, payLaterCount: 0, status: "active", guardian: "Roberto Ramos", allergies: ["Dairy"] },
             { id: "u105", email: "gabriel.student@sjc.edu.ph", studentId: "2023-04910", name: "Gabriel Santos", role: "Student", department: "Grade 11 - HUMSS", rfidUid: "0008839214", rfidType: "125kHz EM4100", dailyCap: 300.00, balance: 500.00, creditLiability: 0.00, creditLimit: 500.00, payLaterAllowance: true, payLaterCount: 0, status: "active", guardian: "Elena Santos", allergies: [] },
             { id: "u106", email: "claire.student@sjc.edu.ph", studentId: "2024-00102", name: "Claire Mendoza", role: "Student", department: "Grade 8 - St. Luke", rfidUid: "0008839215", rfidType: "125kHz EM4100", dailyCap: 200.00, balance: 215.00, creditLiability: 0.00, creditLimit: 500.00, payLaterAllowance: true, payLaterCount: 0, status: "active", guardian: "Manuel Mendoza", allergies: ["Gluten"] },
 
             // 2. PARENTS & GUARDIANS (3 Verified Parent Accounts)
-            { id: "p201", email: "parent@gmail.com", studentId: "PAR-2026-001", name: "Maria Santos Dela Cruz", role: "Parent", phone: "0917-555-0101", relationship: "Mother", status: "active", guardian: "Joshua Lupisan (2023-01900)", linkedStudentId: "u101", linkedStudentName: "Joshua Lupisan" },
-            { id: "p202", email: "parent.carlos@sjc.edu.ph", studentId: "PAR-2026-002", name: "Carlos Dela Cruz", role: "Parent", phone: "0918-555-0102", relationship: "Father", status: "active", guardian: "Sophia Dela Cruz (2023-01988)", linkedStudentId: "u102", linkedStudentName: "Sophia Dela Cruz" },
-            { id: "p203", email: "elena.parent@sjc.edu.ph", studentId: "PAR-2026-003", name: "Elena Santos", role: "Parent", phone: "0919-555-0103", relationship: "Mother", status: "active", guardian: "Mark Anthony Santos (2023-02104)", linkedStudentId: "u103", linkedStudentName: "Mark Anthony Santos" },
+            { id: "02e0f6ca-ae0c-432e-8745-02b53adcd2f4", email: "parent@gmail.com", studentId: "PAR-2026-001", name: "Maria Santos Dela Cruz", role: "Parent", phone: "0917-555-0101", relationship: "Mother", status: "active", guardian: "Joshua Lupisan (2023-01900)", linkedStudentId: "c653fe97-2934-4fae-a8f6-18ebb4754886", linkedStudentName: "Joshua Lupisan" },
+            { id: "e1c9c359-c79b-4b15-94f6-a11402d9af27", email: "parent.carlos@sjc.edu.ph", studentId: "PAR-2026-002", name: "Carlos Dela Cruz", role: "Parent", phone: "0918-555-0102", relationship: "Father", status: "active", guardian: "Sophia Dela Cruz (2023-01988)", linkedStudentId: "991e3f6e-6a5d-4e45-a2ae-7015cc9334bc", linkedStudentName: "Sophia Dela Cruz" },
+            { id: "p203", email: "elena.parent@sjc.edu.ph", studentId: "PAR-2026-003", name: "Elena Santos", role: "Parent", phone: "0919-555-0103", relationship: "Mother", status: "active", guardian: "Mark Anthony Santos (2023-02104)", linkedStudentId: "9bd9e2a0-1a82-4d8a-a112-0308f2fedd03", linkedStudentName: "Mark Anthony Santos" },
 
             // 3. CANTEEN CASHIERS & POS OPERATORS
             {
-                id: "c301",
+                id: "a04adc89-ea0c-4495-b7c6-649aea22e861",
                 email: "cashier@gmail.com",
                 studentId: "STF-CSH-001",
                 name: "Elena Bautista",
@@ -1703,7 +1708,7 @@
             },
 
             // 5. SYSTEM ADMINISTRATORS
-            { id: "a401", email: "admin@gmail.com", studentId: "ADM-2026-001", name: "System Admin (Official)", role: "Admin", department: "IT & Canteen Management Office", pinCode: "1234", status: "active" }
+            { id: "16bc0d74-4180-4278-8815-062c5b6e86b5", email: "admin@gmail.com", studentId: "ADM-2026-001", name: "System Admin (Official)", role: "Admin", department: "IT & Canteen Management Office", pinCode: "1234", status: "active" }
         ];
 
         const INITIAL_REFUNDS_LIST = [
@@ -10487,6 +10492,17 @@
                                     <button type="submit" className="w-full h-11 px-4 bg-slate-900 hover:bg-slate-800 text-white font-medium text-sm rounded-lg flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98] shadow-sm cursor-pointer">
                                         Sign In <Icon.ArrowRight className="w-4 h-4" aria-hidden="true" />
                                     </button>
+
+                                    <div className="text-center pt-1">
+                                        <button
+                                            type="button"
+                                            id="open-register-modal-btn"
+                                            onClick={() => setRegisterModalOpen(true)}
+                                            className="text-xs text-rose-800 hover:text-rose-900 font-medium hover:underline transition-colors cursor-pointer"
+                                        >
+                                            Don't have an account? Create an Account
+                                        </button>
+                                    </div>
                                 </form>
 
                                 <CreateAccountModal
@@ -26581,7 +26597,7 @@
             useEffect(() => { if (db) db.saveLocal('novalunch_current_student', currentStudent); }, [currentStudent]);
             useEffect(() => { if (db) db.saveLocal('novalunch_current_parent', currentParent); }, [currentParent]);
             useEffect(() => { if (db) db.saveLocal('novalunch_current_user', currentUser); }, [currentUser]);
-            useEffect(() => { if (db) db.saveLocal('novalunch_products_catalog', menuCatalog); }, [menuCatalog]);
+            useEffect(() => { if (db) { db.saveLocal('novalunch_products_catalog', menuCatalog); CanteenCache.set('products_catalog', menuCatalog); } }, [menuCatalog]);
             useEffect(() => { if (db) { db.saveLocal('novalunch_registered_users', registeredUsers); CanteenCache.set('registered_users', registeredUsers); } }, [registeredUsers]);
             useEffect(() => { if (db) { db.saveLocal('novalunch_recent_orders', recentOrders); CanteenCache.set('recent_orders', recentOrders); } }, [recentOrders]);
             useEffect(() => { if (db) { db.saveLocal('novalunch_gcash_queue', gcashQueue); CanteenCache.set('gcash_queue', gcashQueue); } }, [gcashQueue]);
@@ -26673,7 +26689,12 @@
                         console.warn("Cloud registration notice:", e);
                     }
                 }
-                setRegisteredUsers(prev => [createdUser, ...prev.filter(u => u.id !== createdUser.id)]);
+                setRegisteredUsers(prev => {
+                    const next = [createdUser, ...prev.filter(u => u.id !== createdUser.id && (!u.email || !createdUser.email || u.email.toLowerCase() !== createdUser.email.toLowerCase()))];
+                    if (db && db.saveLocal) db.saveLocal('novalunch_registered_users', next);
+                    CanteenCache.set('registered_users', next);
+                    return next;
+                });
                 const roleLower = (createdUser.role || '').toLowerCase();
                 if (roleLower === 'student') {
                     setCurrentStudent(createdUser);
@@ -26821,6 +26842,7 @@
                                     const localOnly = prev.filter(lp => !cloudIds.has(lp.id) && !cloudNames.has(lp.name.toLowerCase()));
                                     const merged = [...cloudProds, ...localOnly];
                                     CanteenCache.set('products_catalog', merged);
+                                    if (db && db.saveLocal) db.saveLocal('novalunch_products_catalog', merged);
                                     return merged;
                                 });
                                 connected = true;
@@ -26865,11 +26887,14 @@
 
                                     return {
                                         id: u.id,
-                                        email: u.email,
-                                        studentId: (u.student_id_number && u.student_id_number !== '2026-00005') ? u.student_id_number : (localU?.studentId || "2023-01900"),
-                                        name: (u.full_name && u.full_name !== 'Juan Student' && u.full_name !== 'Juan Dela Cruz') ? u.full_name : (localU?.name || "Joshua Lupisan"),
+                                        email: u.email || localU?.email || "",
+                                        studentId: u.student_id_number || localU?.studentId || localU?.student_id_number || "",
+                                        name: u.full_name || localU?.name || "NovaLunch User",
+                                        firstName: u.first_name || localU?.firstName || (u.full_name ? u.full_name.split(' ')[0] : ""),
+                                        lastName: u.last_name || localU?.lastName || (u.full_name ? u.full_name.split(' ').slice(1).join(' ') : ""),
                                         role: u.role ? (u.role.charAt(0).toUpperCase() + u.role.slice(1)) : (localU?.role || 'Student'),
-                                        rfidUid: (u.rfid_uid && u.rfid_uid !== '009631295') ? u.rfid_uid : (localU?.rfidUid || "0009401737"),
+                                        rfidUid: u.rfid_uid || localU?.rfidUid || "",
+                                        rfidType: (u.rfid_uid || localU?.rfidUid) ? "125kHz EM4100" : "Unlinked",
                                         dailyCap: userCap,
                                         daily_limit: userCap,
                                         balance: userBal,
@@ -26880,16 +26905,23 @@
                                         creditLimit: parseFloat(w?.credit_limit ?? u.credit_limit ?? localU?.creditLimit ?? 500),
                                         maxDailyCalories: u.max_daily_calories || localU?.maxDailyCalories || 1800,
                                         allergenMode: u.allergen_mode || localU?.allergenMode || 'SOFT_WARN',
-                                        managerPin: u.manager_pin || localU?.managerPin || '1234'
+                                        managerPin: u.manager_pin || localU?.managerPin || '1234',
+                                        isCloudSynced: true
                                     };
                                 });
 
                                 setRegisteredUsers(prev => {
                                     const cloudIds = new Set(mappedUsers.map(m => m.id));
                                     const cloudEmails = new Set(mappedUsers.map(m => m.email?.toLowerCase()).filter(Boolean));
-                                    const localOnly = prev.filter(lp => !cloudIds.has(lp.id) && (!lp.email || !cloudEmails.has(lp.email.toLowerCase())));
+                                    const cloudStudentIds = new Set(mappedUsers.map(m => m.studentId).filter(Boolean));
+                                    const localOnly = prev.filter(lp => 
+                                        !cloudIds.has(lp.id) && 
+                                        (!lp.email || !cloudEmails.has(lp.email.toLowerCase())) &&
+                                        (!lp.studentId || !cloudStudentIds.has(lp.studentId))
+                                    );
                                     const merged = [...mappedUsers, ...localOnly];
                                     CanteenCache.set('registered_users', merged);
+                                    if (db && db.saveLocal) db.saveLocal('novalunch_registered_users', merged);
                                     return merged;
                                 });
 
@@ -29252,7 +29284,12 @@
                                                 }
                                             }
                                             const finalProd = { ...p, id: created?.id || p.id };
-                                            setMenuCatalog(prev => [finalProd, ...prev.filter(item => item.id !== finalProd.id && item.name !== finalProd.name)]);
+                                            setMenuCatalog(prev => {
+                                                const next = [finalProd, ...prev.filter(item => item.id !== finalProd.id && item.name !== finalProd.name)];
+                                                if (db && db.saveLocal) db.saveLocal('novalunch_products_catalog', next);
+                                                CanteenCache.set('products_catalog', next);
+                                                return next;
+                                            });
                                             showToast(`Added product ${p.name}`);
                                         }}
                                         onUpdateProduct={handleUpdateProduct}
@@ -29260,14 +29297,19 @@
                                         onUnarchiveProduct={handleUnarchiveProduct}
                                         onAddNewStudent={async (s) => {
                                             let created = s;
-                                            if (window.CanteenDB) {
+                                            if (window.CanteenDB && (!s.id || !s.isCloudSynced)) {
                                                 try {
                                                     created = await window.CanteenDB.registerUser(s);
                                                 } catch (e) {
                                                     console.warn("Cloud student provisioning notice:", e);
                                                 }
                                             }
-                                            setRegisteredUsers(prev => [created, ...prev.filter(u => u.id !== created.id)]);
+                                            setRegisteredUsers(prev => {
+                                                const next = [created, ...prev.filter(u => u.id !== created.id && (!u.email || !created.email || u.email.toLowerCase() !== created.email.toLowerCase()))];
+                                                if (db && db.saveLocal) db.saveLocal('novalunch_registered_users', next);
+                                                CanteenCache.set('registered_users', next);
+                                                return next;
+                                            });
                                             showToast(`Provisioned ${created.role || 'Account'} for ${created.name}!`);
                                         }}
                                         onUpdateStudent={handleUpdateStudent}
