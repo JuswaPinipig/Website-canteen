@@ -17,6 +17,13 @@ import subprocess
 import threading
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
+# Import Instant QR Pairing Service
+try:
+    from src.services.qr_pairing_service import handle_create_pairing_token, handle_link_by_qr
+except ImportError:
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "services"))
+    from qr_pairing_service import handle_create_pairing_token, handle_link_by_qr
+
 PORT = int(os.environ.get("PORT", 8080))
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 KIOSK_SCRIPT = os.path.join(ROOT_DIR, "src", "hardware", "student_kiosk_gui.py")
@@ -64,8 +71,8 @@ class NovaLunchPortalHandler(SimpleHTTPRequestHandler):
     def _send_cors(self, code=200, ctype="application/json"):
         self.send_response(code)
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PATCH")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Student-Id, X-Parent-Id, X-User-Id, X-User-Role, X-Session-Token")
         self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
         self.send_header("Pragma", "no-cache")
         self.send_header("Expires", "0")
@@ -150,13 +157,43 @@ class NovaLunchPortalHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
-        path = parsed.path
+        path = parsed.path.rstrip('/')
+
+        # Parse request body (if any)
+        content_length = int(self.headers.get('Content-Length', 0))
+        body_data = {}
+        if content_length > 0:
+            try:
+                raw_body = self.rfile.read(content_length).decode('utf-8')
+                if raw_body.strip():
+                    body_data = json.loads(raw_body)
+            except Exception as e:
+                self._send_cors(400)
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "error": f"Invalid JSON body: {str(e)}"}).encode('utf-8'))
+                return
+
+        headers_dict = {k.lower(): v for k, v in self.headers.items()}
 
         if path in ["/api/launch_kiosk", "/api/kiosk/launch"]:
             success, msg = launch_kiosk_gui()
             self._send_cors(200 if success else 500)
             self.end_headers()
             self.wfile.write(json.dumps({"success": success, "message": msg}).encode('utf-8'))
+            return
+
+        elif path == "/api/students/pairing-token":
+            status_code, response_data = handle_create_pairing_token(headers_dict, body_data)
+            self._send_cors(status_code)
+            self.end_headers()
+            self.wfile.write(json.dumps(response_data).encode('utf-8'))
+            return
+
+        elif path == "/api/parents/link-by-qr":
+            status_code, response_data = handle_link_by_qr(headers_dict, body_data)
+            self._send_cors(status_code)
+            self.end_headers()
+            self.wfile.write(json.dumps(response_data).encode('utf-8'))
             return
 
         self._send_cors(404)

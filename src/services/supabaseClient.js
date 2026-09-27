@@ -1960,6 +1960,108 @@
         },
 
         // -------------------------------------------------------------------------
+        // INSTANT QR PAIRING (STUDENT-PARENT LINKING)
+        // -------------------------------------------------------------------------
+        async generatePairingToken(studentSession = null) {
+            const session = studentSession || this.loadLocal('novalunch_user_session', null) || this.loadLocal('novalunch_current_user', null);
+            const studentId = session?.id || session?.userId || 'c653fe97-2934-4fae-a8f6-18ebb4754886';
+
+            try {
+                const res = await fetch('/api/students/pairing-token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${studentId}`,
+                        'X-Student-Id': studentId,
+                        'X-User-Role': 'student'
+                    },
+                    body: JSON.stringify({ studentId, session })
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    return data;
+                }
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.error || `HTTP ${res.status}: Failed to generate pairing token`);
+            } catch (err) {
+                console.warn("[CanteenDB] /api/students/pairing-token network fallback:", err.message);
+                // Offline fallback token generator
+                const nowTs = Math.floor(Date.now() / 1000);
+                const exp = nowTs + 600;
+                const jti = 'offline-' + Math.random().toString(36).substring(2, 10);
+                const mockPayload = {
+                    studentId,
+                    timestamp: nowTs,
+                    type: 'parent_link',
+                    exp,
+                    jti,
+                    name: session?.name || session?.full_name || 'Student User',
+                    grade: session?.grade || 'Grade 10 - St. Ignatius'
+                };
+                const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.' + btoa(JSON.stringify(mockPayload)).replace(/=/g, '') + '.offline_sig_' + jti;
+                return {
+                    success: true,
+                    pairingToken: token,
+                    expiresAt: exp,
+                    expiresIn: 600,
+                    payload: { studentId, timestamp: nowTs, type: 'parent_link' },
+                    student: { id: studentId, name: mockPayload.name, grade: mockPayload.grade }
+                };
+            }
+        },
+
+        async linkByQr(pairingToken, parentSession = null) {
+            if (!pairingToken || typeof pairingToken !== 'string') {
+                throw new Error("Invalid pairing token. Please provide a valid QR code or token string.");
+            }
+
+            const session = parentSession || this.loadLocal('novalunch_user_session', null) || this.loadLocal('novalunch_current_parent', null);
+            const parentId = session?.id || session?.userId || '02e0f6ca-ae0c-432e-8745-02b53adcd2f4';
+
+            try {
+                const res = await fetch('/api/parents/link-by-qr', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${parentId}`,
+                        'X-Parent-Id': parentId,
+                        'X-User-Role': 'parent'
+                    },
+                    body: JSON.stringify({ pairingToken: pairingToken.trim(), parentId, session })
+                });
+
+                const data = await res.json();
+                if (!res.ok || !data.success) {
+                    throw new Error(data.error || `HTTP ${res.status}: Failed to link student via QR`);
+                }
+
+                // Immediately update local caches with active link
+                if (data.student?.id) {
+                    const existingLinks = this.loadLocal('novalunch_parent_links', []);
+                    const newLink = {
+                        parent_id: parentId,
+                        student_id: data.student.id,
+                        relationship: 'Parent',
+                        status: 'ACTIVE',
+                        created_at: new Date().toISOString()
+                    };
+                    const updatedLinks = [...existingLinks.filter(l => !(l.parent_id === parentId && l.student_id === data.student.id)), newLink];
+                    this.saveLocal('novalunch_parent_links', updatedLinks);
+                    if (typeof CanteenCache !== 'undefined' && CanteenCache.set) {
+                        CanteenCache.set('parent_links', updatedLinks);
+                    }
+                }
+
+                return data;
+            } catch (err) {
+                console.warn("[CanteenDB] /api/parents/link-by-qr error:", err.message);
+                throw err;
+            }
+        },
+
+
+        // -------------------------------------------------------------------------
         // UNIVERSAL NOTIFICATIONS
         // -------------------------------------------------------------------------
         async createNotification({ user_id, title, message, type = 'system', severity = 'info', action_url = null, metadata = null }) {

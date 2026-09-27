@@ -53,10 +53,12 @@ NovaLunch is an enterprise-grade institutional canteen ecosystem built for Saint
 
 ### 1.2 Network Ports & Service Endpoints
 
-- **Port 8080 (`server.py`)**: Local web server.
+- **Port 8080 (`server.py`)**: Local web server & API bridge.
   - `GET /` -> Serves `src/portals/unified_web_portal.html`.
   - `GET /api/kiosk/status` -> Checks if Port 8085 is listening.
   - `POST /api/launch_kiosk` / `POST /api/kiosk/launch` -> Spawns `student_kiosk_gui.py` subprocess.
+  - `POST /api/students/pairing-token` -> Authenticated student session generates short-lived (10m TTL) signed HMAC-SHA256 JWT pairing token (`{ studentId, timestamp, type: 'parent_link' }`).
+  - `POST /api/parents/link-by-qr` -> Authenticated parent session claims pairing token, creates active relation (`parent_student_links`, status `'ACTIVE'`), invalidates token against replay attacks, returns `{ success: true, student: { id, name, grade } }`.
 - **Port 8085 (`student_kiosk_gui.py`)**: Edge Hardware & CFD Kiosk REST / SSE Server.
   - `GET /api/kiosk/status` -> Live kiosk state (`IDLE`, `SCANNING`, `SETTLEMENT`, active student, cart, total).
   - `GET /api/kiosk/events` -> Server-Sent Events (SSE) stream pushing real-time hardware state transitions to web POS.
@@ -263,7 +265,7 @@ python3 src/ai_engine/inspect_yolo_model.py src/assets/models/novalunch_yolo.pt
 
 | State / Stage | Trigger Action & Input | Pre-Condition Guards | System Action & State Mutation | Emitted Ledger / DB Record | Fallback / Recovery Action |
 |---|---|---|---|---|---|
-| **PAR-01: Guardian Linking** | Parent enters child's Student ID (`SJC-1001`) in Link Modal. | Student ID exists; child not already linked to max parents. | Links guardian profile to student profile with full oversight rights. | `parent_student_links (status = 'ACTIVE')` | Displays error if Student ID not found or already linked. |
+| **PAR-01: Guardian Linking** | Parent scans Instant QR Pairing Token (`POST /api/parents/link-by-qr`) or enters child's Student ID (`SJC-1001`) in Link Modal. | Valid 10-minute signed pairing token or existing Student ID. | Links guardian profile to student profile with full oversight rights; immediately active without pending wait. | `parent_student_links (status = 'ACTIVE')` | Displays error if Token expired, already claimed (replay attack), or invalid. |
 | **PAR-02: Spending Cap Setup** | Parent adjusts Daily Spending Cap (`₱200.00`) or Weekly Cap. | `daily_limit >= 0.00`. | Updates student spending cap; enforces real-time block at POS counter. | `profiles.daily_limit`, `wallets.daily_limit` | If invalid number, boundary validation rejects input (`₱0 - ₱5,000`). |
 | **PAR-03: Allergen Guardrails** | Parent tags allergies (`Peanuts`, `Dairy`) and sets `STRICT_BLOCK`. | Valid allergen category selection. | Sets strict dietary hard lock; prohibits checkout containing allergens. | `profiles.allergies`, `profiles.allergen_mode` | At POS, blocked item requires Manager PIN override or removal. |
 | **PAR-04: GCash Reload Receipt** | Parent reloads via GCash, inputs Ref No. (`902188219`), uploads screenshot. | Unique reference number; amount > 0. | Enqueues reload in Admin Verification Queue; emits notification. | `topup_requests (status = 'PENDING')` | Flags duplicate reference numbers if already submitted. |
