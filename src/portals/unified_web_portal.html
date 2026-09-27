@@ -152,6 +152,39 @@
             transform: translateY(-2px);
         }
 
+        /* Apple-Grade QR Scanner Viewfinder & Video Embed */
+        #parent-qr-camera-box {
+            position: relative;
+            overflow: hidden;
+            border-radius: 1.5rem;
+            width: 100% !important;
+            height: 100% !important;
+        }
+        #parent-qr-camera-box video {
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover !important;
+            border-radius: 1.5rem !important;
+        }
+        #parent-qr-camera-box img,
+        #parent-qr-camera-box canvas {
+            display: none !important;
+        }
+        #qr-shaded-region {
+            border-width: 0px !important;
+            opacity: 0 !important;
+            display: none !important;
+        }
+        @keyframes appleScanBeam {
+            0% { top: 8%; opacity: 0; }
+            15% { opacity: 0.95; }
+            85% { opacity: 0.95; }
+            100% { top: 92%; opacity: 0; }
+        }
+        .apple-scan-beam {
+            animation: appleScanBeam 2.2s cubic-bezier(0.4, 0, 0.2, 1) infinite alternate;
+        }
+
         /* Apple HIG 2026 modal spring & backdrop animations */
         .modal-backdrop {
             animation: modalBackdropFadeIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
@@ -10965,149 +10998,156 @@
                     isOpen={isOpen}
                     onClose={() => { stopScanner(); onClose(); }}
                     title="Link Student"
-                    subtitle="Connect your child's student account to manage daily caps & dietary guardrails"
+                    subtitle=""
                     icon={Icon.UserPlus}
-                    iconBg="bg-amber-50 text-amber-700 border-amber-200"
+                    iconBg="bg-slate-100 text-slate-800 border-slate-200/60"
                     size="md"
                 >
-                    <div className="space-y-4">
-                        {/* Tab Switcher: Scan QR (Default) & Manual ID */}
-                        <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
+                    <div className="space-y-4 pt-1">
+                        {/* Apple-style Segmented Tab Control */}
+                        <div className="flex p-1 bg-slate-100/90 rounded-2xl gap-1">
                             <button
                                 type="button"
                                 onClick={() => { setMode('scan'); setErrorMsg(''); setSuccessMsg(''); }}
-                                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                                    mode === 'scan' ? 'bg-white text-brand-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                                className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl transition-all cursor-pointer ${
+                                    mode === 'scan' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'
                                 }`}
                             >
-                                <Icon.Camera className="w-3.5 h-3.5" />
+                                <Icon.Camera className="w-3.5 h-3.5 stroke-[2.2]" />
                                 <span>Scan QR</span>
                             </button>
                             <button
                                 type="button"
                                 onClick={() => { stopScanner(); setMode('manual'); setErrorMsg(''); setSuccessMsg(''); }}
-                                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                                    mode === 'manual' ? 'bg-white text-brand-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                                className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl transition-all cursor-pointer ${
+                                    mode === 'manual' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'
                                 }`}
                             >
-                                <Icon.Search className="w-3.5 h-3.5" />
+                                <Icon.Search className="w-3.5 h-3.5 stroke-[2.2]" />
                                 <span>Manual ID</span>
                             </button>
                         </div>
 
                         {errorMsg && (
-                            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs flex items-center gap-2">
+                            <div className="px-3.5 py-2.5 bg-rose-50 border border-rose-200/80 rounded-2xl text-rose-700 text-xs flex items-center gap-2 font-medium">
                                 <Icon.AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
-                                <span>{errorMsg}</span>
+                                <span className="flex-1">{errorMsg}</span>
                             </div>
                         )}
 
                         {successMsg && (
-                            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs flex items-center gap-2 font-medium">
+                            <div className="px-3.5 py-2.5 bg-emerald-50 border border-emerald-200/80 rounded-2xl text-emerald-800 text-xs flex items-center gap-2 font-medium">
                                 <Icon.CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
-                                <span>{successMsg}</span>
+                                <span className="flex-1">{successMsg}</span>
                             </div>
                         )}
 
                         {mode === 'scan' ? (
                             <div className="space-y-3">
                                 {/* Camera Viewfinder Container */}
-                                <div className="relative rounded-2xl overflow-hidden bg-slate-950 border border-slate-800 shadow-inner flex flex-col items-center justify-center min-h-[260px]">
+                                <div className="relative rounded-[26px] overflow-hidden bg-slate-950 border border-slate-800/80 shadow-inner flex flex-col items-center justify-center min-h-[260px] aspect-square max-h-[285px] w-full mx-auto">
                                     <div id="parent-qr-camera-box" className="w-full h-full min-h-[260px]"></div>
 
-                                    {/* Scan Reticle & Guide */}
+                                    {/* Apple Minimalist Scan Reticle */}
                                     {isScanningActive && !cameraError && (
-                                        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center p-4">
-                                            <div className="w-48 h-48 border-2 border-brand-500 rounded-2xl relative shadow-[0_0_20px_rgba(123,30,34,0.35)] animate-pulse">
-                                                <div className="absolute top-0 left-0 w-3.5 h-3.5 border-t-3 border-l-3 border-white -mt-0.5 -ml-0.5"></div>
-                                                <div className="absolute top-0 right-0 w-3.5 h-3.5 border-t-3 border-r-3 border-white -mt-0.5 -mr-0.5"></div>
-                                                <div className="absolute bottom-0 left-0 w-3.5 h-3.5 border-b-3 border-l-3 border-white -mb-0.5 -ml-0.5"></div>
-                                                <div className="absolute bottom-0 right-0 w-3.5 h-3.5 border-b-3 border-r-3 border-white -mb-0.5 -mr-0.5"></div>
+                                        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center p-6">
+                                            <div className="relative w-48 h-48 sm:w-52 sm:h-52">
+                                                {/* Corner Brackets */}
+                                                <div className="absolute top-0 left-0 w-8 h-8 border-t-[3.5px] border-l-[3.5px] border-white rounded-tl-2xl"></div>
+                                                <div className="absolute top-0 right-0 w-8 h-8 border-t-[3.5px] border-r-[3.5px] border-white rounded-tr-2xl"></div>
+                                                <div className="absolute bottom-0 left-0 w-8 h-8 border-b-[3.5px] border-l-[3.5px] border-white rounded-bl-2xl"></div>
+                                                <div className="absolute bottom-0 right-0 w-8 h-8 border-b-[3.5px] border-r-[3.5px] border-white rounded-br-2xl"></div>
+                                                
+                                                {/* Scanning Laser Shimmer Beam */}
+                                                <div className="absolute inset-x-2 h-[2px] bg-gradient-to-r from-transparent via-white to-transparent shadow-[0_0_10px_rgba(255,255,255,0.9)] apple-scan-beam"></div>
                                             </div>
-                                            <div className="mt-3 px-3 py-1 bg-black/75 backdrop-blur-md rounded-full text-[11px] font-semibold text-white flex items-center gap-1.5 shadow-sm">
-                                                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                                                <span>Align Student QR Code within frame</span>
+                                            <div className="mt-3.5 px-3 py-1 bg-black/45 backdrop-blur-xl rounded-full text-[11px] font-medium text-white/90 border border-white/10 shadow-sm">
+                                                Align QR code within frame
                                             </div>
                                         </div>
                                     )}
 
                                     {cameraError && (
-                                        <div className="p-6 text-center space-y-2">
-                                            <div className="w-10 h-10 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center mx-auto">
-                                                <Icon.Camera className="w-5 h-5" />
+                                        <div className="p-6 text-center space-y-2.5 flex flex-col items-center justify-center">
+                                            <div className="w-11 h-11 rounded-full bg-white/10 text-white/80 flex items-center justify-center">
+                                                <Icon.Camera className="w-5 h-5 stroke-[1.8]" />
                                             </div>
-                                            <p className="text-xs font-semibold text-slate-300 max-w-xs">{cameraError}</p>
+                                            <p className="text-xs font-medium text-slate-300 max-w-xs leading-relaxed">{cameraError}</p>
                                             <button
                                                 type="button"
                                                 onClick={() => { stopScanner(); setMode('manual'); setErrorMsg(''); }}
-                                                className="mt-2 inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-xs font-semibold rounded-xl transition-all cursor-pointer active:scale-95"
+                                                className="mt-1 inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-white/15 hover:bg-white/25 text-white text-xs font-medium rounded-full transition-all cursor-pointer active:scale-95"
                                             >
                                                 <Icon.Search className="w-3.5 h-3.5" />
-                                                <span>Switch to Manual Entry</span>
+                                                <span>Enter Manually</span>
                                             </button>
                                         </div>
                                     )}
                                 </div>
 
-                                {/* Quick Fallback Input for 6-Character Code or Pasted Token */}
-                                <form onSubmit={handleFallbackSubmit} className="pt-1 space-y-2">
-                                    <div className="flex items-center justify-between">
-                                        <label className="text-[11px] font-semibold text-slate-600">6-Character Fallback Code or Token</label>
-                                        <button
-                                            type="button"
-                                            onClick={handlePasteFallback}
-                                            className="text-[11px] font-semibold text-brand-700 hover:text-brand-800 flex items-center gap-1 cursor-pointer"
-                                        >
-                                            <Icon.Clipboard className="w-3 h-3" />
-                                            <span>Paste from Clipboard</span>
-                                        </button>
-                                    </div>
-                                    <div className="flex gap-2">
+                                {/* Minimal Integrated Fallback Input */}
+                                <form onSubmit={handleFallbackSubmit} className="pt-0.5">
+                                    <div className="relative flex items-center">
                                         <input
                                             type="text"
-                                            placeholder="Enter 6-char code (e.g. X32KQC) or token"
+                                            maxLength={10}
+                                            placeholder="Or enter 6-character code"
                                             value={fallbackInput}
-                                            onChange={e => setFallbackInput(e.target.value)}
-                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:ring-2 focus:ring-brand-700"
+                                            onChange={e => setFallbackInput(e.target.value.toUpperCase())}
+                                            className="w-full bg-slate-100/90 hover:bg-slate-100 focus:bg-white border border-transparent focus:border-slate-300 rounded-2xl pl-4 pr-20 py-3 text-xs font-mono tracking-widest uppercase text-slate-900 placeholder:text-slate-400 placeholder:font-sans placeholder:tracking-normal focus:outline-none focus:ring-4 focus:ring-slate-900/5 transition-all text-center sm:text-left"
                                         />
-                                        <button
-                                            type="submit"
-                                            disabled={isSubmitting || !fallbackInput.trim()}
-                                            className="px-4 py-2 bg-brand-700 hover:bg-brand-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer"
-                                        >
-                                            {isSubmitting ? 'Linking...' : 'Submit'}
-                                        </button>
+                                        <div className="absolute right-1.5 flex items-center">
+                                            {fallbackInput.trim() ? (
+                                                <button
+                                                    type="submit"
+                                                    disabled={isSubmitting}
+                                                    className="px-3.5 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-black rounded-xl transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                                                >
+                                                    {isSubmitting ? '...' : 'Link'}
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    type="button"
+                                                    onClick={handlePasteFallback}
+                                                    className="px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:text-slate-900 bg-white shadow-2xs hover:shadow-xs rounded-xl transition-all cursor-pointer flex items-center gap-1 active:scale-95"
+                                                >
+                                                    <Icon.Clipboard className="w-3 h-3 stroke-[2]" />
+                                                    <span>Paste</span>
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                 </form>
-
-                                <div className="p-3 bg-amberBrand-50 border border-amberBrand-100 rounded-xl flex items-start gap-2 text-[11px] text-amberBrand-700">
-                                    <Icon.Info className="w-4 h-4 shrink-0 mt-0.5" />
-                                    <span>
-                                        Instant Link: Ask your child to open their Student Portal and click <strong>&quot;Link Parent&quot;</strong>. On scan, pairing takes effect immediately with zero waiting.
-                                    </span>
-                                </div>
                             </div>
                         ) : (
-                            <form onSubmit={handleManualSubmit} className="space-y-4">
-                                <div>
-                                    <label className="block text-xs font-semibold text-slate-700 mb-1">Student ID Number, 6-Character Code, or Email</label>
+                            <form onSubmit={handleManualSubmit} className="space-y-4 pt-1">
+                                <div className="space-y-1.5">
+                                    <label className="block text-xs font-semibold text-slate-900">Student ID or Code</label>
                                     <input
                                         type="text"
                                         required
-                                        placeholder="e.g. 2023-01900, X32KQC, or juan@sjc.edu.ph"
+                                        autoFocus
+                                        placeholder="e.g. 2023-01900 or 6-char code"
                                         value={studentIdInput}
                                         onChange={e => setStudentIdInput(e.target.value)}
-                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-medium text-slate-900 focus:bg-white focus:ring-2 focus:ring-brand-700"
+                                        className="w-full bg-slate-100/90 hover:bg-slate-100 focus:bg-white border border-transparent focus:border-slate-300 rounded-2xl px-4 py-3 text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-slate-900/5 transition-all"
                                     />
-                                    <p className="text-[11px] text-slate-500 mt-1.5">
-                                        If entering a 6-character code, linking is instantaneous (ACTIVE). If entering a Student ID or email, an approval request will be sent to the student.
-                                    </p>
                                 </div>
-                                <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
-                                    <ActionButton variant="secondary" onClick={() => { stopScanner(); onClose(); }} className="px-4 py-2">Cancel</ActionButton>
-                                    <ActionButton variant="primary" type="submit" disabled={isSubmitting} className="px-5 py-2 font-bold bg-brand-700 text-white">
-                                        {isSubmitting ? 'Processing...' : 'Link Student'}
-                                    </ActionButton>
+                                <div className="flex items-center gap-2 pt-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => { stopScanner(); onClose(); }}
+                                        className="flex-1 py-3 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200/80 rounded-2xl transition-all cursor-pointer active:scale-98"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={isSubmitting || !studentIdInput.trim()}
+                                        className="flex-1 py-3 text-xs font-semibold text-white bg-slate-900 hover:bg-black disabled:opacity-40 rounded-2xl shadow-sm transition-all cursor-pointer active:scale-98 flex items-center justify-center gap-1.5"
+                                    >
+                                        {isSubmitting ? 'Linking...' : 'Continue'}
+                                    </button>
                                 </div>
                             </form>
                         )}
