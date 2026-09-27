@@ -18,11 +18,17 @@ import subprocess
 import threading
 import urllib.request
 import urllib.parse
+from pathlib import Path
 from socketserver import ThreadingMixIn
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import numpy as np
 import cv2
 import pygame
+
+# Dynamic filesystem anchor resolution for cross-platform robustness
+SCRIPT_DIR = Path(__file__).resolve().parent
+SRC_DIR = SCRIPT_DIR.parent
+PROJECT_ROOT = SRC_DIR.parent
 
 # Ensure Windows console handles UTF-8 prints without UnicodeEncodeError
 try:
@@ -87,18 +93,31 @@ STATE_NAMES = {
     STATE_PREORDER_ANNOUNCEMENT: "PREORDER"
 }
 
-# Catalog Database
+_GLOBAL_DB_MANAGER = None
+
+def get_edge_db_path():
+    candidates = [
+        SRC_DIR / "database" / "novalunch_edge.db",
+        PROJECT_ROOT / "src" / "database" / "novalunch_edge.db",
+        PROJECT_ROOT / "database" / "novalunch_edge.db",
+        SCRIPT_DIR / "novalunch_edge.db",
+        Path("src/database/novalunch_edge.db"),
+        Path("database/novalunch_edge.db"),
+        Path("novalunch_edge.db")
+    ]
+    for c in candidates:
+        if c and Path(c).exists():
+            return str(Path(c).resolve())
+    return str((SRC_DIR / "database" / "novalunch_edge.db").resolve())
+
+# In-Memory Fallback Catalog Database
 POS_CATALOG_DATABASE = {
-    "Buttercream_Biscuits": {"name": "Buttercream Biscuits", "category": "SNACKS & BAKERY", "price": 35.00, "stock": 50},
-    "buttercream_biscuits": {"name": "Buttercream Biscuits", "category": "SNACKS & BAKERY", "price": 35.00, "stock": 50},
-    "Buttercream Biscuits": {"name": "Buttercream Biscuits", "category": "SNACKS & BAKERY", "price": 35.00, "stock": 50},
-    "buttercream_crackers": {"name": "Buttercream Biscuits", "category": "SNACKS & BAKERY", "price": 35.00, "stock": 50},
-    "Buttercream Crackers": {"name": "Buttercream Biscuits", "category": "SNACKS & BAKERY", "price": 35.00, "stock": 50},
-    "Jack_And_Jill_Magic_Chips": {"name": "Jack & Jill Magic Chips", "category": "SNACKS & BAKERY", "price": 25.00, "stock": 50},
-    "jack_and_jill_magic_chips": {"name": "Jack & Jill Magic Chips", "category": "SNACKS & BAKERY", "price": 25.00, "stock": 50},
-    "Jack & Jill Magic Chips": {"name": "Jack & Jill Magic Chips", "category": "SNACKS & BAKERY", "price": 25.00, "stock": 50},
-    "Magic_Chips": {"name": "Jack & Jill Magic Chips", "category": "SNACKS & BAKERY", "price": 25.00, "stock": 50},
-    "magic_chips": {"name": "Jack & Jill Magic Chips", "category": "SNACKS & BAKERY", "price": 25.00, "stock": 50},
+    "Buttercream_Biscuits": {"name": "Buttercream Biscuits", "category": "SNACKS & BAKERY", "price": 35.00, "stock": 50, "ai_label": "Buttercream_Biscuits"},
+    "buttercream_biscuits": {"name": "Buttercream Biscuits", "category": "SNACKS & BAKERY", "price": 35.00, "stock": 50, "ai_label": "Buttercream_Biscuits"},
+    "Buttercream Biscuits": {"name": "Buttercream Biscuits", "category": "SNACKS & BAKERY", "price": 35.00, "stock": 50, "ai_label": "Buttercream_Biscuits"},
+    "Jack_And_Jill_Magic_Chips": {"name": "Jack & Jill Magic Chips", "category": "SNACKS & BAKERY", "price": 25.00, "stock": 50, "ai_label": "Jack_And_Jill_Magic_Chips"},
+    "jack_and_jill_magic_chips": {"name": "Jack & Jill Magic Chips", "category": "SNACKS & BAKERY", "price": 25.00, "stock": 50, "ai_label": "Jack_And_Jill_Magic_Chips"},
+    "Jack & Jill Magic Chips": {"name": "Jack & Jill Magic Chips", "category": "SNACKS & BAKERY", "price": 25.00, "stock": 50, "ai_label": "Jack_And_Jill_Magic_Chips"},
     "adobo": {"name": "Pork Adobo Meal", "category": "MEAL", "price": 100.00, "stock": 45},
     "pork_adobo": {"name": "Pork Adobo Meal", "category": "MEAL", "price": 100.00, "stock": 45},
     "steamed_rice": {"name": "Steamed Rice", "category": "RICE", "price": 15.00, "stock": 120},
@@ -111,9 +130,97 @@ POS_CATALOG_DATABASE = {
 }
 
 def lookup_pos_item(raw_label):
+    """
+    Dynamically resolves a detection class name to a POS catalog item.
+    1. Queries local edge database (novalunch_edge.db) by ai_label where is_available = 1.
+    2. If no record has mapped that ai_label, falls back to checking product name or barcode.
+    3. If still unfound, marks item as requires_cashier_review: true with price 0.00.
+    """
     if not raw_label:
-        return {"name": "Tray Item", "category": "ITEM", "price": 35.00, "stock": 50, "available": True, "status": "active"}
+        return {
+            "id": "unmapped-empty",
+            "name": "Unmapped Item",
+            "category": "UNKNOWN",
+            "price": 0.00,
+            "stock": 0,
+            "barcode": None,
+            "available": True,
+            "is_available": True,
+            "ai_label": None,
+            "requires_cashier_review": True,
+            "status": "active"
+        }
+
     s = str(raw_label).strip()
+
+    # 1. Query local edge SQLite database (novalunch_edge.db)
+    db_path = None
+    if _GLOBAL_DB_MANAGER is not None and getattr(_GLOBAL_DB_MANAGER, "sqlite_path", None):
+        db_path = _GLOBAL_DB_MANAGER.sqlite_path
+    if not db_path or not os.path.exists(db_path):
+        db_path = get_edge_db_path()
+
+    if db_path and os.path.exists(db_path):
+        try:
+            conn = sqlite3.connect(db_path, timeout=3.0)
+            c = conn.cursor()
+
+            # Priority 1: Query by ai_label exact or case-insensitive (latest updated takes precedence)
+            c.execute("""
+                SELECT id, name, price, category, barcode, is_available, stock, ai_label 
+                FROM products 
+                WHERE (ai_label = ? OR LOWER(ai_label) = LOWER(?)) AND is_available = 1 
+                ORDER BY updated_at DESC
+                LIMIT 1;
+            """, (s, s))
+            row = c.fetchone()
+            if row:
+                conn.close()
+                return {
+                    "id": str(row[0]),
+                    "name": str(row[1]),
+                    "price": float(row[2]),
+                    "category": str(row[3] or "SNACKS & BAKERY"),
+                    "barcode": str(row[4]) if row[4] else None,
+                    "available": bool(row[5]),
+                    "is_available": bool(row[5]),
+                    "stock": int(row[6]) if row[6] is not None else 50,
+                    "ai_label": str(row[7]) if row[7] else s,
+                    "requires_cashier_review": False,
+                    "status": "active"
+                }
+
+            # Priority 2: Fallback to checking product name or barcode
+            c.execute("""
+                SELECT id, name, price, category, barcode, is_available, stock, ai_label 
+                FROM products 
+                WHERE (name = ? OR barcode = ? OR LOWER(name) = LOWER(?) OR REPLACE(LOWER(name), ' ', '_') = LOWER(?) OR REPLACE(LOWER(name), '_', ' ') = LOWER(?)) 
+                  AND is_available = 1 
+                ORDER BY updated_at DESC
+                LIMIT 1;
+            """, (s, s, s, s, s))
+            row = c.fetchone()
+            if row:
+                conn.close()
+                return {
+                    "id": str(row[0]),
+                    "name": str(row[1]),
+                    "price": float(row[2]),
+                    "category": str(row[3] or "SNACKS & BAKERY"),
+                    "barcode": str(row[4]) if row[4] else None,
+                    "available": bool(row[5]),
+                    "is_available": bool(row[5]),
+                    "stock": int(row[6]) if row[6] is not None else 50,
+                    "ai_label": str(row[7]) if row[7] else None,
+                    "requires_cashier_review": False,
+                    "status": "active"
+                }
+            conn.close()
+        except Exception as e:
+            # Graceful error handling - avoid crashing frame loop
+            pass
+
+    # 2. Secondary check against in-memory catalog cache
     match = None
     if s in POS_CATALOG_DATABASE:
         match = dict(POS_CATALOG_DATABASE[s])
@@ -125,20 +232,37 @@ def lookup_pos_item(raw_label):
         s_snake = s.lower().replace(" ", "_").replace("-", "_")
         if s_snake in POS_CATALOG_DATABASE:
             match = dict(POS_CATALOG_DATABASE[s_snake])
-        else:
-            for k, v in POS_CATALOG_DATABASE.items():
-                if k.lower() in s.lower() or s.lower() in k.lower():
-                    match = dict(v)
-                    break
-    if not match:
-        clean = s.replace("_", " ").title()
-        match = {"name": clean, "category": "ITEM", "price": 35.00, "stock": 50, "available": True, "status": "active"}
-    
-    if match.get("available") is None:
-        match["available"] = True
-    if match.get("status") is None:
-        match["status"] = "active"
-    return match
+
+    if match and match.get("available") is not False and match.get("is_available") is not False:
+        return {
+            "id": match.get("id", f"cached-{s}"),
+            "name": match.get("name", s),
+            "category": match.get("category", "ITEM"),
+            "price": float(match.get("price", 35.0)),
+            "stock": int(match.get("stock", 50)),
+            "barcode": match.get("barcode"),
+            "available": True,
+            "is_available": True,
+            "ai_label": match.get("ai_label", s),
+            "requires_cashier_review": False,
+            "status": "active"
+        }
+
+    # 3. If still unfound: mark as requires_cashier_review: true with price 0.00
+    clean = s.replace("_", " ").title()
+    return {
+        "id": f"unmapped-{s}",
+        "name": f"Unmapped ({clean})",
+        "category": "UNKNOWN",
+        "price": 0.00,
+        "stock": 0,
+        "barcode": None,
+        "available": True,
+        "is_available": True,
+        "ai_label": s,
+        "requires_cashier_review": True,
+        "status": "active"
+    }
 
 def aggregate_detections(detections_list):
     if not detections_list:
@@ -159,11 +283,45 @@ def aggregate_detections(detections_list):
 # DATABASE & CLOUD DUAL-SYNC MANAGER
 # ==============================================================================
 class DatabaseManager:
-    def __init__(self, accounts_path="src/database/accounts.json", sqlite_path="src/database/novalunch_edge.db"):
-        if not os.path.exists(accounts_path) and os.path.exists("database/accounts.json"):
-            accounts_path = "database/accounts.json"
-        if not os.path.exists(sqlite_path) and os.path.exists("novalunch_edge.db"):
-            sqlite_path = "novalunch_edge.db"
+    def __init__(self, accounts_path=None, sqlite_path=None):
+        global _GLOBAL_DB_MANAGER
+        _GLOBAL_DB_MANAGER = self
+
+        if not accounts_path or not os.path.exists(accounts_path):
+            candidates_accounts = [
+                accounts_path,
+                SRC_DIR / "database" / "accounts.json",
+                PROJECT_ROOT / "src" / "database" / "accounts.json",
+                PROJECT_ROOT / "database" / "accounts.json",
+                SCRIPT_DIR / "accounts.json",
+                Path("src/database/accounts.json"),
+                Path("database/accounts.json")
+            ]
+            for ca in candidates_accounts:
+                if ca and Path(ca).exists():
+                    accounts_path = str(Path(ca).resolve())
+                    break
+            if not accounts_path:
+                accounts_path = str((SRC_DIR / "database" / "accounts.json").resolve())
+
+        if not sqlite_path or not os.path.exists(sqlite_path):
+            candidates_sqlite = [
+                sqlite_path,
+                SRC_DIR / "database" / "novalunch_edge.db",
+                PROJECT_ROOT / "src" / "database" / "novalunch_edge.db",
+                PROJECT_ROOT / "database" / "novalunch_edge.db",
+                SCRIPT_DIR / "novalunch_edge.db",
+                Path("src/database/novalunch_edge.db"),
+                Path("database/novalunch_edge.db"),
+                Path("novalunch_edge.db")
+            ]
+            for cs in candidates_sqlite:
+                if cs and Path(cs).exists():
+                    sqlite_path = str(Path(cs).resolve())
+                    break
+            if not sqlite_path:
+                sqlite_path = str((SRC_DIR / "database" / "novalunch_edge.db").resolve())
+
         self.accounts_path = os.path.abspath(accounts_path)
         self.sqlite_path = os.path.abspath(sqlite_path)
         self._lock = threading.Lock()
@@ -192,10 +350,118 @@ class DatabaseManager:
                     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+
+            # Dynamic Edge Products Table with ai_label
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS products (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    price REAL NOT NULL,
+                    category TEXT,
+                    barcode TEXT,
+                    is_available INTEGER DEFAULT 1,
+                    stock INTEGER DEFAULT 50,
+                    ai_label TEXT,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            c.execute("CREATE INDEX IF NOT EXISTS idx_products_ai_label ON products (ai_label);")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_products_barcode ON products (barcode);")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_products_name ON products (name);")
+
+            # Check if ai_label column exists (migration support)
+            c.execute("PRAGMA table_info(products);")
+            cols = [col[1] for col in c.fetchall()]
+            if "ai_label" not in cols:
+                c.execute("ALTER TABLE products ADD COLUMN ai_label TEXT;")
+
+            # Seed default products if products table is currently empty
+            c.execute("SELECT COUNT(*) FROM products;")
+            count = c.fetchone()[0]
+            if count == 0:
+                default_products = [
+                    ("b1010101-1010-1010-1010-101010101010", "Buttercream Biscuits", 35.00, "SNACKS & BAKERY", "480000000010", 1, 50, "Buttercream_Biscuits"),
+                    ("b1111111-1111-1111-1111-111111111111", "Jack & Jill Magic Chips", 25.00, "SNACKS & BAKERY", "480000000011", 1, 45, "Jack_And_Jill_Magic_Chips"),
+                    ("a1111111-1111-1111-1111-111111111111", "Classic Cheeseburger", 75.00, "MEALS & MAINS", "480000000001", 1, 50, None),
+                    ("a2222222-2222-2222-2222-222222222222", "Crispy Chicken Bowl", 85.00, "MEALS & MAINS", "480000000002", 1, 60, None),
+                    ("a3333333-3333-3333-3333-333333333333", "Ham & Cheese Sandwich", 45.00, "SNACKS & BAKERY", "480000000003", 1, 40, None),
+                    ("a4444444-4444-4444-4444-444444444444", "Mineral Water 500ml", 20.00, "BEVERAGES", "480000000004", 1, 150, None),
+                    ("a5555555-5555-5555-5555-555555555555", "Iced Fruit Juice 350ml", 30.00, "BEVERAGES", "480000000005", 1, 80, None),
+                    ("a6666666-6666-6666-6666-666666666666", "Fresh Red Apple", 25.00, "FRUITS & HEALTHY", "480000000006", 1, 40, None)
+                ]
+                c.executemany("""
+                    INSERT INTO products (id, name, price, category, barcode, is_available, stock, ai_label, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """, default_products)
+                print(f"[DB MANAGER] 📦 Seeded {len(default_products)} default catalog items with AI detection classes into SQLite.")
+
             conn.commit()
             conn.close()
         except Exception as e:
             print(f"[DB WARN] SQLite init: {e}")
+
+    def upsert_product(self, prod):
+        if not prod or not isinstance(prod, dict):
+            return
+        prod_id = str(prod.get("id") or f"prod_{int(time.time()*1000)}")
+        name = str(prod.get("name") or "Menu Item").strip()
+        price = float(prod.get("price") or 0.0)
+        cat = str(prod.get("category") or "ITEM").strip()
+        barcode = str(prod.get("barcode") or "") if prod.get("barcode") else None
+        avail = 1 if (prod.get("is_available") is not False and prod.get("available") is not False) else 0
+        stock = int(prod.get("stock") or prod.get("stock_quantity") or 50)
+        ai_label = str(prod.get("ai_label") or prod.get("aiLabel") or "").strip()
+        if not ai_label or ai_label.upper() == "NONE":
+            ai_label = None
+
+        with self._lock:
+            try:
+                conn = sqlite3.connect(self.sqlite_path, timeout=10.0)
+                c = conn.cursor()
+                if ai_label and avail == 1:
+                    # Prevent duplicate active assignments across products
+                    c.execute("""
+                        UPDATE products 
+                        SET ai_label = NULL, updated_at = CURRENT_TIMESTAMP 
+                        WHERE id != ? AND (ai_label = ? OR LOWER(ai_label) = LOWER(?)) AND is_available = 1
+                    """, (prod_id, ai_label, ai_label))
+                c.execute("""
+                    INSERT INTO products (id, name, price, category, barcode, is_available, stock, ai_label, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(id) DO UPDATE SET
+                        name = excluded.name,
+                        price = excluded.price,
+                        category = excluded.category,
+                        barcode = excluded.barcode,
+                        is_available = excluded.is_available,
+                        stock = excluded.stock,
+                        ai_label = excluded.ai_label,
+                        updated_at = CURRENT_TIMESTAMP
+                """, (prod_id, name, price, cat, barcode, avail, stock, ai_label))
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                print(f"[DB WARN] upsert_product error: {e}")
+
+        # Sync to in-memory POS_CATALOG_DATABASE
+        global POS_CATALOG_DATABASE
+        entry = {
+            "id": prod_id,
+            "name": name,
+            "category": cat,
+            "price": price,
+            "stock": stock,
+            "available": bool(avail),
+            "is_available": bool(avail),
+            "barcode": barcode,
+            "ai_label": ai_label,
+            "status": "active" if avail else "archived"
+        }
+        POS_CATALOG_DATABASE[name] = entry
+        POS_CATALOG_DATABASE[name.lower()] = entry
+        if ai_label:
+            POS_CATALOG_DATABASE[ai_label] = entry
+            POS_CATALOG_DATABASE[ai_label.lower()] = entry
 
     def load_accounts(self):
         with self._lock:
@@ -243,7 +509,7 @@ class DatabaseManager:
                                     by_id[st_id]["daily_limit"] = dlim
                                     if p.get("rfid_uid"):
                                         by_id[st_id]["rfid_uid"] = p.get("rfid_uid")
-                                else:
+                                if st_id not in by_id:
                                     by_id[st_id] = {
                                         "id": p.get("id"),
                                         "full_name": p.get("full_name", "Student"),
@@ -262,29 +528,16 @@ class DatabaseManager:
 
     def sync_remote_catalog(self):
         def _fetch():
-            global POS_CATALOG_DATABASE
             try:
-                url = f"{SUPABASE_URL}/rest/v1/products?select=id,name,category,price,stock,stock_quantity,is_available,available,status"
+                url = f"{SUPABASE_URL}/rest/v1/products?select=id,name,category,price,stock,stock_quantity,is_available,available,status,barcode,ai_label"
                 req = urllib.request.Request(url, headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {SUPABASE_ANON_KEY}"})
                 with urllib.request.urlopen(req, timeout=4) as resp:
                     if resp.status == 200:
                         products = json.loads(resp.read().decode('utf-8'))
                         if products and isinstance(products, list):
                             for p in products:
-                                name = p.get("name")
-                                if not name:
-                                    continue
-                                price = float(p.get("price", 35.0))
-                                stock = int(p.get("stock") or p.get("stock_quantity") or 50)
-                                cat = p.get("category", "MEAL")
-                                avail = p.get("available", p.get("is_available", True))
-                                stat = p.get("status", "active")
-                                entry = {"name": name, "category": cat, "price": price, "stock": stock, "available": avail, "status": stat}
-                                POS_CATALOG_DATABASE[name] = entry
-                                POS_CATALOG_DATABASE[name.lower()] = entry
-                                POS_CATALOG_DATABASE[name.replace(" ", "_")] = entry
-                                POS_CATALOG_DATABASE[name.lower().replace(" ", "_")] = entry
-                            print(f"[DB MANAGER] ☁️ Synced {len(products)} products from Supabase cloud catalog.")
+                                self.upsert_product(p)
+                            print(f"[DB MANAGER] ☁️ Synced & cached {len(products)} products from Supabase cloud catalog.")
             except Exception as e:
                 print(f"[DB NOTICE] Remote catalog sync deferred: {e}")
         threading.Thread(target=_fetch, daemon=True).start()
@@ -337,10 +590,20 @@ class DatabaseManager:
             pass
 
         # Local preorders fallback
-        po_path = "src/database/preorders.json"
-        if not os.path.exists(po_path) and os.path.exists("database/preorders.json"):
-            po_path = "database/preorders.json"
-        if os.path.exists(po_path):
+        po_candidates = [
+            SRC_DIR / "database" / "preorders.json",
+            PROJECT_ROOT / "src" / "database" / "preorders.json",
+            PROJECT_ROOT / "database" / "preorders.json",
+            SCRIPT_DIR / "preorders.json",
+            Path("src/database/preorders.json"),
+            Path("database/preorders.json")
+        ]
+        po_path = None
+        for cp in po_candidates:
+            if Path(cp).exists():
+                po_path = str(Path(cp).resolve())
+                break
+        if po_path and os.path.exists(po_path):
             try:
                 with open(po_path, "r", encoding="utf-8") as f:
                     pos = json.load(f).get("preorders", [])
@@ -578,7 +841,10 @@ def get_yolo_model(pt_path="src/assets/models/novalunch_yolo.pt"):
 
     candidates = [
         pt_path,
-        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "models", "novalunch_yolo.pt"),
+        str((SRC_DIR / "assets" / "models" / "novalunch_yolo.pt").resolve()),
+        str((PROJECT_ROOT / "src" / "assets" / "models" / "novalunch_yolo.pt").resolve()),
+        str((PROJECT_ROOT / "assets" / "models" / "novalunch_yolo.pt").resolve()),
+        str((SCRIPT_DIR / "novalunch_yolo.pt").resolve()),
         os.path.join(os.getcwd(), "src", "assets", "models", "novalunch_yolo.pt"),
         "novalunch_yolo.pt"
     ]
@@ -671,37 +937,44 @@ class CameraThread(threading.Thread):
         cv2.line(canvas, (105, sweep_y), (535, sweep_y), (212, 182, 6), 2)
 
         # Simulated item 1: Buttercream Biscuits (novalunch_yolo.pt class 0)
+        item1 = lookup_pos_item("Buttercream_Biscuits")
+        item2 = lookup_pos_item("Jack_And_Jill_Magic_Chips")
+        p1 = float(item1.get("price", 35.0))
+        p2 = float(item2.get("price", 25.0))
+
         cv2.rectangle(canvas, (150, 130), (320, 270), (14, 14, 74), -1)
         cv2.rectangle(canvas, (150, 130), (320, 270), (74, 24, 201), 2)
-        cv2.putText(canvas, "Buttercream Biscuits", (160, 160), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
-        cv2.putText(canvas, "P35.00", (160, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (199, 243, 254), 1)
+        cv2.putText(canvas, item1.get("name", "Buttercream Biscuits"), (160, 160), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
+        cv2.putText(canvas, f"P{p1:.2f}", (160, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (199, 243, 254), 1)
 
         # Simulated item 2: Jack & Jill Magic Chips (novalunch_yolo.pt class 1)
         cv2.rectangle(canvas, (360, 150), (480, 360), (74, 14, 23), -1)
         cv2.rectangle(canvas, (360, 150), (480, 360), (217, 119, 6), 2)
-        cv2.putText(canvas, "Magic Chips", (370, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
-        cv2.putText(canvas, "P25.00", (370, 200), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (254, 243, 199), 1)
+        cv2.putText(canvas, item2.get("name", "Magic Chips"), (370, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
+        cv2.putText(canvas, f"P{p2:.2f}", (370, 200), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (254, 243, 199), 1)
 
         detections = [
             {
                 "id": "item-01",
                 "ai_label": "Buttercream_Biscuits",
-                "name": "Buttercream Biscuits",
-                "category": "SNACKS & BAKERY",
+                "name": item1.get("name", "Buttercream Biscuits"),
+                "category": item1.get("category", "SNACKS & BAKERY"),
                 "qty": 1,
-                "price": 35.00,
-                "stock": 50,
+                "price": p1,
+                "stock": int(item1.get("stock", 50)),
+                "requires_cashier_review": item1.get("requires_cashier_review", False),
                 "bbox": [150, 130, 170, 140],
                 "conf": 0.98
             },
             {
                 "id": "item-02",
                 "ai_label": "Jack_And_Jill_Magic_Chips",
-                "name": "Jack & Jill Magic Chips",
-                "category": "SNACKS & BAKERY",
+                "name": item2.get("name", "Jack & Jill Magic Chips"),
+                "category": item2.get("category", "SNACKS & BAKERY"),
                 "qty": 1,
-                "price": 25.00,
-                "stock": 50,
+                "price": p2,
+                "stock": int(item2.get("stock", 50)),
+                "requires_cashier_review": item2.get("requires_cashier_review", False),
                 "bbox": [360, 150, 120, 210],
                 "conf": 0.96
             }
@@ -745,9 +1018,10 @@ class CameraThread(threading.Thread):
                                                 "name": pos_info.get("name", cls_name),
                                                 "category": pos_info.get("category", "SNACKS & BAKERY"),
                                                 "qty": 1,
-                                                "price": float(pos_info.get("price", 35.00)),
+                                                "price": float(pos_info.get("price", 0.0)),
                                                 "stock": int(pos_info.get("stock", 50)),
                                                 "is_near_expiry": is_near_exp,
+                                                "requires_cashier_review": pos_info.get("requires_cashier_review", False),
                                                 "bbox": [x1, y1, bw, bh],
                                                 "conf": conf
                                             })
@@ -772,9 +1046,10 @@ class CameraThread(threading.Thread):
                                                 "name": pos_info.get("name", cls_name),
                                                 "category": pos_info.get("category", "ITEM"),
                                                 "qty": 1,
-                                                "price": float(pos_info.get("price", 35.00)),
+                                                "price": float(pos_info.get("price", 0.0)),
                                                 "stock": int(pos_info.get("stock", 50)),
                                                 "is_near_expiry": is_near_exp,
+                                                "requires_cashier_review": pos_info.get("requires_cashier_review", False),
                                                 "bbox": [x1, y1, bw, bh],
                                                 "conf": conf
                                             })
@@ -1249,6 +1524,23 @@ class KioskHTTPRequestHandler(BaseHTTPRequestHandler):
                         _GLOBAL_KIOSK_REF.current_state = STATE_SETTLEMENT
                         _GLOBAL_KIOSK_REF.state_timer = time.time()
                         _GLOBAL_KIOSK_REF.notify_pos_update()
+                    elif action == "update_product":
+                        prod = req_data.get("product")
+                        if prod and isinstance(prod, dict):
+                            db_mgr = _GLOBAL_KIOSK_REF.db_manager if (_GLOBAL_KIOSK_REF and _GLOBAL_KIOSK_REF.db_manager) else _GLOBAL_DB_MANAGER
+                            if db_mgr:
+                                db_mgr.upsert_product(prod)
+                            print(f"[KIOSK API] 🔄 Live product dynamic sync: {prod.get('name')} (ai_label: {prod.get('ai_label') or prod.get('aiLabel')}, price: ₱{prod.get('price')})")
+                            _GLOBAL_KIOSK_REF.notify_pos_update()
+                    elif action == "sync_catalog":
+                        catalog = req_data.get("catalog", [])
+                        if catalog and isinstance(catalog, list):
+                            db_mgr = _GLOBAL_KIOSK_REF.db_manager if (_GLOBAL_KIOSK_REF and _GLOBAL_KIOSK_REF.db_manager) else _GLOBAL_DB_MANAGER
+                            if db_mgr:
+                                for prod in catalog:
+                                    db_mgr.upsert_product(prod)
+                            print(f"[KIOSK API] 🔄 Catalog batch dynamically synced: {len(catalog)} item(s)")
+                            _GLOBAL_KIOSK_REF.notify_pos_update()
 
                 self._send_cors_headers(200, "application/json")
                 self.end_headers()
@@ -1259,6 +1551,13 @@ class KioskHTTPRequestHandler(BaseHTTPRequestHandler):
                     pass
 
             elif path in ["/api/cache_offline", "/api/offline_sync"]:
+                catalog = req_data.get("catalog") or req_data.get("products")
+                if catalog and isinstance(catalog, list):
+                    db_mgr = _GLOBAL_KIOSK_REF.db_manager if (_GLOBAL_KIOSK_REF and _GLOBAL_KIOSK_REF.db_manager) else _GLOBAL_DB_MANAGER
+                    if db_mgr:
+                        for prod in catalog:
+                            db_mgr.upsert_product(prod)
+                        print(f"[KIOSK API] 🔄 Offline cache received {len(catalog)} catalog items.")
                 self._send_cors_headers(200, "application/json")
                 self.end_headers()
                 try:
@@ -1311,10 +1610,20 @@ class NovaLunchKioskGUI:
 
         # Branding Logo
         self.logo_surface = None
-        logo_path = os.path.abspath("src/assets/images/branding/school no bg.png")
-        if not os.path.exists(logo_path):
-            logo_path = os.path.abspath("assets/images/branding/school no bg.png")
-        if os.path.exists(logo_path):
+        logo_candidates = [
+            SRC_DIR / "assets" / "images" / "branding" / "school no bg.png",
+            PROJECT_ROOT / "src" / "assets" / "images" / "branding" / "school no bg.png",
+            PROJECT_ROOT / "assets" / "images" / "branding" / "school no bg.png",
+            SCRIPT_DIR / "school no bg.png",
+            Path("src/assets/images/branding/school no bg.png"),
+            Path("assets/images/branding/school no bg.png")
+        ]
+        logo_path = None
+        for lc in logo_candidates:
+            if Path(lc).exists():
+                logo_path = str(Path(lc).resolve())
+                break
+        if logo_path and os.path.exists(logo_path):
             try:
                 raw = pygame.image.load(logo_path).convert_alpha()
                 h = 48
@@ -1542,7 +1851,7 @@ class NovaLunchKioskGUI:
 
             # Save snapshot
             try:
-                trays_dir = "src/ai_engine/trays_queue"
+                trays_dir = str((SRC_DIR / "ai_engine" / "trays_queue").resolve())
                 os.makedirs(trays_dir, exist_ok=True)
                 student_id = self.active_student["id"] if self.active_student else "GUEST"
                 filename = f"{trays_dir}/tray_{int(time.time())}_{student_id}.jpg"
@@ -1623,22 +1932,81 @@ class NovaLunchKioskGUI:
         speak_text(f"Safety net approved. Charged to pay later. Thank you {st_name.split()[0]}!")
         self.notify_pos_update()
 
+    def execute_rfid_checkout(self):
+        """Hardened 2-Tap RFID Settlement: Deducts balance, records transaction, and settles order."""
+        if not self.active_student:
+            return
+
+        self.cart_manual_override_lock = False
+        amt = self.total_amount
+        student_id = str(self.active_student.get("id") or self.active_student.get("student_id_number") or "STU-2026")
+        st_name = self.active_student.get("name", "Student")
+        curr_bal = float(self.active_student.get("balance", 0.0))
+
+        if curr_bal < amt:
+            self.status_message = f"⚠️ INSUFFICIENT BALANCE (Req ₱{amt:.2f}, Bal ₱{curr_bal:.2f}) — USE PAY LATER"
+            speak_text(f"Insufficient balance for {st_name.split()[0]}. Please use pay later at cashier.")
+            self.notify_pos_update()
+            return
+
+        rem_bal = max(0.0, round(curr_bal - amt, 2))
+        self.active_student["balance"] = rem_bal
+
+        # Deduct balance in local edge database cache
+        self.db_manager.deduct_student_balance(student_id, amt)
+
+        tx_id = f"TXN_{int(time.time())}_{student_id.replace('-', '')}"
+        self.db_manager.record_transaction(
+            tx_id, student_id, self.cart_items, amt,
+            self.latest_tray_image, payment_method="rfid"
+        )
+
+        self.status_message = f"🟢 PAYMENT CONFIRMED: ₱{amt:.2f} Deducted ({st_name}). New Balance: ₱{rem_bal:.2f}"
+        if self.sounds.get("success"):
+            try:
+                self.sounds["success"].play()
+            except Exception:
+                pass
+
+        speak_text(f"Payment approved for {int(amt)} pesos. Thank you {st_name.split()[0]}!")
+        self.transition_to_state(STATE_SETTLEMENT)
+        self.notify_pos_update()
+
     def handle_rfid_tap(self, scanned_uid=None):
         now = time.time()
         if scanned_uid:
             clean = str(scanned_uid).strip().replace("NL-QR-", "").replace("QR-", "")
             last_tap = self.rfid_anti_passback_cache.get(clean, 0)
-            if now - last_tap < 3.0:
+            if now - last_tap < 1.0:
                 return  # Hardware debounce
             self.rfid_anti_passback_cache[clean] = now
 
-            # Prevent mid-transaction overwrite by another card during active countdown
-            if self.current_state in [STATE_STABILITY_COUNTDOWN, STATE_SETTLEMENT] and self.active_student:
+            # Tap-2 Settlement: If scanning or in countdown and tapped RFID matches active student, settle immediately
+            if self.current_state in [STATE_SCANNING, STATE_STABILITY_COUNTDOWN] and self.active_student:
                 active_uid = str(self.active_student.get("rfidUid") or self.active_student.get("rfid_uid") or "").strip()
-                if active_uid and clean != active_uid:
-                    self.status_message = "⚠️ TRANSACTION IN PROGRESS — PLEASE WAIT FOR PREVIOUS ORDER"
+                active_id = str(self.active_student.get("id") or self.active_student.get("student_id_number") or "").strip()
+
+                is_match = False
+                if active_uid and (clean.upper() == active_uid.upper() or clean.lstrip('0') == active_uid.lstrip('0')):
+                    is_match = True
+                elif clean == active_id:
+                    is_match = True
+                else:
+                    scanned_student = self.db_manager.find_student_by_rfid(clean)
+                    if scanned_student and (scanned_student.get("id") == self.active_student.get("id") or scanned_student.get("student_id_number") == self.active_student.get("student_id_number")):
+                        is_match = True
+
+                if is_match:
+                    self.execute_rfid_checkout()
+                    return
+                else:
+                    self.status_message = "⚠️ TRANSACTION IN PROGRESS — PLEASE TAP WITH THE SAME CARD TO CONFIRM"
                     self.notify_pos_update()
                     return
+
+            # Prevent mid-transaction overwrite by another card during settlement
+            if self.current_state == STATE_SETTLEMENT and self.active_student:
+                return
 
             student = self.db_manager.find_student_by_rfid(clean)
             if student:

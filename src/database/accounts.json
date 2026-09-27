@@ -9,10 +9,11 @@
       "student_id_number": "2023-01900",
       "rfid_uid": "0009401737",
       "pin_code": "1234",
-      "balance": 250.0,
-      "daily_limit": 250.0,
+      "balance": 200.0,
+      "daily_limit": 200.0,
       "pay_later_count": 0,
-      "pay_later_balance": 0.0
+      "pay_later_balance": 0.0,
+      "id": "c653fe97-2934-4fae-a8f6-18ebb4754886"
     },
     {
       "full_name": "Sophia Dela Cruz",
@@ -25,7 +26,8 @@
       "balance": 200.0,
       "daily_limit": 200.0,
       "pay_later_count": 0,
-      "pay_later_balance": 0.0
+      "pay_later_balance": 0.0,
+      "id": "991e3f6e-6a5d-4e45-a2ae-7015cc9334bc"
     },
     {
       "full_name": "Mark Anthony Santos",
@@ -38,7 +40,8 @@
       "balance": 200.0,
       "daily_limit": 200.0,
       "pay_later_count": 0,
-      "pay_later_balance": 0.0
+      "pay_later_balance": 0.0,
+      "id": "9bd9e2a0-1a82-4d8a-a112-0308f2fedd03"
     },
     {
       "full_name": "Beatriz Ramos",
@@ -51,7 +54,8 @@
       "balance": 200.0,
       "daily_limit": 200.0,
       "pay_later_count": 0,
-      "pay_later_balance": 0.0
+      "pay_later_balance": 0.0,
+      "id": "814e5c22-5edb-4b4a-9296-405560bbe503"
     },
     {
       "full_name": "Stark Aguilar",
@@ -64,7 +68,8 @@
       "balance": 200.0,
       "daily_limit": 200.0,
       "pay_later_count": 0,
-      "pay_later_balance": 0.0
+      "pay_later_balance": 0.0,
+      "id": "f6686da5-00fd-4e78-9d17-06776e1f7d13"
     },
     {
       "full_name": "Keith Canilang",
@@ -77,7 +82,8 @@
       "balance": 200.0,
       "daily_limit": 200.0,
       "pay_later_count": 0,
-      "pay_later_balance": 0.0
+      "pay_later_balance": 0.0,
+      "id": "6f3121a7-c07a-4328-9b85-9a6aead94ed7"
     },
     {
       "full_name": "Frieren Aguilar",
@@ -90,7 +96,108 @@
       "balance": 200.0,
       "daily_limit": 200.0,
       "pay_later_count": 0,
-      "pay_later_balance": 0.0
+      "pay_later_balance": 0.0,
+      "id": "f79191a3-af21-4839-8db6-5adc6a433210"
+    },
+    {
+      "id": "e9ca53b9-02b9-4518-966d-06661efcd98b",
+      "full_name": "Persist Test",
+      "email": "persist.test.2026@sjc.edu.ph",
+      "role": "student",
+      "student_id_number": "SJC-8899",
+      "rfid_uid": "0009988776",
+      "balance": 200.0,
+      "daily_limit": 200.0
+    },
+    {
+      "id": "68c8d0fb-59d7-47d9-a17f-1dbb62cb92ac",
+      "full_name": "Jeshua Lupisan",
+      "email": "joshua.legacy@sjc.edu.ph",
+      "role": "student",
+      "student_id_number": "2023-01900-LEGACY",
+      "rfid_uid": "9A-4F-21-C8",
+      "balance": 200.0,
+      "daily_limit": 200.0
+    },
+    {
+      "id": "ffba52a7-5a90-4fde-b4cd-28459b9eb6ad",
+      "full_name": "Auto Test Student",
+      "email": "auto.test.student@sjc.edu.ph",
+      "role": "student",
+      "student_id_number": "SJC-8888",
+      "rfid_uid": "0099887766",
+      "balance": 200.0,
+      "daily_limit": 200.0
+    },
+    {
+      "id": "945f2371-51af-4ca3-b418-2a108b8dcca0",
+      "full_name": "Frieren Lupisan",
+      "email": "frierenlupi@sjc.edu.ph",
+      "role": "student",
+      "student_id_number": "2026-71249",
+      "rfid_uid": "0009401737-ALT",
+      "balance": 200.0,
+      "daily_limit": 200.0
+    },
+    {
+      "id": "27f185e3-89ef-42c1-bf62-2e5df950ae7c",
+      "full_name": "John Keith Andam IV",
+      "email": "johnkeith.andam@sjc.edu.ph",
+      "role": "student",
+      "student_id_number": "SJC-8108",
+      "rfid_uid": null,
+      "balance": 200.0,
+      "daily_limit": 200.0
+    },
+    {
+      "id": "19216db9-f79e-477b-93a3-2484120ae024",
+      "full_name": "Frieren Lupisan",
+      "email": "columbina23.4@gmail.com",
+      "role": "student",
+      "student_id_number": "2026-130130",
+      "rfid_uid": "0009401737 143, 30089",
+      "balance": 200.0,
+      "daily_limit": 200.0
+    },
+    {
+      "id": "c34d2812-2c8b-40a6-b186-fe4fa715e0b7",
+      "full_name": "Antigravity Test",
+      "email": "antigravity_test_signup@sjc.edu.ph",
+      "role": "student",
+      "student_id_number": "SJC-TEST-01",
+      "rfid_uid": "0001112223",
+      "balance": 200.0,
+      "daily_limit": 200.0
+    },
+    {
+      "id": "d1b9dfb9-bb4a-4032-9496-42c5ce3fbee4",
+      "full_name": "Joshua Santos",
+      "email": "joshuasantos@sjc.edu.ph",
+      "role": "student",
+      "student_id_number": "2026-42049",
+      "rfid_uid": "0002582289",
+      "balance": 200.0,
+      "daily_limit": 200.0
+    },
+    {
+      "id": "492d9845-e955-4825-a1fe-ff8b15edb9e1",
+      "full_name": "Persistent Student",
+      "email": "persisted.student@sjc.edu.ph",
+      "role": "student",
+      "student_id_number": "2026-99999",
+      "rfid_uid": "0004988095",
+      "balance": 200.0,
+      "daily_limit": 200.0
+    },
+    {
+      "id": "ff88a304-83ed-48e5-a75e-b52f5018d549",
+      "full_name": "Marco Rodriguez",
+      "email": "marco.rodriguez.2026@sjc.edu.ph",
+      "role": "student",
+      "student_id_number": "SJC-9988",
+      "rfid_uid": "000998877665",
+      "balance": 200.0,
+      "daily_limit": 200.0
     }
   ],
   "parents": [

@@ -195,3 +195,5 @@ Hello from the pygame community. https://www.pygame.org/contribute.html
 [KIOSK API SERVER] 🟢 Live Real-Time Multi-Threaded Bridge listening on http://127.0.0.1:8085
 [AI VISION] 🟢 Ultralytics YOLO model loaded: src/assets/models/novalunch_yolo.pt
 [EDGE SYNC NOTICE] Offline sync pending connection for TXN_PAYLATER_1787709994_202301900: HTTP Error 400: Bad Request {"code":"23514","details":null,"hint":null,"message":"new row for relation \"orders\" violates check constraint \"orders_payment_method_check\""}
+
+--- Launching student_kiosk_gui.py at Mon Sep 28 01:14:42 2026 ---

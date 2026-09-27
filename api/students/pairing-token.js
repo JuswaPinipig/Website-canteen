@@ -31,9 +31,18 @@ module.exports = async function handler(req, res) {
 
   try {
     const authHeader = req.headers.authorization || '';
-    const bearerId = authHeader.startsWith('Bearer ') ? authHeader.substring(7).trim() : null;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, error: "Unauthorized: Missing or invalid Authorization header." });
+    }
+    const bearerId = authHeader.substring(7).trim();
+    if (!bearerId) {
+      return res.status(401).json({ success: false, error: "Unauthorized: Empty bearer token in Authorization header." });
+    }
     const body = req.body || {};
-    const studentId = req.headers['x-student-id'] || body.studentId || bearerId || body.session?.id || 'c653fe97-2934-4fae-a8f6-18ebb4754886';
+    const studentId = req.headers['x-student-id'] || body.studentId || body.session?.id || bearerId;
+    if (!studentId) {
+      return res.status(401).json({ success: false, error: "Unauthorized: Missing student identification." });
+    }
     const role = req.headers['x-user-role'] || body.role || body.session?.role || 'student';
 
     if (role !== 'student' && role !== 'admin') {

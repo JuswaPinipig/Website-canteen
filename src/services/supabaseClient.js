@@ -133,11 +133,19 @@
                 const cloudIds = new Set(cloudProducts.map(cp => cp.id));
                 const cloudNames = new Set(cloudProducts.map(cp => (cp.name || '').toLowerCase()));
                 const localOnly = existing.filter(lp => !cloudIds.has(lp.id) && !cloudNames.has((lp.name || '').toLowerCase()));
-                const merged = [...cloudProducts, ...localOnly];
+                const merged = [...cloudProducts, ...localOnly].map(p => ({
+                    ...p,
+                    ai_label: p.ai_label !== undefined ? p.ai_label : (p.aiLabel || null),
+                    aiLabel: p.ai_label !== undefined ? p.ai_label : (p.aiLabel || null)
+                }));
                 this.saveLocal('novalunch_products_catalog', merged);
                 return merged;
             }
-            return cached || [];
+            return (cached || []).map(p => ({
+                ...p,
+                ai_label: p.ai_label !== undefined ? p.ai_label : (p.aiLabel || null),
+                aiLabel: p.ai_label !== undefined ? p.ai_label : (p.aiLabel || null)
+            }));
         },
 
         async getProductByAILabel(label) {
@@ -148,14 +156,48 @@
         },
 
         async updateProductAiLabel(productId, aiLabel) {
-            if (supabase && this.isUUID(productId)) {
-                const { data, error } = await supabase.from('products').update({ ai_label: aiLabel }).eq('id', productId).select();
-                if (error) throw error;
+            const cleanLabel = (aiLabel && aiLabel !== 'NONE') ? String(aiLabel).trim() : null;
+            // Update local cache immediately
+            const currentProducts = this.loadLocal('novalunch_products_catalog', []);
+            let targetProduct = null;
+            const updatedLocal = currentProducts.map(p => {
+                if (p.id === productId || (p.name && productId && p.name.toLowerCase() === String(productId).toLowerCase())) {
+                    targetProduct = { ...p, ai_label: cleanLabel, aiLabel: cleanLabel };
+                    return targetProduct;
+                }
+                return p;
+            });
+            this.saveLocal('novalunch_products_catalog', updatedLocal);
+
+            // Notify Edge Kiosk (:8085)
+            try {
+                if (targetProduct) {
+                    fetch('http://localhost:8085/api/kiosk/sync', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'update_product', product: targetProduct })
+                    }).catch(() => {});
+                }
+            } catch (e) {}
+
+            let targetUUID = this.isUUID(productId) ? productId : (KNOWN_MOCK_PRODUCT_UUIDS[productId] || null);
+            if (supabase && targetUUID) {
+                const { data, error } = await supabase.from('products').update({ ai_label: cleanLabel }).eq('id', targetUUID).select();
+                if (error) console.warn("Supabase updateProductAiLabel error:", error);
                 return data;
+            } else if (targetUUID) {
+                try {
+                    return await this._patchREST(`products?id=eq.${targetUUID}`, { ai_label: cleanLabel });
+                } catch (e) {}
             }
+            return [{ id: productId, ai_label: cleanLabel, aiLabel: cleanLabel }];
         },
 
         async createProduct(productPayload) {
+            const cleanAiLabel = (productPayload.ai_label && productPayload.ai_label !== 'NONE')
+                ? String(productPayload.ai_label).trim()
+                : ((productPayload.aiLabel && productPayload.aiLabel !== 'NONE') ? String(productPayload.aiLabel).trim() : null);
+
             // Sanitize and map UI fields to valid PostgreSQL products schema
             const cleanPayload = {
                 name: productPayload.name || 'Menu Item',
@@ -165,7 +207,7 @@
                 is_available: productPayload.is_available !== undefined ? Boolean(productPayload.is_available) : (productPayload.available !== undefined ? Boolean(productPayload.available) : true),
                 image_url: productPayload.image_url || productPayload.img || null,
                 category: productPayload.category || 'Meals & Mains',
-                ai_label: productPayload.ai_label || productPayload.aiLabel || null,
+                ai_label: cleanAiLabel,
                 barcode: productPayload.barcode || null,
                 description: productPayload.description || null,
                 calories: parseInt(productPayload.calories) || 0,
@@ -204,9 +246,21 @@
                 }
             }
 
+            createdProduct.aiLabel = createdProduct.ai_label !== undefined ? createdProduct.ai_label : cleanAiLabel;
+            createdProduct.ai_label = createdProduct.ai_label !== undefined ? createdProduct.ai_label : cleanAiLabel;
+
             // Update local cache
             const currentProducts = this.loadLocal('novalunch_products_catalog', []);
             this.saveLocal('novalunch_products_catalog', [createdProduct, ...currentProducts.filter(p => p.id !== createdProduct.id)]);
+
+            // Push to Edge Kiosk (:8085)
+            try {
+                fetch('http://localhost:8085/api/kiosk/sync', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'update_product', product: createdProduct })
+                }).catch(() => {});
+            } catch (e) {}
 
             return createdProduct;
         },
@@ -236,7 +290,11 @@
             }
             
             if (updatePayload.category !== undefined) cleanPayload.category = updatePayload.category;
-            if (updatePayload.ai_label !== undefined || updatePayload.aiLabel !== undefined) cleanPayload.ai_label = updatePayload.ai_label || updatePayload.aiLabel;
+            if (updatePayload.ai_label !== undefined || updatePayload.aiLabel !== undefined) {
+                const rawVal = updatePayload.ai_label !== undefined ? updatePayload.ai_label : updatePayload.aiLabel;
+                cleanPayload.ai_label = (rawVal && rawVal !== 'NONE') ? String(rawVal).trim() : null;
+            }
+            if (updatePayload.barcode !== undefined) cleanPayload.barcode = updatePayload.barcode;
             if (updatePayload.calories !== undefined) cleanPayload.calories = parseInt(updatePayload.calories) || 0;
             if (updatePayload.protein !== undefined) cleanPayload.protein = updatePayload.protein;
             if (updatePayload.allergens !== undefined) cleanPayload.allergens = Array.isArray(updatePayload.allergens) ? updatePayload.allergens : [];
@@ -255,13 +313,32 @@
 
             // 1. Always update local cache immediately (and upgrade ID if resolved)
             const currentProducts = this.loadLocal('novalunch_products_catalog', []);
+            let fullUpdatedProd = null;
             const updatedLocal = currentProducts.map(p => {
                 if (p.id === productId || (targetUUID && p.id === targetUUID) || (p.name && updatePayload.name && p.name.toLowerCase() === updatePayload.name.toLowerCase())) {
-                    return { ...p, ...cleanPayload, ...(targetUUID ? { id: targetUUID } : {}) };
+                    fullUpdatedProd = {
+                        ...p,
+                        ...cleanPayload,
+                        aiLabel: cleanPayload.ai_label !== undefined ? cleanPayload.ai_label : (p.ai_label || p.aiLabel || null),
+                        ai_label: cleanPayload.ai_label !== undefined ? cleanPayload.ai_label : (p.ai_label || p.aiLabel || null),
+                        ...(targetUUID ? { id: targetUUID } : {})
+                    };
+                    return fullUpdatedProd;
                 }
                 return p;
             });
             this.saveLocal('novalunch_products_catalog', updatedLocal);
+
+            // Push to Edge Kiosk (:8085)
+            try {
+                if (fullUpdatedProd) {
+                    fetch('http://localhost:8085/api/kiosk/sync', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'update_product', product: fullUpdatedProd })
+                    }).catch(() => {});
+                }
+            } catch (e) {}
 
             if (targetUUID) {
                 if (supabase) {
@@ -277,6 +354,7 @@
                                 stock: cleanPayload.stock,
                                 available: cleanPayload.available,
                                 img: cleanPayload.img,
+                                ai_label: cleanPayload.ai_label,
                                 calories: cleanPayload.calories,
                                 protein: cleanPayload.protein,
                                 allergens: cleanPayload.allergens,
@@ -683,71 +761,39 @@
             }
 
             if (supabase && targetUUID && this.isUUID(targetUUID)) {
-                // Primary path: atomic delta RPC
-                try {
-                    const { data, error: rpcError } = await supabase.rpc('fn_deduct_wallet_balance', {
-                        p_user_id: targetUUID,
-                        p_amount: cleanAmount
-                    });
-                    if (rpcError) {
-                        if (rpcError.message && (rpcError.message.includes('INSUFFICIENT_FUNDS') || rpcError.message.includes('WALLET_NOT_FOUND'))) {
-                            throw new Error(rpcError.message);
-                        }
-                        console.warn('[CanteenDB] fn_deduct_wallet_balance RPC error, using safe fallback:', rpcError.message);
-                    } else if (data !== null && data !== undefined) {
-                        const newBal = typeof data === 'number' ? data : (data.new_balance ?? data);
-                        const updated = users.map(u => (u.id === userId || u.id === targetUUID || u.studentId === userId) ? { ...u, balance: newBal } : u);
-                        this.saveLocal('novalunch_registered_users', updated);
-                        if (typeof CanteenCache !== 'undefined' && CanteenCache.set) CanteenCache.set('registered_users', updated);
-                        await supabase.from('profiles').update({ balance: newBal, updated_at: new Date().toISOString() }).eq('id', targetUUID).catch(() => {});
-                        return { success: true, new_balance: newBal };
-                    }
-                } catch (rpcErr) {
-                    if (rpcErr.message && (rpcErr.message.includes('INSUFFICIENT_FUNDS') || rpcErr.message.includes('WALLET_NOT_FOUND'))) {
-                        throw rpcErr;
-                    }
-                    console.warn('[CanteenDB] fn_deduct_wallet_balance RPC unavailable, using safe fallback:', rpcErr.message);
+                // Fail-Closed: Atomic delta RPC execution. Throw immediately on any RPC failure.
+                const { data, error: rpcError } = await supabase.rpc('fn_deduct_wallet_balance', {
+                    p_user_id: targetUUID,
+                    p_amount: cleanAmount
+                });
+                if (rpcError) {
+                    throw new Error(rpcError.message || 'RPC fn_deduct_wallet_balance failed');
+                }
+                if (data === null || data === undefined) {
+                    throw new Error('RPC fn_deduct_wallet_balance returned empty balance result');
                 }
 
-                // Safe fallback: read-check-update directly on wallets & profiles tables
-                let walletBal = localBal;
-                try {
-                    const { data: walletData, error: fetchErr } = await supabase
-                        .from('wallets').select('balance').eq('user_id', targetUUID).maybeSingle();
-
-                    if (!fetchErr && walletData && walletData.balance !== undefined) {
-                        walletBal = parseFloat(walletData.balance) || 0;
-                    }
-                } catch (fetchEx) {
-                    console.warn('[CanteenDB] Wallet fetch fallback error:', fetchEx);
-                }
-
-                if (walletBal < cleanAmount) {
-                    throw new Error(`INSUFFICIENT_FUNDS: Required ₱${cleanAmount.toFixed(2)}, Available ₱${walletBal.toFixed(2)}`);
-                }
-                const newBalance = parseFloat((walletBal - cleanAmount).toFixed(2));
-                try {
-                    await supabase.from('wallets')
-                        .upsert({ user_id: targetUUID, balance: newBalance, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
-                    await supabase.from('profiles').update({ balance: newBalance, updated_at: new Date().toISOString() }).eq('id', targetUUID).catch(() => {});
-                } catch (upErr) {
-                    console.warn('[CanteenDB] Cloud wallet deduction sync warning:', upErr);
-                }
-                const updated = users.map(u => (u.id === userId || u.id === targetUUID || u.studentId === userId) ? { ...u, balance: newBalance } : u);
+                const newBal = typeof data === 'number' ? data : (data.new_balance ?? data);
+                const updated = users.map(u => (u.id === userId || u.id === targetUUID || u.studentId === userId) ? { ...u, balance: newBal } : u);
                 this.saveLocal('novalunch_registered_users', updated);
                 if (typeof CanteenCache !== 'undefined' && CanteenCache.set) CanteenCache.set('registered_users', updated);
-                return { success: true, new_balance: newBalance };
+                await supabase.from('profiles').update({ balance: newBal, updated_at: new Date().toISOString() }).eq('id', targetUUID).catch(() => {});
+                return { success: true, new_balance: newBal };
             }
 
-            // Local fallback (offline or demo user)
-            if (localBal < cleanAmount) {
-                throw new Error(`INSUFFICIENT_FUNDS: Required ₱${cleanAmount.toFixed(2)}, Available ₱${localBal.toFixed(2)}`);
+            // Local fallback only if Supabase is completely unavailable (pure offline demo mode)
+            if (!supabase) {
+                if (localBal < cleanAmount) {
+                    throw new Error(`INSUFFICIENT_FUNDS: Required ₱${cleanAmount.toFixed(2)}, Available ₱${localBal.toFixed(2)}`);
+                }
+                const newBal = parseFloat((localBal - cleanAmount).toFixed(2));
+                const updated = users.map(u => (u.id === userId || u.studentId === userId) ? { ...u, balance: newBal } : u);
+                this.saveLocal('novalunch_registered_users', updated);
+                if (typeof CanteenCache !== 'undefined' && CanteenCache.set) CanteenCache.set('registered_users', updated);
+                return { success: true, new_balance: newBal };
             }
-            const newBal = parseFloat((localBal - cleanAmount).toFixed(2));
-            const updated = users.map(u => (u.id === userId || u.studentId === userId) ? { ...u, balance: newBal } : u);
-            this.saveLocal('novalunch_registered_users', updated);
-            if (typeof CanteenCache !== 'undefined' && CanteenCache.set) CanteenCache.set('registered_users', updated);
-            return { success: true, new_balance: newBal };
+
+            throw new Error(`Invalid student UUID (${userId}) for atomic wallet deduction.`);
         },
 
         /**
@@ -2243,6 +2289,28 @@
                 }
             }
             return cleanPayload;
+        },
+
+        async purgePreorders(preorderIds) {
+            if (!preorderIds || !Array.isArray(preorderIds) || preorderIds.length === 0) return { success: true };
+            const cleanIds = preorderIds.map(id => String(id));
+            const localPos = this.loadLocal('novalunch_preorders', []);
+            const updatedList = localPos.filter(p => !cleanIds.includes(String(p.id)));
+            this.saveLocal('novalunch_preorders', updatedList);
+            if (typeof CanteenCache !== 'undefined' && CanteenCache.set) CanteenCache.set('preorders', updatedList);
+
+            if (supabase) {
+                try {
+                    await supabase.from('preorders').delete().in('id', cleanIds);
+                } catch (err) {
+                    console.warn("[CanteenDB] Supabase preorders purge exception:", err.message);
+                }
+            }
+            return { success: true, purgedCount: cleanIds.length };
+        },
+
+        async deletePreorder(preorderId) {
+            return this.purgePreorders([preorderId]);
         },
 
         async getPreorders(studentId) {

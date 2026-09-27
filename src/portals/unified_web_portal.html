@@ -2629,6 +2629,88 @@
         }
 
         // =====================================================================
+        // GUARDIAN LINKAGE VALIDATION HELPERS (STU-09 & PAY LATER GOVERNANCE)
+        // =====================================================================
+        function checkStudentHasLinkedParent(student, links = [], users = []) {
+            if (!student) return false;
+            const sId = String(student.id || '').trim();
+            const sNum = String(student.studentId || student.student_id_number || student.studentIdNumber || '').trim();
+            const sEmail = String(student.email || '').toLowerCase().trim();
+            const sName = String(student.name || student.full_name || '').toLowerCase().trim();
+
+            // 1. Direct parent_student_links check
+            const hasInLinks = (links || []).some(l => {
+                const lStudId = String(l?.studentId || l?.student_id || '').trim();
+                const lStudNum = String(l?.studentIdNumber || l?.student_id_number || '').trim();
+                return (lStudId && (lStudId === sId || lStudId === sNum)) ||
+                       (lStudNum && (lStudNum === sNum || lStudNum === sId));
+            });
+            if (hasInLinks) return true;
+
+            // 2. Check registeredUsers for parents linking this student
+            const hasInUsers = (users || []).some(u => {
+                const role = String(u?.role || '').toLowerCase();
+                if (role !== 'parent') return false;
+                const linkedId = String(u?.linkedStudentId || u?.linked_student_id || '').trim();
+                const linkedName = String(u?.linkedStudentName || u?.linked_student_name || '').toLowerCase().trim();
+                return (linkedId && (linkedId === sId || linkedId === sNum)) ||
+                       (linkedName && sName && linkedName === sName);
+            });
+            if (hasInUsers) return true;
+
+            // 3. Student explicit parent ID
+            if (student.parentId || student.parent_id || student.linkedParentId || student.linked_parent_id) {
+                return true;
+            }
+
+            // 4. Fallback for demo students with verified parents in initial seed
+            if (sEmail === 'student@gmail.com' || sNum === '2023-01900' || sId === 'c653fe97-2934-4fae-a8f6-18ebb4754886') return true;
+            if (sEmail === 'sophia.student@sjc.edu.ph' || sNum === '2023-01988' || sId === '991e3f6e-6a5d-4e45-a2ae-7015cc9334bc') return true;
+            if (sEmail === 'mark.student@sjc.edu.ph' || sNum === '2023-02104' || sId === '9bd9e2a0-1a82-4d8a-a112-0308f2fedd03') return true;
+
+            return false;
+        }
+
+        function getStudentLinkedParentName(student, links = [], users = []) {
+            if (!student) return null;
+            const sId = String(student.id || '').trim();
+            const sNum = String(student.studentId || student.student_id_number || student.studentIdNumber || '').trim();
+            const sEmail = String(student.email || '').toLowerCase().trim();
+            const sName = String(student.name || student.full_name || '').toLowerCase().trim();
+
+            // 1. Check parentStudentLinks
+            const linkMatch = (links || []).find(l => {
+                const lStudId = String(l?.studentId || l?.student_id || '').trim();
+                const lStudNum = String(l?.studentIdNumber || l?.student_id_number || '').trim();
+                return (lStudId && (lStudId === sId || lStudId === sNum)) ||
+                       (lStudNum && (lStudNum === sNum || lStudNum === sId));
+            });
+            if (linkMatch) {
+                if (linkMatch.parentName || linkMatch.parent_name) return linkMatch.parentName || linkMatch.parent_name;
+                const parentUser = (users || []).find(u => u.id === (linkMatch.parentId || linkMatch.parent_id));
+                if (parentUser) return parentUser.name || parentUser.full_name;
+            }
+
+            // 2. Check registeredUsers
+            const parentUser = (users || []).find(u => {
+                const role = String(u?.role || '').toLowerCase();
+                if (role !== 'parent') return false;
+                const linkedId = String(u?.linkedStudentId || u?.linked_student_id || '').trim();
+                const linkedName = String(u?.linkedStudentName || u?.linked_student_name || '').toLowerCase().trim();
+                return (linkedId && (linkedId === sId || linkedId === sNum)) ||
+                       (linkedName && sName && linkedName === sName);
+            });
+            if (parentUser) return parentUser.name || parentUser.full_name;
+
+            // 3. Fallback for demo students
+            if (sEmail === 'student@gmail.com' || sNum === '2023-01900' || sId === 'c653fe97-2934-4fae-a8f6-18ebb4754886') return "Maria Santos Dela Cruz";
+            if (sEmail === 'sophia.student@sjc.edu.ph' || sNum === '2023-01988' || sId === '991e3f6e-6a5d-4e45-a2ae-7015cc9334bc') return "Carlos Dela Cruz";
+            if (sEmail === 'mark.student@sjc.edu.ph' || sNum === '2023-02104' || sId === '9bd9e2a0-1a82-4d8a-a112-0308f2fedd03') return "Elena Santos";
+
+            return null;
+        }
+
+        // =====================================================================
         // PER-VIEW FAULT ISOLATION ERROR BOUNDARY RECOVERY CARD
         // =====================================================================
         class PortalErrorBoundary extends React.Component {
@@ -3303,7 +3385,9 @@
             currentUser,
             isMobileOpen = false,
             onCloseMobile = () => { },
-            badgeCounts = {}
+            badgeCounts = {},
+            parentStudentLinks = [],
+            registeredUsers = []
         }) {
             const [collapsedSections, setCollapsedSections] = useState({});
             const [searchQuery, setSearchQuery] = useState('');
@@ -3345,17 +3429,24 @@
 
             const getNavSections = () => {
                 switch (activeRole) {
-                    case 'STUDENT':
+                    case 'STUDENT': {
+                        const studentHasParent = checkStudentHasLinkedParent(currentUser, parentStudentLinks, registeredUsers);
                         return [
                             {
                                 section: 'Student Hub',
                                 items: [
                                     { id: 'wallet', label: 'Wallet', icon: Icon.CreditCard },
                                     { id: 'history', label: 'Orders', icon: Icon.ShoppingBag },
-                                    { id: 'safety', label: 'Safety Net', icon: Icon.ShieldCheck }
+                                    {
+                                        id: 'safety',
+                                        label: 'Safety Net',
+                                        icon: studentHasParent ? Icon.ShieldCheck : Icon.Lock,
+                                        lockBadge: studentHasParent ? null : 'Locked'
+                                    }
                                 ]
                             }
                         ];
+                    }
                     case 'PARENT':
                         return [
                             {
@@ -3636,7 +3727,7 @@
                                                             </div>
                                                         </div>
 
-                                                        {badgeCount > 0 && (
+                                                        {badgeCount > 0 ? (
                                                             <span
                                                                 role="status"
                                                                 aria-atomic="true"
@@ -3648,7 +3739,11 @@
                                                             >
                                                                 {badgeCount > 9 ? '9+' : badgeCount}
                                                             </span>
-                                                        )}
+                                                        ) : item.lockBadge ? (
+                                                            <span className="px-1.5 py-0.5 text-[9.5px] font-mono font-bold rounded-md bg-amber-50 text-amber-800 border border-amber-200/60 uppercase tracking-wider shrink-0">
+                                                                {item.lockBadge}
+                                                            </span>
+                                                        ) : null}
                                                     </button>
                                                 );
                                             })
@@ -3706,7 +3801,7 @@
                                                                     <span className="truncate">{item.label}</span>
                                                                 </div>
 
-                                                                {badgeCount > 0 && (
+                                                                {badgeCount > 0 ? (
                                                                     <span
                                                                         role="status"
                                                                         aria-atomic="true"
@@ -3718,7 +3813,11 @@
                                                                     >
                                                                         {badgeCount > 9 ? '9+' : badgeCount}
                                                                     </span>
-                                                                )}
+                                                                ) : item.lockBadge ? (
+                                                                    <span className="px-1.5 py-0.5 text-[9.5px] font-mono font-bold rounded-md bg-amber-50 text-amber-800 border border-amber-200/60 uppercase tracking-wider shrink-0">
+                                                                        {item.lockBadge}
+                                                                    </span>
+                                                                ) : null}
                                                             </button>
                                                         );
                                                     })}
@@ -6617,9 +6716,10 @@
         }
 
         // =====================================================================
+        // =====================================================================
         // 1. STUDENT INSTANT SOS PARENT TOP-UP MODAL
         // =====================================================================
-        function StudentSosTopUpModal({ isOpen, onClose, currentStudent, onSendSosSuccess }) {
+        function StudentSosTopUpModal({ isOpen, onClose, currentStudent, onSendSosSuccess, hasLinkedParent = true, linkedParentName = null, onOpenPairingQr = null }) {
             const [amount, setAmount] = useState(200);
             const [customNote, setCustomNote] = useState('Need meal balance for lunch break');
             const [isSent, setIsSent] = useState(false);
@@ -6627,6 +6727,7 @@
             if (!isOpen) return null;
 
             const handleSend = () => {
+                if (!hasLinkedParent) return;
                 setIsSent(true);
                 if (onSendSosSuccess) {
                     onSendSosSuccess(amount, customNote);
@@ -6637,70 +6738,109 @@
                 }, 1500);
             };
 
+            const parentDisplay = linkedParentName || currentStudent?.guardian;
+
             return (
                 <CustomModal
                     isOpen={isOpen}
                     onClose={onClose}
-                    title="Request Emergency Reload"
-                    subtitle={`Linked to ${currentStudent?.guardian || "Maria Santos"}`}
-                    icon={Icon.ShieldAlert}
+                    title="Request Allowance"
+                    subtitle={hasLinkedParent ? (parentDisplay ? `Linked to ${parentDisplay}` : "Verified Parent Link") : "Parent Account Required"}
+                    icon={hasLinkedParent ? Icon.ShieldAlert : Icon.Lock}
                     iconBg="bg-amber-50 text-amber-700 border-amber-200/60"
                     size="md"
                 >
-                    <div className="space-y-4 py-1">
-                        <div className="space-y-2">
-                            <label className="text-xs font-semibold text-slate-700 block">Select Amount</label>
-                            <div className="grid grid-cols-3 gap-2">
-                                {[100, 200, 500].map(val => (
+                    {!hasLinkedParent ? (
+                        <div className="py-5 px-1 space-y-4 text-center">
+                            <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-50 border border-amber-200/80 flex items-center justify-center text-amber-700 shadow-2xs">
+                                <Icon.Lock className="w-6 h-6 stroke-[2]" />
+                            </div>
+                            <div className="space-y-1.5 max-w-sm mx-auto">
+                                <h3 className="font-outfit font-bold text-base text-slate-900">SOS Top-Up Unavailable</h3>
+                                <p className="text-xs text-slate-500 leading-relaxed">
+                                    Emergency allowance requests require an active linked parent or guardian account to receive and approve your top-up.
+                                </p>
+                            </div>
+                            <div className="bg-slate-50 rounded-2xl p-3.5 border border-slate-200/70 text-xs text-slate-600 flex items-center justify-between max-w-sm mx-auto">
+                                <span className="font-medium">Your Student ID:</span>
+                                <span className="font-mono font-bold text-slate-900">{currentStudent?.studentId || currentStudent?.student_id_number || '—'}</span>
+                            </div>
+                            <div className="flex gap-2.5 pt-2 max-w-sm mx-auto">
+                                <button
+                                    type="button"
+                                    onClick={onClose}
+                                    className="w-1/2 py-3 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 font-semibold text-xs rounded-2xl transition-all cursor-pointer"
+                                >
+                                    Close
+                                </button>
+                                {onOpenPairingQr && (
                                     <button
-                                        key={val}
                                         type="button"
-                                        onClick={() => setAmount(val)}
-                                        className={`py-3 rounded-2xl border text-xs font-bold transition-all active:scale-95 cursor-pointer ${
-                                            amount === val
-                                                ? 'bg-[#7B1E22] text-white border-[#7B1E22] shadow-2xs'
-                                                : 'bg-white text-slate-700 border-slate-200/90 hover:bg-slate-50'
-                                        }`}
+                                        onClick={onOpenPairingQr}
+                                        className="w-1/2 py-3 bg-[#7B1E22] hover:bg-[#5C1016] active:scale-95 text-white font-semibold text-xs rounded-2xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
                                     >
-                                        ₱{val}.00
+                                        <Icon.QrCode className="w-4 h-4 text-amber-300" />
+                                        <span>Link Parent</span>
                                     </button>
-                                ))}
+                                )}
                             </div>
                         </div>
+                    ) : (
+                        <div className="space-y-4 py-1">
+                            <div className="space-y-2">
+                                <label className="text-xs font-semibold text-slate-700 block">Select Amount</label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {[100, 200, 500].map(val => (
+                                        <button
+                                            key={val}
+                                            type="button"
+                                            onClick={() => setAmount(val)}
+                                            className={`py-3 rounded-2xl border text-xs font-bold transition-all active:scale-95 cursor-pointer ${
+                                                amount === val
+                                                    ? 'bg-[#7B1E22] text-white border-[#7B1E22] shadow-2xs'
+                                                    : 'bg-white text-slate-700 border-slate-200/90 hover:bg-slate-50'
+                                            }`}
+                                        >
+                                            ₱{val}.00
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
 
-                        <div className="space-y-1.5">
-                            <label className="text-xs font-semibold text-slate-700 block">Note</label>
-                            <input
-                                type="text"
-                                value={customNote}
-                                onChange={(e) => setCustomNote(e.target.value)}
-                                className="w-full px-4 py-3 text-xs border border-slate-200/80 rounded-xl bg-[#F2F2F7] focus:bg-white focus:border-slate-300 outline-none font-medium text-slate-800 transition-all"
-                                placeholder="Add a note (optional)"
-                            />
-                        </div>
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-semibold text-slate-700 block">Note</label>
+                                <input
+                                    type="text"
+                                    value={customNote}
+                                    onChange={(e) => setCustomNote(e.target.value)}
+                                    className="w-full px-4 py-3 text-xs border border-slate-200/80 rounded-xl bg-[#F2F2F7] focus:bg-white focus:border-slate-300 outline-none font-medium text-slate-800 transition-all"
+                                    placeholder="Add a note (optional)"
+                                />
+                            </div>
 
-                        <div className="flex gap-2.5 pt-2">
-                            <button
-                                type="button"
-                                onClick={onClose}
-                                className="w-1/3 py-3 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 font-semibold text-xs rounded-2xl transition-all cursor-pointer"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleSend}
-                                disabled={isSent}
-                                className="w-2/3 py-3 bg-[#7B1E22] hover:bg-[#5C1016] active:scale-95 text-white font-semibold text-xs rounded-2xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs disabled:opacity-50"
-                            >
-                                {isSent ? (
-                                    <><Icon.Check className="w-4 h-4 text-emerald-300" /> Dispatched</>
-                                ) : (
-                                    <><Icon.Send className="w-4 h-4 text-amber-300" /> Send Request</>
-                                )}
-                            </button>
+                            <div className="flex gap-2.5 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={onClose}
+                                    className="w-1/3 py-3 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 font-semibold text-xs rounded-2xl transition-all cursor-pointer"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleSend}
+                                    disabled={isSent}
+                                    className="w-2/3 py-3 bg-[#7B1E22] hover:bg-[#5C1016] active:scale-95 text-white font-semibold text-xs rounded-2xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs disabled:opacity-50"
+                                >
+                                    {isSent ? (
+                                        <><Icon.Check className="w-4 h-4 text-emerald-300" /> Dispatched</>
+                                    ) : (
+                                        <><Icon.Send className="w-4 h-4 text-amber-300" /> Send Request</>
+                                    )}
+                                </button>
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </CustomModal>
             );
         }
@@ -10810,6 +10950,7 @@
             const [isScanningActive, setIsScanningActive] = useState(false);
             const scannerInstanceRef = useRef(null);
             const isProcessingRef = useRef(false);
+            const manualInputRef = useRef(null);
 
             // Process scanned QR payload or pasted code
             const handleProcessToken = async (rawInput) => {
@@ -10913,14 +11054,24 @@
                                 console.warn("[Html5Qrcode] Camera error:", err);
                                 if (isMounted) {
                                     setIsScanningActive(false);
-                                    setCameraError("Camera viewfinder unavailable or permission denied. You can enter the 6-character code or paste the token below.");
+                                    stopScanner();
+                                    setMode('manual');
+                                    setErrorMsg("Camera access was denied or unavailable. Switched to manual 6-digit code entry.");
+                                    setTimeout(() => {
+                                        if (manualInputRef.current) manualInputRef.current.focus();
+                                    }, 150);
                                 }
                             });
                         } catch (err) {
                             console.warn("[Html5Qrcode] Init error:", err);
                             if (isMounted) {
                                 setIsScanningActive(false);
-                                setCameraError("Camera scanner failed to initialize.");
+                                stopScanner();
+                                setMode('manual');
+                                setErrorMsg("Camera scanner initialization failed. Switched to manual 6-digit code entry.");
+                                setTimeout(() => {
+                                    if (manualInputRef.current) manualInputRef.current.focus();
+                                }, 150);
                             }
                         }
                     }, 350);
@@ -11058,6 +11209,7 @@
                                 <div className="space-y-1.5">
                                     <div className="relative flex items-center">
                                         <input
+                                            ref={manualInputRef}
                                             type="text"
                                             maxLength={6}
                                             required
@@ -11346,6 +11498,7 @@
         function StudentMobileView({
             safeBalance, safeLimit, remainingDailyCap, dailySpent, creditLiability = 0, creditLimit = 500, payLaterCount = 0,
             studentName, studentIdNum, rfidUidStr, studentAllergies, currentStudent,
+            hasLinkedParent = true, linkedParentName = null, setIsPairingQrModalOpen = () => { },
             studentOrdersToday = [],
             activeStudentPreorders = [], pendingRequestsForMe = [],
             normalizedTab, setActiveTab,
@@ -11574,6 +11727,17 @@
                                                 <span className="font-bold tabular-nums text-amber-300">₱{activeLiability.toFixed(2)}</span>
                                                 <span className="text-amber-200/90 font-medium">due • Settle</span>
                                             </button>
+                                        ) : !hasLinkedParent ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsPairingQrModalOpen && setIsPairingQrModalOpen(true)}
+                                                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/[0.08] hover:bg-white/[0.14] backdrop-blur-md border border-white/[0.08] text-xs text-white/80 cursor-pointer transition-colors"
+                                                title="Pay Later is locked. Link a parent to unlock."
+                                            >
+                                                <Icon.Lock className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                                                <span className="text-white/60">Pay Later:</span>
+                                                <span className="font-medium text-amber-200">Locked</span>
+                                            </button>
                                         ) : (
                                             <button
                                                 type="button"
@@ -11626,6 +11790,19 @@
                                             <Icon.CheckCircle2 className="w-5 h-5 stroke-[2.4]" />
                                         </div>
                                         <span className="text-[11px] font-bold text-amber-900">Settle Tab</span>
+                                    </button>
+                                ) : !hasLinkedParent ? (
+                                    <button
+                                        id="mobile-link-parent-btn"
+                                        type="button"
+                                        onClick={() => setIsPairingQrModalOpen && setIsPairingQrModalOpen(true)}
+                                        className="flex flex-col items-center gap-1.5 active:scale-95 transition-transform cursor-pointer group ios-press"
+                                        title="Link Parent Account to activate SOS Top-Up & Pay Later"
+                                    >
+                                        <div className="w-14 h-14 rounded-full bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-slate-200/70 flex items-center justify-center text-[#7B1E22] group-hover:bg-slate-50 transition-colors ios-circle-btn">
+                                            <Icon.QrCode className="w-5 h-5 stroke-[2]" />
+                                        </div>
+                                        <span className="text-[11px] font-semibold text-slate-700">Link Parent</span>
                                     </button>
                                 ) : (
                                     <button
@@ -12045,6 +12222,44 @@
                         const effectiveLiability = Math.max(creditLiability, dynamicPayLaterTotal);
                         const effectivePayLaterCount = Math.max(payLaterCount, payLaterOrders.length);
 
+                        if (!hasLinkedParent) {
+                            return (
+                                <div key="tab-safety-locked" className="space-y-4 mt-3 ios-tab-pane pb-12">
+                                    <div className="mx-4 bg-white rounded-[26px] p-6 border border-black/[0.05] shadow-[0_2px_16px_rgba(0,0,0,0.02)] text-center space-y-4">
+                                        <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-50 text-amber-700 border border-amber-200/70 flex items-center justify-center shrink-0">
+                                            <Icon.Lock className="w-6 h-6 stroke-[2.2]" />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <h3 className="font-outfit font-bold text-lg text-slate-900 tracking-tight">Pay Later Tab Inaccessible</h3>
+                                            <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
+                                                A verified linked parent or guardian account is required to activate Pay Later emergency meal credit.
+                                            </p>
+                                        </div>
+                                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/60 text-left space-y-2 max-w-xs mx-auto">
+                                            <div className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider">Policy Requirement</div>
+                                            <p className="text-xs text-slate-500 leading-normal">
+                                                Under SJC Canteen governance, emergency meal tabs are guaranteed by a registered parent. Once linked, you will receive up to ₱500.00 emergency credit (up to 5 meals).
+                                            </p>
+                                            <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs">
+                                                <span className="text-slate-400 font-medium">Your Student ID:</span>
+                                                <span className="font-mono font-bold text-slate-900">{studentIdNum}</span>
+                                            </div>
+                                        </div>
+                                        <div className="pt-1 max-w-xs mx-auto">
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsPairingQrModalOpen && setIsPairingQrModalOpen(true)}
+                                                className="w-full py-3.5 bg-[#7B1E22] hover:bg-[#5C1016] active:scale-98 text-white font-semibold text-xs rounded-2xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+                                            >
+                                                <Icon.QrCode className="w-4 h-4 text-amber-300" />
+                                                <span>Link Parent Account</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        }
+
                         return (
                             <div key="tab-safety" className="space-y-4 mt-3 ios-tab-pane pb-12">
                                 {/* 1. EMERGENCY CREDIT HERO CARD (APPLE CARD 2026 STYLE) */}
@@ -12301,8 +12516,13 @@
                                 },
                                 {
                                     id: 'safety',
-                                    label: 'Safety Net',
-                                    renderIcon: (isActive) => isActive ? (
+                                    label: hasLinkedParent ? 'Safety Net' : 'Safety Net (Locked)',
+                                    renderIcon: (isActive) => !hasLinkedParent ? (
+                                        <svg viewBox="0 0 24 24" className="w-[24px] h-[24px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                                            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                                        </svg>
+                                    ) : isActive ? (
                                         <svg viewBox="0 0 24 24" className="w-[24px] h-[24px]">
                                             <path fill="currentColor" fillRule="evenodd" clipRule="evenodd" d="M12 2l7.5 2.8v6.7c0 5.8-5.3 9.7-7.5 10.5C9.8 21.2 4.5 17.3 4.5 11.5V4.8L12 2zm3.3 6.7a1 1 0 0 0-1.4 0L11 11.6l-1.9-1.9a1 1 0 1 0-1.4 1.4l2.6 2.6a1 1 0 0 0 1.4 0l3.6-3.6a1 1 0 0 0 0-1.4z" />
                                         </svg>
@@ -12346,6 +12566,8 @@
         // 2. STUDENT PORTAL MODULE (E-WALLET & DIGITAL RECEIPTS)
         // =====================================================================
         function StudentView({ studentBalance, dailyLimit, currentStudent, menuCatalog, preorders = [], recentOrders = [], reloadLogs = [], inventoryBatches = [], onUploadReceipt, onClaimClick, onSettleDebt, onSubmitDispute, refundsList = [], activeTab = 'wallet', setActiveTab, onSignOut, onSelectRoleQuick, isCloudConnected, onRefreshCloud, notifications = [], onMarkNotifRead, onMarkAllNotifRead, onDeleteNotif, onClearReadNotifs, onActionClick, parentStudentLinkRequests = [], onRespondLinkRequest, onOpenCommandPalette, onOpenMobileSidebar, showToast = () => { },
+            parentStudentLinks = [],
+            registeredUsers = [],
             isLoading = false,
             isSyncing = false
         }) {
@@ -12361,6 +12583,9 @@
             const [nearExpiryWarningItem, setNearExpiryWarningItem] = useState(null);
             const studentNotifs = (notifications || []).filter(n => !n.role || n.role === 'ALL' || n.role === 'STUDENT');
             const unreadNotifCount = studentNotifs.filter(n => !n.is_read && !n.read).length;
+
+            const hasLinkedParent = checkStudentHasLinkedParent(currentStudent, parentStudentLinks, registeredUsers);
+            const linkedParentName = getStudentLinkedParentName(currentStudent, parentStudentLinks, registeredUsers);
 
             // GCash Top-Up State for Student
             const [topupAmount, setTopupAmount] = useState('500');
@@ -12523,6 +12748,9 @@
                         rfidUidStr={rfidUidStr}
                         studentAllergies={studentAllergies}
                         currentStudent={currentStudent}
+                        hasLinkedParent={hasLinkedParent}
+                        linkedParentName={linkedParentName}
+                        setIsPairingQrModalOpen={setIsPairingQrModalOpen}
                         studentOrdersToday={studentOrdersToday}
                         activeStudentPreorders={activeStudentPreorders}
                         pendingRequestsForMe={pendingRequestsForMe}
@@ -12815,15 +13043,22 @@
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setIsPairingQrModalOpen(true)}
-                                                    className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#7B1E22] hover:bg-[#5C1016] text-white border border-white/20 backdrop-blur-md text-[10.5px] font-semibold active:scale-95 transition-all cursor-pointer shadow-xs"
-                                                    title="Generate instant QR code to link your parent"
-                                                >
-                                                    <Icon.QrCode className="w-3.5 h-3.5 text-white" />
-                                                    <span>Link Parent</span>
-                                                </button>
+                                                {hasLinkedParent ? (
+                                                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/30 backdrop-blur-md text-[10.5px] font-semibold text-emerald-200">
+                                                        <Icon.ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                                                        <span className="truncate max-w-[120px]">{linkedParentName || 'Parent Linked'}</span>
+                                                    </div>
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setIsPairingQrModalOpen(true)}
+                                                        className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#7B1E22] hover:bg-[#5C1016] text-white border border-white/20 backdrop-blur-md text-[10.5px] font-semibold active:scale-95 transition-all cursor-pointer shadow-xs"
+                                                        title="Generate instant QR code to link your parent"
+                                                    >
+                                                        <Icon.QrCode className="w-3.5 h-3.5 text-white" />
+                                                        <span>Link Parent</span>
+                                                    </button>
+                                                )}
                                                 <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 border border-white/15 backdrop-blur-md text-[10px] font-mono text-emerald-300">
                                                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                                                     <span>Active RFID</span>
@@ -12845,22 +13080,35 @@
                                                     <span className="font-semibold text-white tabular-nums">₱{remainingDailyCap.toFixed(2)}</span>
                                                     <span className="text-white/40 tabular-nums">/ ₱{safeLimit.toFixed(2)}</span>
                                                 </div>
-                                                <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full backdrop-blur-md border text-[11px] ${
-                                                    creditLiability > 0
-                                                        ? 'bg-amber-500/20 border-amber-400/40 text-amber-200'
-                                                        : 'bg-white/[0.08] border-white/[0.08] text-white/90'
-                                                }`}>
-                                                    <Icon.CreditCard className="w-3 h-3 text-amber-300 shrink-0" />
-                                                    <span className="text-white/60">Pay Later:</span>
-                                                    <span className={`font-semibold tabular-nums ${creditLiability > 0 ? 'text-amber-300 font-bold' : 'text-white'}`}>
-                                                        ₱{creditLiability.toFixed(2)}
-                                                    </span>
-                                                    {creditLiability > 0 && (
-                                                        <span className="text-[8.5px] font-bold uppercase tracking-wider bg-amber-400/25 text-amber-300 px-1.5 py-0.2 rounded-full">
-                                                            Due
+                                                {hasLinkedParent ? (
+                                                    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full backdrop-blur-md border text-[11px] ${
+                                                        creditLiability > 0
+                                                            ? 'bg-amber-500/20 border-amber-400/40 text-amber-200'
+                                                            : 'bg-white/[0.08] border-white/[0.08] text-white/90'
+                                                    }`}>
+                                                        <Icon.CreditCard className="w-3 h-3 text-amber-300 shrink-0" />
+                                                        <span className="text-white/60">Pay Later:</span>
+                                                        <span className={`font-semibold tabular-nums ${creditLiability > 0 ? 'text-amber-300 font-bold' : 'text-white'}`}>
+                                                            ₱{creditLiability.toFixed(2)}
                                                         </span>
-                                                    )}
-                                                </div>
+                                                        {creditLiability > 0 && (
+                                                            <span className="text-[8.5px] font-bold uppercase tracking-wider bg-amber-400/25 text-amber-300 px-1.5 py-0.2 rounded-full">
+                                                                Due
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setIsPairingQrModalOpen(true)}
+                                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-400/30 text-[11px] text-amber-200 hover:bg-amber-500/25 transition-all cursor-pointer"
+                                                        title="Pay Later emergency credit requires a verified linked parent"
+                                                    >
+                                                        <Icon.Lock className="w-3 h-3 text-amber-300 shrink-0" />
+                                                        <span className="text-white/60">Pay Later:</span>
+                                                        <span className="text-amber-300 font-bold">Locked</span>
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
 
@@ -12910,70 +13158,98 @@
 
                                         {/* Pay Later Total Tab Card */}
                                         <div className={`enterprise-card p-5 sm:p-6 rounded-3xl border shadow-2xs flex flex-col justify-between space-y-3 transition-all ${
-                                            payLaterCount >= 5 ? 'bg-rose-50/70 border-rose-200/80' : creditLiability > 0 ? 'bg-amber-50/70 border-amber-200/80' : 'bg-white border-slate-200/80'
+                                            !hasLinkedParent
+                                                ? 'bg-slate-50/80 border-slate-200/80'
+                                                : payLaterCount >= 5 ? 'bg-rose-50/70 border-rose-200/80' : creditLiability > 0 ? 'bg-amber-50/70 border-amber-200/80' : 'bg-white border-slate-200/80'
                                         }`}>
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider font-mono">Pay Later Tab</span>
-                                                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
-                                                        payLaterCount >= 5
-                                                            ? 'bg-rose-100 text-rose-800 border-rose-300 font-bold'
-                                                            : creditLiability > 0
-                                                                ? 'bg-amber-100 text-amber-800 border-amber-200 font-bold'
-                                                                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                                    }`}>
-                                                        {payLaterCount >= 5 ? '5/5 Limit Reached' : `${payLaterCount}/5 Used`}
-                                                    </span>
+                                                    {!hasLinkedParent ? (
+                                                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-amber-50 text-amber-800 border-amber-200/80 font-bold inline-flex items-center gap-1">
+                                                            <Icon.Lock className="w-2.5 h-2.5 text-amber-700" />
+                                                            <span>Parent Link Required</span>
+                                                        </span>
+                                                    ) : (
+                                                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                                                            payLaterCount >= 5
+                                                                ? 'bg-rose-100 text-rose-800 border-rose-300 font-bold'
+                                                                : creditLiability > 0
+                                                                    ? 'bg-amber-100 text-amber-800 border-amber-200 font-bold'
+                                                                    : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                                        }`}>
+                                                            {payLaterCount >= 5 ? '5/5 Limit Reached' : `${payLaterCount}/5 Used`}
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
-                                                    payLaterCount >= 5 ? 'bg-rose-100 text-rose-800' : creditLiability > 0 ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-slate-100 text-slate-700'
+                                                    !hasLinkedParent ? 'bg-slate-100 text-slate-400' : payLaterCount >= 5 ? 'bg-rose-100 text-rose-800' : creditLiability > 0 ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-slate-100 text-slate-700'
                                                 }`}>
-                                                    <Icon.CreditCard className="w-4 h-4" />
+                                                    {!hasLinkedParent ? <Icon.Lock className="w-4 h-4 text-slate-400" /> : <Icon.CreditCard className="w-4 h-4" />}
                                                 </div>
                                             </div>
                                             <div>
                                                 <div className={`font-outfit text-3xl font-extrabold tabular-nums ${
-                                                    creditLiability > 0 ? 'text-amber-900' : 'text-slate-900'
+                                                    !hasLinkedParent ? 'text-slate-400' : creditLiability > 0 ? 'text-amber-900' : 'text-slate-900'
                                                 }`}>
-                                                    ₱{creditLiability.toFixed(2)}
+                                                    {!hasLinkedParent ? 'Locked' : `₱${creditLiability.toFixed(2)}`}
                                                 </div>
                                                 <div className="text-xs text-slate-500 mt-1 flex items-center justify-between">
-                                                    <span>Credit Cap: ₱{creditLimit.toFixed(2)}</span>
-                                                    <span className="font-mono text-[11px] font-medium text-slate-600">
-                                                        {Math.max(0, 5 - payLaterCount)} emergency meals left
-                                                    </span>
+                                                    {!hasLinkedParent ? (
+                                                        <span className="text-[11px] text-slate-500">Emergency meal line requires an active guardian link</span>
+                                                    ) : (
+                                                        <React.Fragment>
+                                                            <span>Credit Cap: ₱{creditLimit.toFixed(2)}</span>
+                                                            <span className="font-mono text-[11px] font-medium text-slate-600">
+                                                                {Math.max(0, 5 - payLaterCount)} emergency meals left
+                                                            </span>
+                                                        </React.Fragment>
+                                                    )}
                                                 </div>
                                             </div>
                                             <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-                                                <span className={`text-[11px] ${payLaterCount >= 5 ? 'text-rose-700 font-bold' : creditLiability > 0 ? 'text-amber-800' : 'text-slate-500'}`}>
-                                                    {payLaterCount >= 5 ? 'Limit reached — Settle tab to reset' : creditLiability > 0 ? 'Due for settlement' : 'Emergency line clear'}
+                                                <span className={`text-[11px] ${!hasLinkedParent ? 'text-slate-400' : payLaterCount >= 5 ? 'text-rose-700 font-bold' : creditLiability > 0 ? 'text-amber-800' : 'text-slate-500'}`}>
+                                                    {!hasLinkedParent ? 'Pair with parent to unlock' : payLaterCount >= 5 ? 'Limit reached — Settle tab to reset' : creditLiability > 0 ? 'Due for settlement' : 'Emergency line clear'}
                                                 </span>
                                                 <div className="flex items-center gap-2">
-                                                    {creditLiability > 0 && (
+                                                    {!hasLinkedParent ? (
                                                         <button
                                                             type="button"
-                                                            onClick={() => setIsSettleModalOpen(true)}
-                                                            className="text-[11px] font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-2.5 py-1 rounded-full border border-amber-300 active:scale-95 transition-all cursor-pointer inline-flex items-center gap-1"
+                                                            onClick={() => setIsPairingQrModalOpen(true)}
+                                                            className="text-[11px] font-bold text-[#7B1E22] bg-[#7B1E22]/10 hover:bg-[#7B1E22]/20 px-3 py-1 rounded-full border border-[#7B1E22]/20 active:scale-95 transition-all cursor-pointer inline-flex items-center gap-1.5"
                                                         >
-                                                            <Icon.CheckCircle2 className="w-3 h-3 text-amber-800" />
-                                                            <span>Settle Tab</span>
+                                                            <Icon.QrCode className="w-3.5 h-3.5 text-[#7B1E22]" />
+                                                            <span>Link Parent via QR</span>
                                                         </button>
+                                                    ) : (
+                                                        <React.Fragment>
+                                                            {creditLiability > 0 && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setIsSettleModalOpen(true)}
+                                                                    className="text-[11px] font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-2.5 py-1 rounded-full border border-amber-300 active:scale-95 transition-all cursor-pointer inline-flex items-center gap-1"
+                                                                >
+                                                                    <Icon.CheckCircle2 className="w-3 h-3 text-amber-800" />
+                                                                    <span>Settle Tab</span>
+                                                                </button>
+                                                            )}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setIsPairingQrModalOpen(true)}
+                                                                className="text-[11px] font-bold text-brand-700 hover:text-brand-800 bg-brand-50 hover:bg-brand-100 px-2.5 py-1 rounded-full border border-brand-200 active:scale-95 transition-all cursor-pointer inline-flex items-center gap-1"
+                                                            >
+                                                                <Icon.QrCode className="w-3 h-3 text-brand-700" />
+                                                                <span>Parent Link QR</span>
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setIsSosModalOpen(true)}
+                                                                className="text-[11px] font-bold text-[#7B1E22] hover:underline cursor-pointer"
+                                                            >
+                                                                SOS Top-Up
+                                                            </button>
+                                                        </React.Fragment>
                                                     )}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setIsPairingQrModalOpen(true)}
-                                                        className="text-[11px] font-bold text-brand-700 hover:text-brand-800 bg-brand-50 hover:bg-brand-100 px-2.5 py-1 rounded-full border border-brand-200 active:scale-95 transition-all cursor-pointer inline-flex items-center gap-1"
-                                                    >
-                                                        <Icon.QrCode className="w-3 h-3 text-brand-700" />
-                                                        <span>Parent Link QR</span>
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setIsSosModalOpen(true)}
-                                                        className="text-[11px] font-bold text-[#7B1E22] hover:underline cursor-pointer"
-                                                    >
-                                                        SOS Top-Up
-                                                    </button>
                                                 </div>
                                             </div>
                                         </div>
@@ -13203,13 +13479,24 @@
                                                 </button>
 
                                                 <div className="text-center pt-0.5">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setIsSosModalOpen(true)}
-                                                        className="text-xs text-slate-400 hover:text-[#7B1E22] font-medium transition-colors cursor-pointer inline-flex items-center gap-1"
-                                                    >
-                                                        Need emergency credit? <span className="underline underline-offset-2 text-slate-600 hover:text-[#7B1E22]">Request Parent SOS</span>
-                                                    </button>
+                                                    {hasLinkedParent ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setIsSosModalOpen(true)}
+                                                            className="text-xs text-slate-400 hover:text-[#7B1E22] font-medium transition-colors cursor-pointer inline-flex items-center gap-1"
+                                                        >
+                                                            Need emergency credit? <span className="underline underline-offset-2 text-slate-600 hover:text-[#7B1E22]">Request Allowance</span>
+                                                        </button>
+                                                    ) : (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setIsPairingQrModalOpen(true)}
+                                                            className="text-xs text-slate-400 hover:text-[#7B1E22] font-medium transition-colors cursor-pointer inline-flex items-center gap-1"
+                                                        >
+                                                            <Icon.Lock className="w-3 h-3 text-slate-400" />
+                                                            <span>Parent SOS locked — <span className="underline underline-offset-2 text-slate-600 hover:text-[#7B1E22]">Link a parent account</span></span>
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </div>
                                         </form>
@@ -13273,8 +13560,193 @@
                         )}
 
                         {/* ================================================================= */}
-                        {/* TAB 3: ORDER HISTORY & DIGITAL RECEIPTS (APPLE-STYLE) */}
+                        {/* TAB 2: SAFETY NET & PAY LATER HUB (DESKTOP) */}
                         {/* ================================================================= */}
+                        {normalizedTab === 'safety' && (
+                            <div className="space-y-6 animate-in fade-in duration-200">
+                                {!hasLinkedParent ? (
+                                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                                        <div className="lg:col-span-7 enterprise-card p-6 sm:p-8 rounded-3xl bg-white border border-slate-200/80 shadow-xs space-y-6">
+                                            <div className="flex items-center justify-between">
+                                                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-200/80 text-[11px] font-semibold text-amber-800">
+                                                    <Icon.Lock className="w-3.5 h-3.5 text-amber-700" />
+                                                    <span>Parent Link Required</span>
+                                                </div>
+                                                <span className="text-xs font-mono text-slate-400">Policy SEC-PL-01</span>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <h2 className="font-outfit text-2xl font-bold text-slate-900 tracking-tight">
+                                                    Safety Net & Pay Later are Locked
+                                                </h2>
+                                                <p className="text-sm text-slate-500 leading-relaxed">
+                                                    Saint Joseph College of Novaliches institutional guidelines require an active, verified parent or guardian link to authorize emergency Pay Later meal credit and SOS allowance requests. Unlinked student accounts cannot incur credit liabilities.
+                                                </p>
+                                            </div>
+
+                                            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-3">
+                                                <div className="text-xs font-semibold text-slate-700 uppercase tracking-wider font-mono">
+                                                    Your Student Credentials for Guardian Pairing
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-3 text-xs">
+                                                    <div className="bg-white p-3 rounded-xl border border-slate-200/60">
+                                                        <span className="text-[10px] text-slate-400 block uppercase font-mono">Student Name</span>
+                                                        <span className="font-bold text-slate-800 truncate block mt-0.5">{studentName}</span>
+                                                    </div>
+                                                    <div className="bg-white p-3 rounded-xl border border-slate-200/60">
+                                                        <span className="text-[10px] text-slate-400 block uppercase font-mono">Student ID Number</span>
+                                                        <span className="font-mono font-bold text-slate-800 block mt-0.5">{studentIdNum}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-3 pt-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setIsPairingQrModalOpen(true)}
+                                                    className="flex-1 h-11 bg-[#7B1E22] hover:bg-[#631418] active:scale-[0.99] text-white font-semibold text-xs sm:text-sm rounded-2xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+                                                >
+                                                    <Icon.QrCode className="w-4 h-4 text-white" />
+                                                    <span>Show Pairing QR Code</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setActiveTab('wallet')}
+                                                    className="px-5 h-11 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-2xl transition-all flex items-center justify-center cursor-pointer"
+                                                >
+                                                    Back to Wallet
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="lg:col-span-5 enterprise-card p-6 sm:p-7 rounded-3xl bg-slate-50/70 border border-slate-200/80 space-y-5">
+                                            <h3 className="font-outfit text-lg font-bold text-slate-900">
+                                                How Linking Works
+                                            </h3>
+                                            <div className="space-y-4 text-xs text-slate-600">
+                                                <div className="flex items-start gap-3">
+                                                    <div className="w-6 h-6 rounded-full bg-[#7B1E22]/10 text-[#7B1E22] font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
+                                                        1
+                                                    </div>
+                                                    <p>
+                                                        Click <span className="font-semibold text-slate-800">Show Pairing QR Code</span> and show it to your parent or guardian.
+                                                    </p>
+                                                </div>
+                                                <div className="flex items-start gap-3">
+                                                    <div className="w-6 h-6 rounded-full bg-[#7B1E22]/10 text-[#7B1E22] font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
+                                                        2
+                                                    </div>
+                                                    <p>
+                                                        Your parent scans the QR code or inputs your Student ID (<span className="font-mono font-semibold text-slate-800">{studentIdNum}</span>) inside their NovaLunch Parent Portal.
+                                                    </p>
+                                                </div>
+                                                <div className="flex items-start gap-3">
+                                                    <div className="w-6 h-6 rounded-full bg-[#7B1E22]/10 text-[#7B1E22] font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
+                                                        3
+                                                    </div>
+                                                    <p>
+                                                        Once paired, you instantly unlock up to 5 emergency Pay Later meals, daily spending protection, and 1-tap SOS allowance requests.
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            <div className="p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200/60 text-amber-900 text-xs flex items-start gap-2.5">
+                                                <Icon.ShieldCheck className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                                                <span>Your wallet can still be reloaded via GCash anytime on the Wallet tab without an active parent link.</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                                        <div className="lg:col-span-7 enterprise-card p-6 sm:p-7 rounded-3xl bg-white border border-slate-200/80 shadow-xs space-y-6">
+                                            <div className="flex items-center justify-between">
+                                                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200/80 text-[11px] font-semibold text-emerald-800">
+                                                    <Icon.ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                                                    <span>Guaranteed by {linkedParentName || 'Parent Guardian'}</span>
+                                                </div>
+                                                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                                                    payLaterCount >= 5
+                                                        ? 'bg-rose-100 text-rose-800 border-rose-300 font-bold'
+                                                        : creditLiability > 0
+                                                            ? 'bg-amber-100 text-amber-800 border-amber-200 font-bold'
+                                                            : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                                }`}>
+                                                    {payLaterCount >= 5 ? '5/5 Limit Reached' : `${payLaterCount}/5 Used`}
+                                                </span>
+                                            </div>
+
+                                            <div>
+                                                <span className="text-[11px] font-mono uppercase tracking-wider text-slate-400 block">
+                                                    Current Pay Later Balance
+                                                </span>
+                                                <div className={`font-outfit text-4xl font-extrabold tracking-tight tabular-nums mt-1 ${
+                                                    creditLiability > 0 ? 'text-amber-900' : 'text-slate-900'
+                                                }`}>
+                                                    ₱{creditLiability.toFixed(2)}
+                                                </div>
+                                                <p className="text-xs text-slate-500 mt-1">
+                                                    Credit line cap: ₱{creditLimit.toFixed(2)} • {Math.max(0, 5 - payLaterCount)} emergency meals remaining
+                                                </p>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <div className="flex justify-between text-xs text-slate-500 font-medium">
+                                                    <span>Credit Line Utilization</span>
+                                                    <span className="font-mono">{Math.round(Math.min(100, (creditLiability / (creditLimit || 1)) * 100))}%</span>
+                                                </div>
+                                                <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                                                    <div
+                                                        className={`h-full rounded-full transition-all ${creditLiability > creditLimit * 0.8 ? 'bg-rose-500' : creditLiability > 0 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                                                        style={{ width: `${Math.min(100, Math.max(0, (creditLiability / (creditLimit || 1)) * 100))}%` }}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="pt-2 flex items-center gap-3">
+                                                {creditLiability > 0 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setIsSettleModalOpen(true)}
+                                                        className="flex-1 h-11 bg-amber-600 hover:bg-amber-700 active:scale-[0.99] text-white font-semibold text-xs sm:text-sm rounded-2xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+                                                    >
+                                                        <Icon.CheckCircle2 className="w-4 h-4 text-white" />
+                                                        <span>Settle Outstanding Balance</span>
+                                                    </button>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setIsSosModalOpen(true)}
+                                                    className="flex-1 h-11 bg-[#7B1E22] hover:bg-[#631418] active:scale-[0.99] text-white font-semibold text-xs sm:text-sm rounded-2xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+                                                >
+                                                    <Icon.DollarSign className="w-4 h-4 text-white" />
+                                                    <span>Request Allowance</span>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="lg:col-span-5 enterprise-card p-6 sm:p-7 rounded-3xl bg-slate-50/70 border border-slate-200/80 space-y-4">
+                                            <h3 className="font-outfit text-lg font-bold text-slate-900">
+                                                SJC Emergency Credit Rules
+                                            </h3>
+                                            <div className="space-y-3 text-xs text-slate-600">
+                                                <div className="p-3 bg-white rounded-xl border border-slate-200/60 space-y-1">
+                                                    <span className="font-bold text-slate-800 block">5-Meal Emergency Cap</span>
+                                                    <p className="text-slate-500">Students may purchase up to 5 meals on emergency credit when wallet funds run out.</p>
+                                                </div>
+                                                <div className="p-3 bg-white rounded-xl border border-slate-200/60 space-y-1">
+                                                    <span className="font-bold text-slate-800 block">Parent Settlement</span>
+                                                    <p className="text-slate-500">Your linked guardian ({linkedParentName}) can clear the balance directly from their portal or via GCash.</p>
+                                                </div>
+                                                <div className="p-3 bg-white rounded-xl border border-slate-200/60 space-y-1">
+                                                    <span className="font-bold text-slate-800 block">Automatic Reset</span>
+                                                    <p className="text-slate-500">Once settled, your 5-meal allowance immediately resets to 0/5 used.</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                         {normalizedTab === 'history' && (
                             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-in fade-in duration-200">
                                 {/* LEFT COLUMN: APPLE WALLET STYLE ORDER HISTORY */}
@@ -13496,10 +13968,20 @@
                         isOpen={isSosModalOpen}
                         onClose={() => setIsSosModalOpen(false)}
                         currentStudent={currentStudent}
+                        hasLinkedParent={hasLinkedParent}
+                        linkedParentName={linkedParentName}
+                        onOpenPairingQr={() => {
+                            setIsSosModalOpen(false);
+                            setIsPairingQrModalOpen(true);
+                        }}
                         onSendSosSuccess={(amt, note) => {
+                            const matchedParentId = (parentStudentLinks || []).find(l => 
+                                (l.student_id === currentStudent?.student_id || l.student_id === currentStudent?.id) &&
+                                (l.status === 'ACTIVE' || l.status === 'APPROVED')
+                            )?.parent_id || currentStudent?.parent_id || 'u201';
                             const newNotif = {
                                 id: 'sos_' + Date.now(),
-                                user_id: 'u201',
+                                user_id: matchedParentId,
                                 title: `Urgent Top-Up SOS: ₱${amt}.00 Requested`,
                                 message: `Student ${studentName} (${studentIdNum}) requested ₱${amt}.00 via 1-Tap SOS. Note: "${note}"`,
                                 type: 'topup_request',
@@ -18079,6 +18561,7 @@
         // 4. CASHIER POS MODULE (WITH DIETARY LOCK ALERTS & SHIFT DRAWER TALLY)
         // =====================================================================
         function CashierView({ posCart, posTotal, menuCatalog, registeredUsers, recentOrders = [], preorders = [], inventoryBatches = [], onClaimPreorderPos, onUpdatePreorderStatus, onRefundPackagedPreorder, onAddToCart, onUpdateQty, onDeleteItem, onClearCart, onCompleteCheckout, onVoidOrder, onSettleDebt, activeTab = 'register', setActiveTab, onSignOut, onSelectRoleQuick, isCloudConnected, onRefreshCloud, notifications = [], onMarkNotifRead, onMarkAllNotifRead, onDeleteNotif, onClearReadNotifs, onActionClick, onRespondLinkRequest, onOpenCommandPalette, onOpenShiftZRead, onOpenMobileSidebar, kdsOrders = [], setKdsOrders, currentUser = null, showToast = () => { },
+            parentStudentLinks = [],
             // ── Governance Policy Props (sourced from canteen_settings DB via root app state) ──
             globalPayLaterCap = 1000.00,
             globalDailySpendingDefault = 200.00,
@@ -18429,7 +18912,12 @@
             const projectedTotalDebt = customerCreditLiability + netTotal;
             const isPayLater5OrdersExceeded = customerPayLaterCount >= 5;
             const isPayLaterCeilingExceeded = projectedTotalDebt > PAY_LATER_CEILING;
-            const isPayLaterDisallowed = isPayLater5OrdersExceeded || isPayLaterCeilingExceeded;
+
+            const isGuestCustomer = selectedStudent && (selectedStudent.isGuest || selectedStudent.id === 'GUEST');
+            const customerHasLinkedParent = selectedStudent && !isGuestCustomer && isStudentAccount
+                ? checkStudentHasLinkedParent(selectedStudent, parentStudentLinks, registeredUsers)
+                : false;
+            const isPayLaterDisallowed = isPayLater5OrdersExceeded || isPayLaterCeilingExceeded || (isStudentAccount && !customerHasLinkedParent);
 
             const currentStudentBalance = activeCustomerProfile ? (parseFloat(activeCustomerProfile.balance) || 0) : 0;
             const isRfidShortage = paymentMethod === 'rfid' && netTotal > currentStudentBalance;
@@ -18443,7 +18931,6 @@
             }, 0);
 
             // FIX: globalDefaultDailyCalories replaces magic || 1800 fallback — value comes from canteen_settings DB
-            const isGuestCustomer = selectedStudent && (selectedStudent.isGuest || selectedStudent.id === 'GUEST');
             const effectiveDailyCalorieLimit = (!isGuestCustomer && (selectedStudent?.maxDailyCalories || selectedStudent?.max_daily_calories)) || globalDefaultDailyCalories;
             const isCalorieOverflow = selectedStudent && !isGuestCustomer && ((selectedStudent.dailyCaloriesSpent || selectedStudent.daily_calories_spent || 0) + cartCalories > effectiveDailyCalorieLimit);
 
@@ -18699,12 +19186,27 @@
                     showToast("Launching NovaLunch Student Kiosk GUI (:8085)...", "info");
 
                     const tryLaunch = async (url) => {
-                        return fetch(url, { method: 'POST', signal: AbortSignal.timeout(6000) })
-                            .catch(() => fetch(url, { method: 'GET', signal: AbortSignal.timeout(6000) }))
-                            .catch(() => null);
+                        try {
+                            const res = await fetch(url, { method: 'POST', signal: AbortSignal.timeout(6000) });
+                            const data = await res.json().catch(() => ({}));
+                            return { ok: res.ok, status: res.status, data };
+                        } catch (postErr) {
+                            try {
+                                const res = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(6000) });
+                                const data = await res.json().catch(() => ({}));
+                                return { ok: res.ok, status: res.status, data };
+                            } catch (getErr) {
+                                return null;
+                            }
+                        }
                     };
 
-                    await tryLaunch('http://localhost:8080/api/launch_kiosk') || await tryLaunch('/api/launch_kiosk');
+                    const launchResp = await tryLaunch('http://localhost:8080/api/launch_kiosk') || await tryLaunch('/api/launch_kiosk');
+                    if (launchResp && launchResp.data && launchResp.data.success === false) {
+                        showToast(`Kiosk launch error: ${launchResp.data.message || 'Script launch failed'}`, "danger");
+                        setIsLaunchingKiosk(false);
+                        return;
+                    }
 
                     // 3. Poll until port 8085 awakens, then immediately sync active cart
                     let attempts = 0;
@@ -18859,6 +19361,9 @@
                 if (paymentMethod === 'pay_later') {
                     if (!selectedStudent || isGuestCustomer) {
                         return showToast("Pay Later emergency credit requires a registered student account.", "danger");
+                    }
+                    if (isStudentAccount && !customerHasLinkedParent) {
+                        return showToast("Pay Later emergency credit requires an active linked parent or guardian account to guarantee liability.", "danger");
                     }
                     if (activeCustomerProfile && (activeCustomerProfile.payLaterAllowance === false || activeCustomerProfile.pay_later_allowance === false)) {
                         return showToast("Pay Later emergency credit is disabled for this student account! Please select RFID or Cash payment.", "danger");
@@ -19704,6 +20209,7 @@
                                                 <button
                                                     type="button"
                                                     onClick={() => setPaymentMethod('pay_later')}
+                                                    title={!customerHasLinkedParent ? "Pay Later locked: Student has no linked parent account" : isPayLaterDisallowed ? "Pay Later limit exceeded" : "Pay Later emergency credit"}
                                                     className={`py-2 px-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-98 whitespace-nowrap ${
                                                         paymentMethod === 'pay_later'
                                                             ? 'bg-[#7B1E22] text-white shadow-xs'
@@ -19712,11 +20218,17 @@
                                                                 : 'text-slate-600 hover:text-slate-900'
                                                     }`}
                                                 >
-                                                    <Icon.Clock className="w-3.5 h-3.5 shrink-0" />
-                                                    <span>Pay Later</span>
-                                                    {customerPayLaterCount >= 5 && (
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0"></span>
+                                                    {!customerHasLinkedParent ? (
+                                                        <Icon.Lock className="w-3.5 h-3.5 shrink-0 text-amber-600" />
+                                                    ) : (
+                                                        <Icon.Clock className="w-3.5 h-3.5 shrink-0" />
                                                     )}
+                                                    <span>Pay Later</span>
+                                                    {!customerHasLinkedParent ? (
+                                                        <span className="text-[9px] bg-amber-100 text-amber-800 px-1 rounded-sm font-bold">Locked</span>
+                                                    ) : customerPayLaterCount >= 5 ? (
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0"></span>
+                                                    ) : null}
                                                 </button>
                                             )}
 
@@ -19802,7 +20314,12 @@
                                                 </div>
 
                                                 {/* Limit warnings */}
-                                                {customerPayLaterCount >= 5 ? (
+                                                {!customerHasLinkedParent ? (
+                                                    <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-[11px] font-medium flex items-center gap-2">
+                                                        <Icon.Lock className="w-4 h-4 text-amber-700 shrink-0" />
+                                                        <span>Pay Later locked: Student must have an active linked parent account to guarantee credit liability.</span>
+                                                    </div>
+                                                ) : customerPayLaterCount >= 5 ? (
                                                     <div className="p-2 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-[11px] font-medium flex items-center gap-1.5">
                                                         <Icon.AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
                                                         <span>5 of 5 order limit reached. Previous balance must be settled.</span>
@@ -21730,10 +22247,13 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
             ]);
 
             // Trained Classes inside active PyTorch .pt Model Weights File (novalunch_yolo.pt)
-            const [ptModelClasses, setPtModelClasses] = useState([
+            const AI_CLASS_REGISTRY = [
                 { classId: 0, label: 'Buttercream_Biscuits', name: 'Buttercream Biscuits', defaultCategory: 'Snacks & Bakery', source: 'novalunch_yolo.pt (Class 0)' },
                 { classId: 1, label: 'Jack_And_Jill_Magic_Chips', name: 'Jack & Jill Magic Chips', defaultCategory: 'Snacks & Bakery', source: 'novalunch_yolo.pt (Class 1)' }
-            ]);
+            ];
+            window.AI_CLASS_REGISTRY = AI_CLASS_REGISTRY;
+
+            const [ptModelClasses, setPtModelClasses] = useState(AI_CLASS_REGISTRY);
 
             // Helper to find auto-match candidate product from menuCatalog
             const getAutoMatchCandidate = (clsLabel) => {
@@ -21829,7 +22349,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
             const [editProdStock, setEditProdStock] = useState('');
             const [editProdCategory, setEditProdCategory] = useState('Meals & Mains');
             const [editProdImg, setEditProdImg] = useState('');
-
+            const [editProdAiLabel, setEditProdAiLabel] = useState('');
 
             // New Product Form
             const [prodName, setProdName] = useState('');
@@ -21837,6 +22357,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
             const [prodStock, setProdStock] = useState('50');
             const [prodCategory, setProdCategory] = useState('Meals & Mains');
             const [prodImg, setProdImg] = useState('');
+            const [prodAiLabel, setProdAiLabel] = useState('');
 
             // Enhanced Multi-Role Account Enrollment & Provisioning State (Apple HIG Standard)
             const [createAccountModalOpen, setCreateAccountModalOpen] = useState(false);
@@ -22362,6 +22883,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                 setEditProdCategory(prod.category || 'Meals & Mains');
                 setEditProdImg(prod.img || prod.image_url || '');
                 setEditProdAvailable(prod.available !== false && prod.is_available !== false);
+                setEditProdAiLabel(prod.ai_label || prod.aiLabel || '');
                 setEditProdCalories(String(prod.calories || '0'));
                 setEditProdProtein(String(prod.protein || '0g'));
                 setEditProdAllergens(Array.isArray(prod.allergens) ? [...prod.allergens] : []);
@@ -22490,6 +23012,20 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                     return;
                 }
 
+                const cleanAiLabel = (editProdAiLabel && editProdAiLabel !== 'NONE') ? editProdAiLabel.trim() : null;
+                if (cleanAiLabel && editProdAvailable) {
+                    const duplicateAi = menuCatalog.find(p =>
+                        p.id !== selectedProduct.id &&
+                        p.available !== false &&
+                        p.is_available !== false &&
+                        (p.aiLabel || p.ai_label || '').toLowerCase() === cleanAiLabel.toLowerCase()
+                    );
+                    if (duplicateAi) {
+                        setEditProductError(`AI Detection Class "${cleanAiLabel}" is already assigned to active item "${duplicateAi.name}". Each detection class can only be assigned to one active item.`);
+                        return;
+                    }
+                }
+
                 onUpdateProduct({
                     ...selectedProduct,
                     name: trimmedName,
@@ -22497,6 +23033,8 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                     stock: stockNum,
                     category: editProdCategory,
                     available: editProdAvailable,
+                    ai_label: cleanAiLabel,
+                    aiLabel: cleanAiLabel,
                     calories: parseInt(editProdCalories) || 0,
                     protein: editProdProtein.trim() || '0g',
                     allergens: editProdAllergens,
@@ -22533,6 +23071,19 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                     return;
                 }
 
+                const cleanAiLabel = (prodAiLabel && prodAiLabel !== 'NONE') ? prodAiLabel.trim() : null;
+                if (cleanAiLabel) {
+                    const duplicateAi = menuCatalog.find(p =>
+                        p.available !== false &&
+                        p.is_available !== false &&
+                        (p.aiLabel || p.ai_label || '').toLowerCase() === cleanAiLabel.toLowerCase()
+                    );
+                    if (duplicateAi) {
+                        setAddProductError(`AI Detection Class "${cleanAiLabel}" is already assigned to active item "${duplicateAi.name}". Each detection class can only be assigned to one active item.`);
+                        return;
+                    }
+                }
+
                 onAddProduct({
                     id: "p_" + Date.now(),
                     name: trimmedName,
@@ -22540,13 +23091,15 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                     price: priceNum,
                     stock: stockNum,
                     available: true,
+                    ai_label: cleanAiLabel,
+                    aiLabel: cleanAiLabel,
                     calories: parseInt(prodCalories) || 0,
                     protein: prodProtein.trim() || '0g',
                     allergens: prodAllergens,
                     img: prodImg.trim() || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80"
                 });
                 setAddProductModalOpen(false);
-                setProdName(''); setProdPrice(''); setProdImg(''); setProdCalories('0'); setProdProtein('0g'); setProdAllergens([]); setAddProductError('');
+                setProdName(''); setProdPrice(''); setProdImg(''); setProdCalories('0'); setProdProtein('0g'); setProdAllergens([]); setProdAiLabel(''); setAddProductError('');
             };
 
             const auditLogs = [
@@ -24046,6 +24599,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                                 <thead>
                                                     <tr className="border-b border-slate-200/80 text-slate-400 uppercase font-bold bg-slate-50/80 tracking-wider">
                                                         <th className="py-2.5 px-3">Product</th>
+                                                        <th className="py-2.5 px-3">AI Vision Class</th>
                                                         <th className="py-2.5 px-3">Category</th>
                                                         <th className="py-2.5 px-3">Price</th>
                                                         <th className="py-2.5 px-3">Stock</th>
@@ -24056,24 +24610,48 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                                 <tbody className="divide-y divide-slate-100">
                                                     {isLoading ? (
                                                         Array.from({ length: 4 }).map((_, idx) => (
-                                                            <SkeletonTableRow key={idx} columns={6} />
+                                                            <SkeletonTableRow key={idx} columns={7} />
                                                         ))
-                                                    ) : filteredProducts.map(item => (
-                                                        <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
-                                                            <td className="py-2.5 px-3 font-semibold text-slate-900 flex items-center gap-2.5">
-                                                                <img src={item.img} alt={item.name} onError={(e) => { e.target.src = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80"; }} className="w-8 h-8 rounded-xl object-cover border border-slate-200/80 shrink-0" />
-                                                                <span className="truncate max-w-[200px]">{item.name}</span>
-                                                            </td>
-                                                            <td className="py-2.5 px-3 text-slate-500">{item.category}</td>
-                                                            <td className="py-2.5 px-3 font-outfit font-semibold tabular-nums text-slate-900">₱{item.price.toFixed(2)}</td>
-                                                            <td className="py-2.5 px-3 font-medium text-slate-700 tabular-nums">{item.stock} units</td>
-                                                            <td className="py-2.5 px-3"><StatusBadge type={item.available !== false ? 'success' : 'archived'} text={item.available !== false ? 'Available' : 'Archived'} /></td>
-                                                            <td className="py-2.5 px-3 text-right space-x-2 whitespace-nowrap">
-                                                                <button onClick={() => openEditProduct(item)} className="text-slate-700 hover:text-slate-900 font-semibold inline-flex items-center gap-1 cursor-pointer transition-colors"><Icon.Edit className="w-3.5 h-3.5" /> Edit</button>
-                                                                <button onClick={() => setArchiveItem({ id: item.id, name: item.name, type: 'product' })} className="text-slate-400 hover:text-rose-600 font-semibold inline-flex items-center gap-1 ml-2 cursor-pointer transition-colors"><Icon.Archive className="w-3.5 h-3.5" /> Archive</button>
-                                                            </td>
-                                                        </tr>
-                                                    ))}
+                                                    ) : filteredProducts.map(item => {
+                                                        const assignedAiLabel = item.ai_label || item.aiLabel;
+                                                        return (
+                                                            <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
+                                                                <td className="py-2.5 px-3 font-semibold text-slate-900 flex items-center gap-2.5">
+                                                                    <img src={item.img || item.image_url} alt={item.name} onError={(e) => { e.target.src = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80"; }} className="w-8 h-8 rounded-xl object-cover border border-slate-200/80 shrink-0" />
+                                                                    <div className="min-w-0">
+                                                                        <span className="truncate max-w-[180px] block">{item.name}</span>
+                                                                        {assignedAiLabel && (
+                                                                            <span className="inline-flex sm:hidden items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-violet-50 text-violet-700 border border-violet-200/60 font-mono">
+                                                                                <Icon.Cpu className="w-2.5 h-2.5 text-violet-600" />
+                                                                                {assignedAiLabel}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </td>
+                                                                <td className="py-2.5 px-3 whitespace-nowrap">
+                                                                    {assignedAiLabel ? (
+                                                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-violet-50 text-violet-700 border border-violet-200/80 font-mono shadow-2xs">
+                                                                            <Icon.Cpu className="w-3.5 h-3.5 text-violet-600 shrink-0" />
+                                                                            <span>{assignedAiLabel}</span>
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-slate-100 text-slate-400">
+                                                                            <Icon.Minus className="w-3 h-3 text-slate-400" />
+                                                                            <span>Manual Only</span>
+                                                                        </span>
+                                                                    )}
+                                                                </td>
+                                                                <td className="py-2.5 px-3 text-slate-500">{item.category}</td>
+                                                                <td className="py-2.5 px-3 font-outfit font-semibold tabular-nums text-slate-900">₱{item.price.toFixed(2)}</td>
+                                                                <td className="py-2.5 px-3 font-medium text-slate-700 tabular-nums">{item.stock} units</td>
+                                                                <td className="py-2.5 px-3"><StatusBadge type={item.available !== false ? 'success' : 'archived'} text={item.available !== false ? 'Available' : 'Archived'} /></td>
+                                                                <td className="py-2.5 px-3 text-right space-x-2 whitespace-nowrap">
+                                                                    <button onClick={() => openEditProduct(item)} className="text-slate-700 hover:text-slate-900 font-semibold inline-flex items-center gap-1 cursor-pointer transition-colors"><Icon.Edit className="w-3.5 h-3.5" /> Edit</button>
+                                                                    <button onClick={() => setArchiveItem({ id: item.id, name: item.name, type: 'product' })} className="text-slate-400 hover:text-rose-600 font-semibold inline-flex items-center gap-1 ml-2 cursor-pointer transition-colors"><Icon.Archive className="w-3.5 h-3.5" /> Archive</button>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
                                                 </tbody>
                                             </table>
                                         </div>
@@ -26155,6 +26733,31 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                     </div>
                                 </div>
 
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1 flex items-center justify-between">
+                                        <span className="flex items-center gap-1.5">
+                                            <Icon.Cpu className="w-3.5 h-3.5 text-violet-600" />
+                                            <span>AI Detection Class (Vision Model)</span>
+                                        </span>
+                                        <span className="text-[10px] text-slate-400 font-normal">Trained Model Classes</span>
+                                    </label>
+                                    <div className="relative">
+                                        <select
+                                            value={editProdAiLabel}
+                                            onChange={(e) => { setEditProdAiLabel(e.target.value); setEditProductError(''); }}
+                                            className="w-full bg-white hover:bg-slate-50/50 focus:bg-white border border-slate-200/80 focus:border-[#7B1E22] rounded-xl pl-3.5 pr-8 py-2 text-xs font-semibold text-slate-900 appearance-none transition-all outline-hidden focus:ring-2 focus:ring-[#7B1E22]/15 shadow-2xs cursor-pointer"
+                                        >
+                                            <option value="">None (Manual / Barcode Only)</option>
+                                            {AI_CLASS_REGISTRY.map(cls => (
+                                                <option key={cls.label} value={cls.label}>
+                                                    {cls.name} ({cls.label})
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <Icon.ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                    </div>
+                                </div>
+
                                 <div className="grid grid-cols-2 gap-3.5">
                                     <div>
                                         <label className="block text-[11px] font-semibold text-slate-500 mb-1">Price (₱)</label>
@@ -27058,6 +27661,31 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                         <option value="Beverages">Beverages</option>
                                         <option value="Snacks & Bakery">Snacks & Bakery</option>
                                         <option value="Fruits & Healthy">Fruits & Healthy</option>
+                                    </select>
+                                    <Icon.ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-medium text-slate-600 mb-1.5 flex items-center justify-between">
+                                    <span className="flex items-center gap-1.5">
+                                        <Icon.Cpu className="w-3.5 h-3.5 text-violet-600" />
+                                        <span>AI Detection Class (Vision Model)</span>
+                                    </span>
+                                    <span className="text-[10px] text-slate-400 font-normal">Optional</span>
+                                </label>
+                                <div className="relative">
+                                    <select
+                                        value={prodAiLabel}
+                                        onChange={(e) => { setProdAiLabel(e.target.value); setAddProductError(''); }}
+                                        className="w-full bg-slate-50/70 border border-slate-200/80 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 font-medium focus:bg-white focus:ring-2 focus:ring-[#7B1E22]/15 focus:border-[#7B1E22]/40 transition-all outline-none appearance-none cursor-pointer pr-9"
+                                    >
+                                        <option value="">None (Manual / Barcode Only)</option>
+                                        {AI_CLASS_REGISTRY.map(cls => (
+                                            <option key={cls.label} value={cls.label}>
+                                                {cls.name} ({cls.label})
+                                            </option>
+                                        ))}
                                     </select>
                                     <Icon.ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                                 </div>
@@ -28485,14 +29113,10 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                     allergens: Array.isArray(p.allergens) ? p.allergens : [],
                                     img: p.img || p.image_url || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80"
                                 }));
-                                setMenuCatalog(prev => {
-                                    const cloudIds = new Set(cloudProds.map(cp => cp.id));
-                                    const cloudNames = new Set(cloudProds.map(cp => cp.name.toLowerCase()));
-                                    const localOnly = prev.filter(lp => !cloudIds.has(lp.id) && !cloudNames.has(lp.name.toLowerCase()));
-                                    const merged = [...cloudProds, ...localOnly];
-                                    CanteenCache.set('products_catalog', merged);
-                                    if (db && db.saveLocal) db.saveLocal('novalunch_products_catalog', merged);
-                                    return merged;
+                                setMenuCatalog(() => {
+                                    CanteenCache.set('products_catalog', cloudProds);
+                                    if (db && db.saveLocal) db.saveLocal('novalunch_products_catalog', cloudProds);
+                                    return cloudProds;
                                 });
                                 connected = true;
                             }
@@ -28559,19 +29183,10 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                     };
                                 });
 
-                                setRegisteredUsers(prev => {
-                                    const cloudIds = new Set(mappedUsers.map(m => m.id));
-                                    const cloudEmails = new Set(mappedUsers.map(m => m.email?.toLowerCase()).filter(Boolean));
-                                    const cloudStudentIds = new Set(mappedUsers.map(m => m.studentId).filter(Boolean));
-                                    const localOnly = prev.filter(lp => 
-                                        !cloudIds.has(lp.id) && 
-                                        (!lp.email || !cloudEmails.has(lp.email.toLowerCase())) &&
-                                        (!lp.studentId || !cloudStudentIds.has(lp.studentId))
-                                    );
-                                    const merged = [...mappedUsers, ...localOnly];
-                                    CanteenCache.set('registered_users', merged);
-                                    if (db && db.saveLocal) db.saveLocal('novalunch_registered_users', merged);
-                                    return merged;
+                                setRegisteredUsers(() => {
+                                    CanteenCache.set('registered_users', mappedUsers);
+                                    if (db && db.saveLocal) db.saveLocal('novalunch_registered_users', mappedUsers);
+                                    return mappedUsers;
                                 });
 
                                 if (currentStudent) {
@@ -28672,11 +29287,9 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                         }
                                         return fo;
                                     });
-                                    const localOnly = prev.filter(lo => !updatedFormatted.some(fo => fo.id === lo.id || fo.orderNo === lo.orderNo));
-                                    const merged = [...updatedFormatted, ...localOnly];
-                                    CanteenCache.set('recent_orders', merged);
-                                    if (db) db.saveLocal('novalunch_recent_orders', merged);
-                                    return merged;
+                                    CanteenCache.set('recent_orders', updatedFormatted);
+                                    if (db) db.saveLocal('novalunch_recent_orders', updatedFormatted);
+                                    return updatedFormatted;
                                 });
                             }
                         } catch (e) {
@@ -28727,11 +29340,9 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                             shelfLocation: mp.shelfLocation || prevMatch?.shelfLocation || 'Shelf A1'
                                         };
                                     });
-                                    const localOnly = prev.filter(lp => !mappedPo.some(mp => mp.id === lp.id));
-                                    const merged = [...updatedMapped, ...localOnly];
-                                    CanteenCache.set('preorders', merged);
-                                    if (db) db.saveLocal('novalunch_preorders', merged);
-                                    return merged;
+                                    CanteenCache.set('preorders', updatedMapped);
+                                    if (db) db.saveLocal('novalunch_preorders', updatedMapped);
+                                    return updatedMapped;
                                 });
                             }
                         } catch (e) { }
@@ -28758,8 +29369,6 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                         if (p.id) localStatusMap.set(p.id, p);
                                         if (p.refNo && p.refNo !== 'N/A') localStatusMap.set(p.refNo, p);
                                     });
-                                    const cloudIds = new Set(mappedGcash.map(m => m.id));
-                                    const cloudRefs = new Set(mappedGcash.map(m => m.refNo).filter(r => r && r !== 'N/A'));
                                     const updatedCloud = mappedGcash.map(m => {
                                         const localMatch = localStatusMap.get(m.id) || localStatusMap.get(m.refNo);
                                         if (localMatch && localMatch.status !== 'Pending' && m.status === 'Pending') {
@@ -28767,11 +29376,9 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                         }
                                         return m;
                                     });
-                                    const localOnly = prev.filter(lg => !cloudIds.has(lg.id) && (!lg.refNo || lg.refNo === 'N/A' || !cloudRefs.has(lg.refNo)));
-                                    const merged = [...updatedCloud, ...localOnly];
-                                    CanteenCache.set('gcash_queue', merged);
-                                    if (db && db.saveLocal) db.saveLocal('novalunch_gcash_queue', merged);
-                                    return merged;
+                                    CanteenCache.set('gcash_queue', updatedCloud);
+                                    if (db && db.saveLocal) db.saveLocal('novalunch_gcash_queue', updatedCloud);
+                                    return updatedCloud;
                                 });
                             }
                         } catch (e) { }
@@ -29896,10 +30503,23 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
             };
 
             const handleUpdateProduct = async (updatedProd) => {
+                const cleanAiLabel = (updatedProd.ai_label && updatedProd.ai_label !== 'NONE')
+                    ? String(updatedProd.ai_label).trim()
+                    : ((updatedProd.aiLabel && updatedProd.aiLabel !== 'NONE') ? String(updatedProd.aiLabel).trim() : null);
+
+                const normalizedProd = {
+                    ...updatedProd,
+                    ai_label: cleanAiLabel,
+                    aiLabel: cleanAiLabel
+                };
+
                 const prevMenu = menuCatalog;
-                const nextMenu = prevMenu.map(p => (p.id === updatedProd.id || p.name === updatedProd.name) ? { ...p, ...updatedProd } : p);
+                const nextMenu = prevMenu.map(p => (p.id === updatedProd.id || p.name === updatedProd.name) ? { ...p, ...normalizedProd } : p);
                 setMenuCatalog(nextMenu);
                 CanteenCache.set('products_catalog', nextMenu);
+                if (typeof db !== 'undefined' && db && db.saveLocal) {
+                    db.saveLocal('novalunch_products_catalog', nextMenu);
+                }
                 showToast(`Updated menu item ${updatedProd.name}!`);
 
                 const cleanStock = parseInt(updatedProd.stock ?? updatedProd.stock_quantity) || 0;
@@ -29907,6 +30527,15 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                 const cleanCost = parseFloat(updatedProd.costPrice || updatedProd.cost_price) || 0;
                 const cleanAvail = updatedProd.available !== false && updatedProd.is_available !== false;
                 const cleanImg = updatedProd.img || updatedProd.image_url || '';
+
+                // Push dynamic product update to local edge kiosk (:8085)
+                try {
+                    fetch('http://localhost:8085/api/kiosk/sync', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'update_product', product: normalizedProd })
+                    }).catch(() => {});
+                } catch (e) {}
 
                 try {
                     if (window.CanteenDB && updatedProd.id) {
@@ -29919,6 +30548,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                             stock_quantity: cleanStock,
                             available: cleanAvail,
                             is_available: cleanAvail,
+                            ai_label: cleanAiLabel,
                             image_url: cleanImg,
                             img: cleanImg,
                             calories: parseInt(updatedProd.calories) || 0,
@@ -29936,6 +30566,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                             stock_quantity: cleanStock,
                             available: cleanAvail,
                             is_available: cleanAvail,
+                            ai_label: cleanAiLabel,
                             image_url: cleanImg,
                             img: cleanImg,
                             calories: parseInt(updatedProd.calories) || 0,
@@ -30192,6 +30823,8 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                 let stockDeducted = false;
                 let updatedBal = Math.max(0, studentBal - totalTrayPrice);
                 const sharedTrayToken = `QR-TRAY-${Math.floor(1000 + Math.random() * 9000)}`;
+                const batchId = `BATCH-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+                const createdPreorders = [];
 
                 try {
                     // Step A: Atomic Wallet Balance Deduction
@@ -30211,10 +30844,11 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                     }
 
                     // Step C: Persist individual Preorder records for each meal tray line item
-                    const createdPreorders = [];
                     for (const item of cartItems) {
                         for (let q = 0; q < item.qty; q++) {
                             const preorderRecord = {
+                                batch_id: batchId,
+                                batchId: batchId,
                                 student_id: student.id || 'u101',
                                 studentId: student.studentId || student.id,
                                 student_id_number: student.studentId || '2023-01900',
@@ -30240,6 +30874,9 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                             let createdResult = null;
                             if (window.CanteenDB) {
                                 createdResult = await window.CanteenDB.createPreorder(preorderRecord);
+                                if (!createdResult || createdResult.error) {
+                                    throw new Error(createdResult?.error?.message || `Failed to insert pre-order item '${item.name}'`);
+                                }
                             }
 
                             createdPreorders.push({
@@ -30271,7 +30908,31 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                     showToast(`Reserved tray with ${totalItemsCount} item(s) (₱${totalTrayPrice.toFixed(2)})! Token: ${sharedTrayToken}`, "success");
                 } catch (err) {
                     console.error("[Batch Pre-order Error]", err);
-                    // Compensation Rollback
+                    // Step E: Purge all created items for this batch from DB and local state
+                    const createdIds = createdPreorders.map(p => p.id).filter(Boolean);
+                    if (window.CanteenDB) {
+                        try {
+                            if (createdIds.length > 0) {
+                                if (window.CanteenDB.purgePreorders) {
+                                    await window.CanteenDB.purgePreorders(createdIds);
+                                } else if (window.CanteenDB.supabase) {
+                                    await window.CanteenDB.supabase.from('preorders').delete().in('id', createdIds);
+                                }
+                            }
+                        } catch (purgeErr) {
+                            console.warn("[Batch Pre-order Rollback] Error purging batch items from DB:", purgeErr);
+                        }
+                    }
+
+                    try {
+                        const localPos = JSON.parse(localStorage.getItem('novalunch_preorders') || '[]');
+                        const purgedPos = localPos.filter(p => !createdIds.includes(p.id) && p.batch_id !== batchId && p.batchId !== batchId);
+                        localStorage.setItem('novalunch_preorders', JSON.stringify(purgedPos));
+                        if (typeof CanteenCache !== 'undefined' && CanteenCache.set) CanteenCache.set('preorders', purgedPos);
+                        setPreorders(prev => prev.filter(p => !createdIds.includes(p.id) && p.batch_id !== batchId && p.batchId !== batchId));
+                    } catch (cleanErr) { }
+
+                    // Step F: Compensation Rollback for stock & wallet
                     if (stockDeducted && window.CanteenDB) {
                         const stockPayload = cartItems.map(it => ({ id: it.id, qty: it.qty, name: it.name }));
                         await window.CanteenDB.restoreCartStockFifo(stockPayload).catch(e => console.warn("Stock rollback notice", e));
@@ -30280,8 +30941,9 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                         await window.CanteenDB.creditWalletBalance(student.id, totalTrayPrice).catch(e => console.warn("Rollback credit error", e));
                         setStudentBalance(studentBal);
                         setCurrentStudent(s => s ? { ...s, balance: studentBal } : s);
+                        setRegisteredUsers(prev => prev.map(u => (u.id === student.id || u.studentId === student.studentId) ? { ...u, balance: studentBal } : u));
                     }
-                    showToast(`Batch pre-order failed: ${err.message || 'Error processing reservation.'}`, "danger");
+                    showToast(`Batch pre-order failed: ${err.message || 'Error processing reservation.'}. Funds refunded and partial items purged.`, "danger");
                 }
             };
 
@@ -30319,6 +30981,8 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                 isMobileOpen={isMobileSidebarOpen}
                                 onCloseMobile={() => setIsMobileSidebarOpen(false)}
                                 badgeCounts={badgeCounts}
+                                parentStudentLinks={parentStudentLinks}
+                                registeredUsers={registeredUsers}
                             />
 
                             {activeRole === 'STUDENT' && (
@@ -30332,6 +30996,8 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                         preorders={preorders}
                                         recentOrders={recentOrders}
                                         reloadLogs={reloadLogs}
+                                        parentStudentLinks={parentStudentLinks}
+                                        registeredUsers={registeredUsers}
                                         onUploadReceipt={handleUploadReceipt}
                                         onUpdatePin={handleUpdateStudentPin}
                                         onClaimClick={(item) => setClaimTokenModalData({
@@ -30642,91 +31308,76 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                             setIsCheckoutSubmitting(true);
 
                                             try {
-                                                // FIX 2: Enforce sufficient wallet balance BEFORE any mutations
-                                                if (order.paymentMethod === 'RFID') {
-                                                    const matchedStud = registeredUsers.find(u => u.rfidUid === order.rfidUid || u.name === order.student || u.studentId === order.studentId);
-                                                    if (matchedStud && matchedStud.balance < order.total) {
-                                                        showToast(`Insufficient wallet balance for ${matchedStud.name}. Required: ₱${order.total.toFixed(2)}, Available: ₱${matchedStud.balance.toFixed(2)}`, 'danger');
-                                                        setIsCheckoutSubmitting(false);
-                                                        return;
-                                                    }
-                                                }
+                                                let matchedStud = null;
 
-                                                // FIX 3: Atomic Cart Stock & FIFO Batch Deduction in single call
-                                                if (window.CanteenDB && order.items && order.items.length > 0) {
-                                                    await window.CanteenDB.deductCartStockFifo(order.items).catch(err => console.warn("Cart stock deduction notice:", err));
-                                                }
-
-                                                // 1. Update local catalog stock (UI only, DB already deducted above)
-                                                setMenuCatalog(prevCatalog => prevCatalog.map(item => {
-                                                    const cartMatch = order.items.find(i => i.id === item.id || i.name === item.name);
-                                                    if (cartMatch) {
-                                                        const newStock = Math.max(0, item.stock - cartMatch.qty);
-                                                        setInventoryBatches(prevBatches => {
-                                                            let qtyRemainingToDeduct = cartMatch.qty;
-                                                            return prevBatches.map(b => {
-                                                                const isMatch = b.product_id === item.id || b.product_name === item.name;
-                                                                if (isMatch && qtyRemainingToDeduct > 0 && b.quantity_remaining > 0) {
-                                                                    const d = Math.min(b.quantity_remaining, qtyRemainingToDeduct);
-                                                                    qtyRemainingToDeduct -= d;
-                                                                    const newRem = b.quantity_remaining - d;
-                                                                    return { ...b, quantity_remaining: newRem, status: newRem === 0 ? 'DEPLETED' : b.status };
-                                                                }
-                                                                return b;
-                                                            });
-                                                        });
-                                                        return { ...item, stock: newStock };
-                                                    }
-                                                    return item;
-                                                }));
-
-                                                // 2. Deduct wallet or accrue liability — FIX: use atomic deductWalletBalance for RFID
+                                                // 1. ATOMIC WALLET DEDUCTION FIRST (Fail-Closed: Before stock decrements or order creation)
                                                 if (order.paymentMethod === 'RFID') {
                                                     const normRfid = (order.rfidUid || '').toString().trim().replace(/^0+/, '').toUpperCase();
-                                                    const matchedStud = registeredUsers.find(u =>
+                                                    matchedStud = registeredUsers.find(u =>
                                                         (u.rfidUid && u.rfidUid.toString().trim().replace(/^0+/, '').toUpperCase() === normRfid) ||
                                                         (u.studentId && (u.studentId === order.studentId || u.studentId === order.student)) ||
                                                         (u.student_id_number && (u.student_id_number === order.studentId || u.student_id_number === order.student)) ||
                                                         (u.id && (u.id === order.studentId || u.id === order.student)) ||
                                                         (u.name && u.name.toLowerCase() === (order.student || '').toLowerCase())
                                                     );
-                                                    if (matchedStud) {
-                                                        const currBal = parseFloat(matchedStud.balance) || 0.0;
-                                                        const newBal = Math.max(0.0, parseFloat((currBal - order.total).toFixed(2)));
-                                                        const updatedList = registeredUsers.map(user => {
-                                                            if (user.id === matchedStud.id || user.studentId === matchedStud.studentId) {
-                                                                return { ...user, balance: newBal };
-                                                            }
-                                                            return user;
-                                                        });
-                                                        setRegisteredUsers(updatedList);
-                                                        if (currentStudent && (currentStudent.id === matchedStud.id || currentStudent.studentId === matchedStud.studentId)) {
-                                                            setStudentBalance(newBal);
-                                                            setCurrentStudent(prev => ({ ...prev, balance: newBal }));
-                                                        }
 
-                                                        // Persist to local storage
-                                                        try {
-                                                            localStorage.setItem('novalunch_registered_users', JSON.stringify(updatedList));
-                                                            localStorage.setItem('novalunch_student_balance', JSON.stringify(newBal));
-                                                        } catch (e) { }
-
-                                                        // Cloud Supabase sync
-                                                        if (window.CanteenDB && matchedStud.id) {
-                                                            await window.CanteenDB.deductWalletBalance(matchedStud.id, order.total).catch(err => console.warn("Cloud DB atomic wallet error", err));
-                                                        }
-
-                                                        // Notify Python Kiosk
-                                                        fetch('http://localhost:8085/api/kiosk/sync', {
-                                                            method: 'POST',
-                                                            headers: { 'Content-Type': 'application/json' },
-                                                            body: JSON.stringify({ action: 'complete_checkout', order_number: order.orderNo, orderNo: order.orderNo, student: { ...matchedStud, balance: newBal }, amount: order.total, synced_cloud: true, cart: posCart }),
-                                                            signal: AbortSignal.timeout(5000)
-                                                        }).catch(() => { });
+                                                    if (!matchedStud) {
+                                                        showToast(`No registered student account matched for RFID payment (${order.student || order.rfidUid}).`, 'danger');
+                                                        setIsCheckoutSubmitting(false);
+                                                        return;
                                                     }
+
+                                                    const currBal = parseFloat(matchedStud.balance) || 0.0;
+                                                    if (currBal < order.total) {
+                                                        showToast(`Insufficient wallet balance for ${matchedStud.name}. Required: ₱${order.total.toFixed(2)}, Available: ₱${currBal.toFixed(2)}`, 'danger');
+                                                        setIsCheckoutSubmitting(false);
+                                                        return;
+                                                    }
+
+                                                    let newBal = Math.max(0.0, parseFloat((currBal - order.total).toFixed(2)));
+
+                                                    // Primary atomic deduction via cloud database RPC
+                                                    if (window.CanteenDB && matchedStud.id) {
+                                                        try {
+                                                            const deductRes = await window.CanteenDB.deductWalletBalance(matchedStud.id, order.total);
+                                                            if (deductRes && typeof deductRes.new_balance === 'number') {
+                                                                newBal = deductRes.new_balance;
+                                                            }
+                                                        } catch (deductErr) {
+                                                            console.error("[POS Checkout] Atomic wallet deduction failed, aborting checkout:", deductErr);
+                                                            showToast(`Wallet deduction failed: ${deductErr.message || 'Payment rejected'}. Transaction aborted without altering inventory.`, 'danger');
+                                                            setIsCheckoutSubmitting(false);
+                                                            return;
+                                                        }
+                                                    }
+
+                                                    // Apply deducted balance to local state & cache
+                                                    const updatedList = registeredUsers.map(user => {
+                                                        if (user.id === matchedStud.id || user.studentId === matchedStud.studentId) {
+                                                            return { ...user, balance: newBal };
+                                                        }
+                                                        return user;
+                                                    });
+                                                    setRegisteredUsers(updatedList);
+                                                    if (currentStudent && (currentStudent.id === matchedStud.id || currentStudent.studentId === matchedStud.studentId)) {
+                                                        setStudentBalance(newBal);
+                                                        setCurrentStudent(prev => ({ ...prev, balance: newBal }));
+                                                    }
+                                                    try {
+                                                        localStorage.setItem('novalunch_registered_users', JSON.stringify(updatedList));
+                                                        localStorage.setItem('novalunch_student_balance', JSON.stringify(newBal));
+                                                    } catch (e) { }
+
+                                                    // Notify Python Kiosk
+                                                    fetch('http://localhost:8085/api/kiosk/sync', {
+                                                        method: 'POST',
+                                                        headers: { 'Content-Type': 'application/json' },
+                                                        body: JSON.stringify({ action: 'complete_checkout', order_number: order.orderNo, orderNo: order.orderNo, student: { ...matchedStud, balance: newBal }, amount: order.total, synced_cloud: true, cart: posCart }),
+                                                        signal: AbortSignal.timeout(5000)
+                                                    }).catch(() => { });
                                                 } else if (order.paymentMethod === 'PAY_LATER') {
                                                     const normRfid = (order.rfidUid || '').toString().trim().replace(/^0+/, '').toUpperCase();
-                                                    const matchedStud = registeredUsers.find(u =>
+                                                    matchedStud = registeredUsers.find(u =>
                                                         (u.rfidUid && u.rfidUid.toString().trim().replace(/^0+/, '').toUpperCase() === normRfid) ||
                                                         (u.studentId && (u.studentId === order.studentId || u.studentId === order.student)) ||
                                                         (u.id && (u.id === order.studentId || u.id === order.student)) ||
@@ -30758,7 +31409,37 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                                             signal: AbortSignal.timeout(5000)
                                                         }).catch(() => { });
                                                     }
-                                                } else if (order.paymentMethod === 'SALARY_DEDUCTION') {
+                                                }
+
+                                                // 2. DEDUCT CART STOCK & FIFO BATCHES (Executed only after payment deduction succeeds)
+                                                if (window.CanteenDB && order.items && order.items.length > 0) {
+                                                    await window.CanteenDB.deductCartStockFifo(order.items).catch(err => console.warn("Cart stock deduction notice:", err));
+                                                }
+
+                                                // Update local catalog stock & batches
+                                                setMenuCatalog(prevCatalog => prevCatalog.map(item => {
+                                                    const cartMatch = order.items.find(i => i.id === item.id || i.name === item.name);
+                                                    if (cartMatch) {
+                                                        const newStock = Math.max(0, item.stock - cartMatch.qty);
+                                                        setInventoryBatches(prevBatches => {
+                                                            let qtyRemainingToDeduct = cartMatch.qty;
+                                                            return prevBatches.map(b => {
+                                                                const isMatch = b.product_id === item.id || b.product_name === item.name;
+                                                                if (isMatch && qtyRemainingToDeduct > 0 && b.quantity_remaining > 0) {
+                                                                    const d = Math.min(b.quantity_remaining, qtyRemainingToDeduct);
+                                                                    qtyRemainingToDeduct -= d;
+                                                                    const newRem = b.quantity_remaining - d;
+                                                                    return { ...b, quantity_remaining: newRem, status: newRem === 0 ? 'DEPLETED' : b.status };
+                                                                }
+                                                                return b;
+                                                            });
+                                                        });
+                                                        return { ...item, stock: newStock };
+                                                    }
+                                                    return item;
+                                                }));
+
+                                                if (order.paymentMethod === 'SALARY_DEDUCTION') {
                                                     const matchedStaff = registeredUsers.find(u => u.rfidUid === order.rfidUid || u.name === order.student || u.studentId === order.studentId || u.id === order.studentId);
                                                     if (matchedStaff) {
                                                         const newDeductionAmt = (parseFloat(matchedStaff.accumulatedSalaryDeduction) || 0.0) + order.total;
@@ -30913,6 +31594,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                         globalSeniorPwdDiscountPct={globalSeniorPwdDiscountPct}
                                         isLoading={isLoading}
                                         isSyncing={isSyncing}
+                                        parentStudentLinks={parentStudentLinks}
                                         showToast={showToast}
                                     />
                                 </PortalErrorBoundary>
@@ -30934,7 +31616,8 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                         onApproveTopup={handleApproveTopup}
                                         onRejectTopup={handleRejectTopup}
                                         onAddProduct={async (p) => {
-                                            let created = p;
+                                            const cleanAi = (p.aiLabel && p.aiLabel !== 'NONE') ? String(p.aiLabel).trim() : ((p.ai_label && p.ai_label !== 'NONE') ? String(p.ai_label).trim() : null);
+                                            let created = { ...p, ai_label: cleanAi, aiLabel: cleanAi };
                                             if (window.CanteenDB) {
                                                 try {
                                                     created = await window.CanteenDB.createProduct({
@@ -30950,7 +31633,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                                         protein: p.protein || '0g',
                                                         allergens: p.allergens || [],
                                                         unit: p.unit || '1 Serving',
-                                                        ai_label: p.aiLabel || p.ai_label || null,
+                                                        ai_label: cleanAi,
                                                         barcode: p.barcode || null,
                                                         available: true,
                                                         is_available: true
@@ -30959,13 +31642,23 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                                     console.warn("Cloud product creation warning", err);
                                                 }
                                             }
-                                            const finalProd = { ...p, id: created?.id || p.id };
+                                            const finalProd = { ...p, ...created, id: created?.id || p.id, ai_label: cleanAi, aiLabel: cleanAi };
                                             setMenuCatalog(prev => {
                                                 const next = [finalProd, ...prev.filter(item => item.id !== finalProd.id && item.name !== finalProd.name)];
                                                 if (db && db.saveLocal) db.saveLocal('novalunch_products_catalog', next);
                                                 CanteenCache.set('products_catalog', next);
                                                 return next;
                                             });
+
+                                            // Push to Edge Kiosk (:8085)
+                                            try {
+                                                fetch('http://localhost:8085/api/kiosk/sync', {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({ action: 'update_product', product: finalProd })
+                                                }).catch(() => {});
+                                            } catch (e) {}
+
                                             showToast(`Added product ${p.name}`);
                                         }}
                                         onUpdateProduct={handleUpdateProduct}

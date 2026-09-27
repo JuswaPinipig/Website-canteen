@@ -56,8 +56,17 @@ module.exports = async function handler(req, res) {
 
     // Authenticate parent
     const authHeader = req.headers.authorization || '';
-    const bearerId = authHeader.startsWith('Bearer ') ? authHeader.substring(7).trim() : null;
-    const parentId = req.headers['x-parent-id'] || body.parentId || bearerId || body.session?.id || '02e0f6ca-ae0c-432e-8745-02b53adcd2f4';
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, error: "Unauthorized: Missing or invalid Authorization header." });
+    }
+    const bearerId = authHeader.substring(7).trim();
+    if (!bearerId) {
+      return res.status(401).json({ success: false, error: "Unauthorized: Empty bearer token in Authorization header." });
+    }
+    const parentId = req.headers['x-parent-id'] || body.parentId || body.session?.id || bearerId;
+    if (!parentId) {
+      return res.status(401).json({ success: false, error: "Unauthorized: Missing parent identification." });
+    }
     const role = req.headers['x-user-role'] || body.role || body.session?.role || 'parent';
 
     if (role !== 'parent' && role !== 'admin') {

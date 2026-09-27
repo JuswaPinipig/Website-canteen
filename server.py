@@ -15,18 +15,21 @@ import socket
 import urllib.parse
 import subprocess
 import threading
+from pathlib import Path
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 # Import Instant QR Pairing Service
 try:
     from src.services.qr_pairing_service import handle_create_pairing_token, handle_link_by_qr
 except ImportError:
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "services"))
+    services_dir = Path(__file__).resolve().parent / "src" / "services"
+    if str(services_dir) not in sys.path:
+        sys.path.insert(0, str(services_dir))
     from qr_pairing_service import handle_create_pairing_token, handle_link_by_qr
 
 PORT = int(os.environ.get("PORT", 8080))
-ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
-KIOSK_SCRIPT = os.path.join(ROOT_DIR, "src", "hardware", "student_kiosk_gui.py")
+ROOT_DIR = Path(__file__).resolve().parent
+KIOSK_SCRIPT_NAME = "src/hardware/student_kiosk_gui.py"
 
 kiosk_process = None
 
@@ -34,39 +37,60 @@ def is_port_in_use(port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         return s.connect_ex(('127.0.0.1', port)) == 0
 
+def launch_target_script(script_name: str):
+    """
+    Spawns a target Python script cross-platform using the exact same Python interpreter
+    (sys.executable), dynamically resolving paths and setting cwd to the script's directory.
+    """
+    try:
+        script_path = (Path(__file__).resolve().parent / script_name).resolve()
+
+        if not script_path.exists() or not script_path.is_file():
+            raise FileNotFoundError(f"Target script not found: {script_path}")
+
+        popen_kwargs = {
+            "cwd": str(script_path.parent)
+        }
+
+        # Redirect output to log file for diagnostics while maintaining non-blocking spawn
+        log_path = Path(__file__).resolve().parent / "novalunch_kiosk.log"
+        try:
+            log_file = open(str(log_path), "a", encoding="utf-8")
+            log_file.write(f"\n--- Launching {script_path.name} at {time.ctime()} ---\n")
+            log_file.flush()
+            popen_kwargs["stdout"] = log_file
+            popen_kwargs["stderr"] = log_file
+        except Exception as log_err:
+            print(f"[WARN] Failed to open kiosk log file: {log_err}", file=sys.stderr)
+
+        # Cross-platform window and process detachment
+        if sys.platform == "win32":
+            popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+        else:
+            popen_kwargs["start_new_session"] = True
+
+        proc = subprocess.Popen(
+            [sys.executable, str(script_path)],
+            **popen_kwargs
+        )
+        return True, f"{script_path.name} launched successfully.", proc
+    except Exception as exc:
+        print(f"[ERROR] Failed to launch {script_name}: {exc}", file=sys.stderr)
+        return False, f"Failed to launch {script_name}: {exc}", None
+
 def launch_kiosk_gui():
     global kiosk_process
     if is_port_in_use(8085):
         return True, "Kiosk GUI is already running on port 8085."
 
-    python_exec = sys.executable or "python"
-    try:
-        log_path = os.path.join(ROOT_DIR, "novalunch_kiosk.log")
-        log_file = open(log_path, "a", encoding="utf-8")
-        log_file.write(f"\n--- Launching Kiosk GUI at {time.ctime()} ---\n")
-        log_file.flush()
-
-        popen_kwargs = {
-            "cwd": ROOT_DIR,
-            "stdout": log_file,
-            "stderr": log_file,
-        }
-        if sys.platform == "win32":
-            popen_kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
-        else:
-            popen_kwargs["start_new_session"] = True
-
-        kiosk_process = subprocess.Popen(
-            [python_exec, KIOSK_SCRIPT],
-            **popen_kwargs
-        )
-        return True, "Python Kiosk GUI launched successfully."
-    except Exception as e:
-        return False, f"Failed to launch Kiosk GUI: {str(e)}"
+    success, msg, proc = launch_target_script(KIOSK_SCRIPT_NAME)
+    if success:
+        kiosk_process = proc
+    return success, msg
 
 class NovaLunchPortalHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=ROOT_DIR, **kwargs)
+        super().__init__(*args, directory=str(ROOT_DIR), **kwargs)
 
     def _send_cors(self, code=200, ctype="application/json"):
         self.send_response(code)
@@ -94,15 +118,15 @@ class NovaLunchPortalHandler(SimpleHTTPRequestHandler):
             return original
 
         # If not found directly under ROOT_DIR, check under ROOT_DIR/src/
-        rel = os.path.relpath(original, ROOT_DIR)
-        src_path = os.path.join(ROOT_DIR, "src", rel)
+        rel = os.path.relpath(original, str(ROOT_DIR))
+        src_path = os.path.join(str(ROOT_DIR), "src", rel)
         if os.path.exists(src_path):
             return src_path
 
         # If requested /services/ or /assets/ specifically
         parts = rel.split(os.sep)
         if parts and parts[0] in ["services", "assets", "portals", "hardware", "ai_engine", "database"]:
-            alt = os.path.join(ROOT_DIR, "src", *parts)
+            alt = os.path.join(str(ROOT_DIR), "src", *parts)
             if os.path.exists(alt):
                 return alt
 
@@ -112,7 +136,7 @@ class NovaLunchPortalHandler(SimpleHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         if path in ["/", "/index.html", "/pos", "/cashier"]:
-            portal_path = os.path.join(ROOT_DIR, "src", "portals", "unified_web_portal.html")
+            portal_path = os.path.join(str(ROOT_DIR), "src", "portals", "unified_web_portal.html")
             if os.path.exists(portal_path):
                 self._send_cors(200, "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(os.path.getsize(portal_path)))
@@ -126,7 +150,7 @@ class NovaLunchPortalHandler(SimpleHTTPRequestHandler):
 
         if path in ["/", "/index.html", "/pos", "/cashier"]:
             # Route directly to unified web portal
-            portal_path = os.path.join(ROOT_DIR, "src", "portals", "unified_web_portal.html")
+            portal_path = os.path.join(str(ROOT_DIR), "src", "portals", "unified_web_portal.html")
             if os.path.exists(portal_path):
                 self._send_cors(200, "text/html; charset=utf-8")
                 self.end_headers()
