@@ -813,6 +813,22 @@
             ? window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY)
             : null;
 
+        if (typeof window !== 'undefined') {
+            window.supabaseClient = supabaseClient;
+            window.executeCompleteCheckout = async (orderPayload) => {
+                if (window.CanteenDB && window.CanteenDB.createOrder) {
+                    await window.CanteenDB.createOrder(orderPayload);
+                }
+                window.dispatchEvent(new CustomEvent('canteen:transaction-updated', {
+                    detail: {
+                        orderId: orderPayload.orderNo || orderPayload.order_number,
+                        totalAmount: orderPayload.total || orderPayload.final_amount,
+                        order: orderPayload
+                    }
+                }));
+            };
+        }
+
         // =====================================================================
         // ENTERPRISE SVG ICON DICTIONARY
         // =====================================================================
@@ -1659,18 +1675,18 @@
         ];
 
         const INITIAL_MOCK_MENU = [
-            { id: "a1111111-1111-1111-1111-111111111111", name: "Classic Cheeseburger", category: "Meals & Mains", station: "Hot Kitchen", price: 75.00, costPrice: 45.00, stock: 50, aiLabel: "burger", unit: "Grilled Beef Patty & Cheese", calories: 480, protein: "24g", allergens: ["Dairy", "Gluten"], mealWindows: ["LUNCH", "SNACK", "ALL_DAY"], recipe: [{ ingredientId: 'ing_1', qtyRequired: 1 }, { ingredientId: 'ing_2', qtyRequired: 1 }, { ingredientId: 'ing_3', qtyRequired: 1 }], img: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=400&q=80", barcode: "480000000001", available: true, productType: "packaged_good", expiryStatus: "active" },
-            { id: "a2222222-2222-2222-2222-222222222222", name: "Crispy Chicken Rice Bowl", category: "Meals & Mains", station: "Hot Kitchen", price: 85.00, costPrice: 50.00, stock: 60, aiLabel: "fried_chicken", unit: "Plated Rice & Gravy", calories: 520, protein: "28g", allergens: ["Gluten"], mealWindows: ["LUNCH", "ALL_DAY"], recipe: [{ ingredientId: 'ing_4', qtyRequired: 1 }, { ingredientId: 'ing_5', qtyRequired: 0.2 }], img: "https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?auto=format&fit=crop&w=400&q=80", barcode: "480000000002", available: true, productType: "ulam_meal", expiryStatus: "active" },
-            { id: "a3333333-3333-3333-3333-333333333333", name: "Ham & Cheese Sandwich", category: "Snacks & Bakery", station: "Assembly / Bakery", price: 45.00, costPrice: 25.00, stock: 40, aiLabel: "sandwich", unit: "Toasted Whole Wheat", calories: 310, protein: "14g", allergens: ["Dairy", "Gluten"], mealWindows: ["BREAKFAST", "SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1528735602780-2552fd46c7af?auto=format&fit=crop&w=400&q=80", barcode: "480000000003", available: true, productType: "ulam_meal", expiryStatus: "near_expiry", hoursUntilExpiry: 1.2, batchNo: "BATCH-20260730-LUNCH" },
-            { id: "a4444444-4444-4444-4444-444444444444", name: "Mineral Water (500ml)", category: "Beverages", station: "Cold Prep / Beverages", price: 20.00, costPrice: 10.00, stock: 150, aiLabel: "water_bottle", unit: "Chilled Bottle", calories: 0, protein: "0g", allergens: [], mealWindows: ["BREAKFAST", "LUNCH", "SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1523362628745-0c100150b504?auto=format&fit=crop&w=400&q=80", barcode: "480000000004", available: true, productType: "packaged_good", expiryStatus: "active" },
-            { id: "a5555555-5555-5555-5555-555555555555", name: "Iced Fruit Juice (350ml)", category: "Beverages", station: "Cold Prep / Beverages", price: 30.00, costPrice: 15.00, stock: 80, aiLabel: "juice_box", unit: "Freshly Pressed Cup", calories: 120, protein: "1g", allergens: ["Sugar"], mealWindows: ["BREAKFAST", "LUNCH", "SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?auto=format&fit=crop&w=400&q=80", barcode: "480000000005", available: true, productType: "packaged_good", expiryStatus: "active" },
-            { id: "a6666666-6666-6666-6666-666666666666", name: "Fresh Red Apple", category: "Fruits & Healthy", station: "Cold Prep / Beverages", price: 25.00, costPrice: 15.00, stock: 40, aiLabel: "apple", unit: "Organic Whole Fruit", calories: 95, protein: "0.5g", allergens: [], mealWindows: ["BREAKFAST", "LUNCH", "SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?auto=format&fit=crop&w=400&q=80", barcode: "480000000006", available: true, productType: "packaged_good", expiryStatus: "active" },
-            { id: "a7777777-7777-7777-7777-777777777777", name: "Beef Pares w/ Garlic Rice", category: "Meals & Mains", station: "Hot Kitchen", price: 90.00, costPrice: 55.00, stock: 25, aiLabel: "beef_pares", unit: "Slow-cooked Beef Tenderloin", calories: 580, protein: "32g", allergens: ["Soy"], mealWindows: ["LUNCH", "ALL_DAY"], recipe: [{ ingredientId: 'ing_5', qtyRequired: 0.2 }], img: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80", barcode: "480000000007", available: true, productType: "ulam_meal", expiryStatus: "near_expiry", hoursUntilExpiry: 0.8, batchNo: "BATCH-20260730-PARES" },
-            { id: "a8888888-8888-8888-8888-888888888888", name: "Choco Chip Cookie", category: "Snacks & Bakery", station: "Assembly / Bakery", price: 18.00, costPrice: 9.00, stock: 90, aiLabel: "cookie", unit: "Freshly Baked Cookie", calories: 190, protein: "2g", allergens: ["Sugar", "Dairy", "Gluten"], mealWindows: ["SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1499636136210-6f4ee915583e?auto=format&fit=crop&w=400&q=80", barcode: "480000000008", available: true, productType: "packaged_good", expiryStatus: "near_expiry", daysUntilExpiry: 2, batchNo: "BATCH-2026-LOT88" },
-            { id: "a9999999-9999-9999-9999-999999999999", name: "Spaghetti Bolognese", category: "Meals & Mains", station: "Hot Kitchen", price: 65.00, costPrice: 35.00, stock: 30, aiLabel: "spaghetti", unit: "Sweet-style Pinoy Pasta", calories: 440, protein: "18g", allergens: ["Dairy", "Gluten"], mealWindows: ["LUNCH", "SNACK", "ALL_DAY"], recipe: [{ ingredientId: 'ing_6', qtyRequired: 0.15 }, { ingredientId: 'ing_7', qtyRequired: 0.15 }], img: "https://images.unsplash.com/photo-1551183053-bf91a1d81141?auto=format&fit=crop&w=400&q=80", barcode: "480000000009", available: true, productType: "ulam_meal", expiryStatus: "active" },
-            { id: "b1010101-1010-1010-1010-101010101010", name: "Buttercream Crackers", category: "Snacks & Bakery", station: "Assembly / Bakery", price: 35.00, costPrice: 20.00, stock: 50, aiLabel: "Buttercream_Biscuits", unit: "Packaged Biscuits (25g)", calories: 150, protein: "2g", allergens: ["Gluten", "Dairy"], mealWindows: ["BREAKFAST", "SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1590080875515-8a3a8dc5735e?auto=format&fit=crop&w=400&q=80", barcode: "480000000010", available: true, productType: "packaged_good", expiryStatus: "active" },
-            { id: "b1111111-1111-1111-1111-111111111111", name: "Jack 'n Jill Magic Chips", category: "Snacks & Bakery", station: "Assembly / Bakery", price: 25.00, costPrice: 15.00, stock: 45, aiLabel: "Jack_And_Jill_Magic_Chips", unit: "Cheese Cracker Snack (28g)", calories: 140, protein: "2g", allergens: ["Gluten", "Dairy"], mealWindows: ["BREAKFAST", "SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1566478989037-eec170784d0b?auto=format&fit=crop&w=400&q=80", barcode: "480000000011", available: true, productType: "packaged_good", expiryStatus: "active" },
-            { id: "111ac6f3-cca3-479e-86a1-1d1edd28a945", name: "Buttercream Biscuits", category: "Snacks & Bakery", station: "Assembly / Bakery", price: 30.00, costPrice: 15.00, stock: 0, aiLabel: "Buttercream_Biscuits", unit: "Vanilla Cream Biscuits", calories: 160, protein: "2g", allergens: ["Gluten", "Dairy"], mealWindows: ["SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80", barcode: "480000000012", available: true, productType: "packaged_good", expiryStatus: "active" }
+            { id: "a1111111-1111-1111-1111-111111111111", name: "Classic Cheeseburger", category: "Meals & Mains", station: "Hot Kitchen", price: 75.00, costPrice: 45.00, stock: 50, aiLabel: null, unit: "Grilled Beef Patty & Cheese", calories: 480, protein: "24g", allergens: ["Dairy", "Gluten"], mealWindows: ["LUNCH", "SNACK", "ALL_DAY"], recipe: [{ ingredientId: 'ing_1', qtyRequired: 1 }, { ingredientId: 'ing_2', qtyRequired: 1 }, { ingredientId: 'ing_3', qtyRequired: 1 }], img: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=400&q=80", barcode: "480000000001", available: true, is_available: true, is_archived: false, status: "active", productType: "packaged_good", expiryStatus: "active" },
+            { id: "a2222222-2222-2222-2222-222222222222", name: "Crispy Chicken Rice Bowl", category: "Meals & Mains", station: "Hot Kitchen", price: 85.00, costPrice: 50.00, stock: 60, aiLabel: null, unit: "Plated Rice & Gravy", calories: 520, protein: "28g", allergens: ["Gluten"], mealWindows: ["LUNCH", "ALL_DAY"], recipe: [{ ingredientId: 'ing_4', qtyRequired: 1 }, { ingredientId: 'ing_5', qtyRequired: 0.2 }], img: "https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?auto=format&fit=crop&w=400&q=80", barcode: "480000000002", available: true, is_available: true, is_archived: false, status: "active", productType: "ulam_meal", expiryStatus: "active" },
+            { id: "a3333333-3333-3333-3333-333333333333", name: "Ham & Cheese Sandwich", category: "Snacks & Bakery", station: "Assembly / Bakery", price: 45.00, costPrice: 25.00, stock: 40, aiLabel: null, unit: "Toasted Whole Wheat", calories: 310, protein: "14g", allergens: ["Dairy", "Gluten"], mealWindows: ["BREAKFAST", "SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1528735602780-2552fd46c7af?auto=format&fit=crop&w=400&q=80", barcode: "480000000003", available: true, is_available: true, is_archived: false, status: "active", productType: "ulam_meal", expiryStatus: "near_expiry", hoursUntilExpiry: 1.2, batchNo: "BATCH-20260730-LUNCH" },
+            { id: "a4444444-4444-4444-4444-444444444444", name: "Mineral Water (500ml)", category: "Beverages", station: "Cold Prep / Beverages", price: 20.00, costPrice: 10.00, stock: 150, aiLabel: null, unit: "Chilled Bottle", calories: 0, protein: "0g", allergens: [], mealWindows: ["BREAKFAST", "LUNCH", "SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1523362628745-0c100150b504?auto=format&fit=crop&w=400&q=80", barcode: "480000000004", available: true, is_available: true, is_archived: false, status: "active", productType: "packaged_good", expiryStatus: "active" },
+            { id: "a5555555-5555-5555-5555-555555555555", name: "Iced Fruit Juice (350ml)", category: "Beverages", station: "Cold Prep / Beverages", price: 30.00, costPrice: 15.00, stock: 80, aiLabel: null, unit: "Freshly Pressed Cup", calories: 120, protein: "1g", allergens: ["Sugar"], mealWindows: ["BREAKFAST", "LUNCH", "SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?auto=format&fit=crop&w=400&q=80", barcode: "480000000005", available: true, is_available: true, is_archived: false, status: "active", productType: "packaged_good", expiryStatus: "active" },
+            { id: "a6666666-6666-6666-6666-666666666666", name: "Fresh Red Apple", category: "Snacks & Bakery", station: "Cold Prep / Beverages", price: 25.00, costPrice: 15.00, stock: 40, aiLabel: null, unit: "Organic Whole Fruit", calories: 95, protein: "0.5g", allergens: [], mealWindows: ["BREAKFAST", "LUNCH", "SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?auto=format&fit=crop&w=400&q=80", barcode: "480000000006", available: true, is_available: true, is_archived: false, status: "active", productType: "packaged_good", expiryStatus: "active" },
+            { id: "a7777777-7777-7777-7777-777777777777", name: "Beef Pares w/ Garlic Rice", category: "Meals & Mains", station: "Hot Kitchen", price: 90.00, costPrice: 55.00, stock: 25, aiLabel: null, unit: "Slow-cooked Beef Tenderloin", calories: 580, protein: "32g", allergens: ["Soy"], mealWindows: ["LUNCH", "ALL_DAY"], recipe: [{ ingredientId: 'ing_5', qtyRequired: 0.2 }], img: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80", barcode: "480000000007", available: true, is_available: true, is_archived: false, status: "active", productType: "ulam_meal", expiryStatus: "near_expiry", hoursUntilExpiry: 0.8, batchNo: "BATCH-20260730-PARES" },
+            { id: "a8888888-8888-8888-8888-888888888888", name: "Choco Chip Cookie", category: "Snacks & Bakery", station: "Assembly / Bakery", price: 18.00, costPrice: 9.00, stock: 90, aiLabel: null, unit: "Freshly Baked Cookie", calories: 190, protein: "2g", allergens: ["Sugar", "Dairy", "Gluten"], mealWindows: ["SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1499636136210-6f4ee915583e?auto=format&fit=crop&w=400&q=80", barcode: "480000000008", available: true, is_available: true, is_archived: false, status: "active", productType: "packaged_good", expiryStatus: "near_expiry", daysUntilExpiry: 2, batchNo: "BATCH-2026-LOT88" },
+            { id: "a9999999-9999-9999-9999-999999999999", name: "Spaghetti Bolognese", category: "Meals & Mains", station: "Hot Kitchen", price: 65.00, costPrice: 35.00, stock: 30, aiLabel: null, unit: "Sweet-style Pinoy Pasta", calories: 440, protein: "18g", allergens: ["Dairy", "Gluten"], mealWindows: ["LUNCH", "SNACK", "ALL_DAY"], recipe: [{ ingredientId: 'ing_6', qtyRequired: 0.15 }, { ingredientId: 'ing_7', qtyRequired: 0.15 }], img: "https://images.unsplash.com/photo-1551183053-bf91a1d81141?auto=format&fit=crop&w=400&q=80", barcode: "480000000009", available: true, is_available: true, is_archived: false, status: "active", productType: "ulam_meal", expiryStatus: "active" },
+            { id: "b1010101-1010-1010-1010-101010101010", name: "Buttercream Crackers", category: "Snacks & Bakery", station: "Assembly / Bakery", price: 35.00, costPrice: 20.00, stock: 50, aiLabel: null, unit: "Packaged Biscuits (25g)", calories: 150, protein: "2g", allergens: ["Gluten", "Dairy"], mealWindows: ["BREAKFAST", "SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1590080875515-8a3a8dc5735e?auto=format&fit=crop&w=400&q=80", barcode: "480000000010", available: true, is_available: true, is_archived: false, status: "active", productType: "packaged_good", expiryStatus: "active" },
+            { id: "b1111111-1111-1111-1111-111111111111", name: "Jack 'n Jill Magic Chips", category: "Snacks & Bakery", station: "Assembly / Bakery", price: 25.00, costPrice: 15.00, stock: 45, aiLabel: "Jack_And_Jill_Magic_Chips", unit: "Cheese Cracker Snack (28g)", calories: 140, protein: "2g", allergens: ["Gluten", "Dairy"], mealWindows: ["BREAKFAST", "SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1566478989037-eec170784d0b?auto=format&fit=crop&w=400&q=80", barcode: "480000000011", available: true, is_available: true, is_archived: false, status: "active", productType: "packaged_good", expiryStatus: "active" },
+            { id: "111ac6f3-cca3-479e-86a1-1d1edd28a945", name: "Buttercream Biscuits", category: "Snacks & Bakery", station: "Assembly / Bakery", price: 30.00, costPrice: 15.00, stock: 50, aiLabel: "Buttercream_Biscuits", unit: "Vanilla Cream Biscuits", calories: 160, protein: "2g", allergens: ["Gluten", "Dairy"], mealWindows: ["SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80", barcode: "480000000012", available: true, is_available: true, is_archived: false, status: "active", productType: "packaged_good", expiryStatus: "active" }
         ];
 
         const INITIAL_USERS = [
@@ -2286,17 +2302,13 @@
         function getProductExpiryDetails(product, inventoryBatches = []) {
             if (!product) return { isArchived: true, isExpired: true, isNearExpiry: false, status: 'archived', daysUntilExpiry: -1, earliestBatch: null };
 
-            // 1. Archival check
+            // 1. Archival check - strictly controlled by is_archived boolean flag
             const isArchived = Boolean(
                 product.is_archived === true ||
                 product.is_archived === 'true' ||
                 product.archived === true ||
                 product.archived === 'true' ||
-                product.available === false ||
-                product.available === 'false' ||
-                product.is_available === false ||
-                product.is_available === 'false' ||
-                (product.status && ['archived', 'inactive', 'deleted', 'disabled'].includes(String(product.status).toLowerCase()))
+                (product.status && ['archived', 'deleted'].includes(String(product.status).toLowerCase()))
             );
             if (isArchived) {
                 return { isArchived: true, isExpired: false, isNearExpiry: false, status: 'archived', daysUntilExpiry: -1, earliestBatch: null };
@@ -4368,7 +4380,11 @@
                         daily_limit: 200.00,
                         balance: 0.00,
                         creditLiability: 0.00,
-                        status: 'active'
+                        status: 'active',
+                        linked_students: [],
+                        linkedStudentId: null,
+                        linkedStudentName: null,
+                        guardian: null
                     };
 
                     onRegisterSuccess(localUser);
@@ -7295,6 +7311,9 @@
                         await onSettleDebt(amtToPay, 'rfid', selectedModalOrderIds);
                     }
                     setPaymentConfirmed(true);
+                    window.dispatchEvent(new CustomEvent('canteen:transaction-updated', {
+                        detail: { orderId: 'SETTLE-' + Date.now(), totalAmount: amtToPay }
+                    }));
                     showToast(`Paid ₱${amtToPay.toFixed(2)} toward emergency credit! Restored ${usesRestored} use${usesRestored > 1 ? 's' : ''}.`, 'success');
                     setTimeout(() => {
                         onClose();
@@ -9045,6 +9064,10 @@
                     if (onSettleDebt) {
                         await onSettleDebt(activeSettleRecord.id, amt, settleMethod, finalRef, settleRemarks);
                     }
+
+                    window.dispatchEvent(new CustomEvent('canteen:transaction-updated', {
+                        detail: { orderId: finalRef, totalAmount: amt }
+                    }));
 
                     // Update local state
                     setLocalRecords(prev => prev.map(r => r.id === activeSettleRecord.id ? {
@@ -10954,13 +10977,17 @@
 
             // Process scanned QR payload or pasted code
             const handleProcessToken = async (rawInput) => {
-                const cleanInput = (rawInput || '').trim();
-                if (!cleanInput || isProcessingRef.current) return;
+                const raw = (rawInput || '').trim();
+                if (!raw || isProcessingRef.current) return;
+
+                // Strip all spaces and force uppercase for codes, or keep raw if JWT
+                const isJwt = raw.includes('.');
+                const cleanInput = isJwt ? raw : raw.replace(/\s+/g, '').toUpperCase().trim();
 
                 isProcessingRef.current = true;
                 setIsSubmitting(true);
                 setErrorMsg('');
-                setSuccessMsg('QR Code detected! Linking student account...');
+                setSuccessMsg('Verifying code & linking student account...');
 
                 try {
                     const result = await window.CanteenDB.linkByQr(cleanInput);
@@ -10987,6 +11014,7 @@
                             stopScanner();
                             onClose();
                             setSuccessMsg('');
+                            setStudentIdInput('');
                             isProcessingRef.current = false;
                         }, 700);
                     } else {
@@ -10994,7 +11022,9 @@
                         isProcessingRef.current = false;
                     }
                 } catch (err) {
-                    setErrorMsg(err.message || 'Failed to verify pairing token.');
+                    const rawMsg = err?.message || String(err || '');
+                    const isPatternErr = rawMsg.includes("expected pattern") || rawMsg.includes("pattern");
+                    setErrorMsg(isPatternErr ? 'Invalid code format. Please check the 6-character code.' : (rawMsg || 'Failed to verify pairing token.'));
                     isProcessingRef.current = false;
                 } finally {
                     setIsSubmitting(false);
@@ -11036,9 +11066,13 @@
                             const html5QrCode = new window.Html5Qrcode("parent-qr-camera-box");
                             scannerInstanceRef.current = html5QrCode;
 
+                            // Standard Safari-compatible constraints: facingMode environment (NOT exact: environment)
+                            const cameraConfig = { facingMode: "environment" };
+                            const qrConfig = { fps: 10, qrbox: { width: 220, height: 220 } };
+
                             html5QrCode.start(
-                                { facingMode: "environment" },
-                                { fps: 10, qrbox: { width: 220, height: 220 } },
+                                cameraConfig,
+                                qrConfig,
                                 (decodedText) => {
                                     if (!isMounted) return;
                                     stopScanner();
@@ -11056,7 +11090,8 @@
                                     setIsScanningActive(false);
                                     stopScanner();
                                     setMode('manual');
-                                    setErrorMsg("Camera access was denied or unavailable. Switched to manual 6-digit code entry.");
+                                    // Clean user-friendly message without exposing raw DOMExceptions like "The string did not match the expected pattern"
+                                    setErrorMsg("Camera access was denied or unavailable on this device. Switched to manual 6-character code entry.");
                                     setTimeout(() => {
                                         if (manualInputRef.current) manualInputRef.current.focus();
                                     }, 150);
@@ -11068,7 +11103,7 @@
                                 setIsScanningActive(false);
                                 stopScanner();
                                 setMode('manual');
-                                setErrorMsg("Camera scanner initialization failed. Switched to manual 6-digit code entry.");
+                                setErrorMsg("Camera initialization could not start. Switched to manual 6-character code entry.");
                                 setTimeout(() => {
                                     if (manualInputRef.current) manualInputRef.current.focus();
                                 }, 150);
@@ -11089,24 +11124,28 @@
             if (!isOpen) return null;
 
             const handleManualSubmit = async (e) => {
-                e.preventDefault();
+                if (e && e.preventDefault) e.preventDefault();
                 setErrorMsg('');
                 setSuccessMsg('');
-                const cleanInput = (studentIdInput || '').trim().toUpperCase();
+                const rawInput = studentIdInput || '';
+                const cleanCode = rawInput.replace(/\s+/g, '').toUpperCase().trim();
 
-                if (!cleanInput) {
+                if (!cleanCode) {
                     return setErrorMsg('Please enter the 6-character code.');
                 }
 
-                if (cleanInput.length !== 6) {
-                    return setErrorMsg('Code must be exactly 6 characters.');
+                const CODE_REGEX = /^[A-Z0-9]{6}$/;
+                if (!CODE_REGEX.test(cleanCode)) {
+                    return setErrorMsg('Code must be exactly 6 alphanumeric characters (e.g. X32KQC).');
                 }
 
                 setIsSubmitting(true);
                 try {
-                    await handleProcessToken(cleanInput);
+                    await handleProcessToken(cleanCode);
                 } catch (err) {
-                    setErrorMsg(err.message || 'Invalid or expired code.');
+                    const rawMsg = err?.message || String(err || '');
+                    const isPatternErr = rawMsg.includes("expected pattern") || rawMsg.includes("pattern");
+                    setErrorMsg(isPatternErr ? 'Invalid code format.' : (rawMsg || 'Invalid or expired code.'));
                 } finally {
                     setIsSubmitting(false);
                 }
@@ -11205,19 +11244,23 @@
                                 </div>
                             </div>
                         ) : (
-                            <form onSubmit={handleManualSubmit} className="space-y-4 pt-1">
+                            <form onSubmit={handleManualSubmit} noValidate className="space-y-4 pt-1">
                                 <div className="space-y-1.5">
                                     <div className="relative flex items-center">
                                         <input
                                             ref={manualInputRef}
                                             type="text"
-                                            maxLength={6}
+                                            autoComplete="off"
+                                            autoCorrect="off"
+                                            autoCapitalize="characters"
+                                            spellCheck="false"
+                                            maxLength={16}
                                             required
                                             autoFocus
-                                            placeholder="••••••"
+                                            placeholder="X32KQC"
                                             value={studentIdInput}
-                                            onChange={e => setStudentIdInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
-                                            className="w-full bg-slate-100/90 hover:bg-slate-100 focus:bg-white border border-transparent focus:border-slate-300 rounded-2xl px-4 py-3.5 text-center font-mono text-xl font-bold tracking-[0.35em] text-slate-900 placeholder:text-slate-300 placeholder:tracking-[0.25em] focus:outline-none focus:ring-4 focus:ring-slate-900/5 transition-all"
+                                            onChange={e => setStudentIdInput(e.target.value.toUpperCase())}
+                                            className="w-full bg-slate-100/90 hover:bg-slate-100 focus:bg-white border border-transparent focus:border-slate-300 rounded-2xl px-4 py-3.5 text-center font-mono text-xl font-bold tracking-[0.25em] text-slate-900 placeholder:text-slate-300 placeholder:tracking-[0.25em] focus:outline-none focus:ring-4 focus:ring-slate-900/5 transition-all"
                                         />
                                         {!studentIdInput && (
                                             <button
@@ -11226,7 +11269,10 @@
                                                     try {
                                                         if (navigator.clipboard?.readText) {
                                                             const text = await navigator.clipboard.readText();
-                                                            if (text) setStudentIdInput(text.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6));
+                                                            if (text) {
+                                                                const cleanPaste = text.replace(/\s+/g, '').toUpperCase().trim().slice(0, 10);
+                                                                setStudentIdInput(cleanPaste);
+                                                            }
                                                         }
                                                     } catch (e) { }
                                                 }}
@@ -11248,7 +11294,7 @@
                                     </button>
                                     <button
                                         type="submit"
-                                        disabled={isSubmitting || studentIdInput.trim().length !== 6}
+                                        disabled={isSubmitting || studentIdInput.replace(/\s+/g, '').trim().length !== 6}
                                         className="flex-1 py-3 text-xs font-semibold text-white bg-slate-900 hover:bg-black disabled:opacity-40 rounded-2xl shadow-sm transition-all cursor-pointer active:scale-98 flex items-center justify-center gap-1.5"
                                     >
                                         {isSubmitting ? 'Linking...' : 'Link Student'}
@@ -17390,6 +17436,9 @@
                         onSendLinkRequest={onSendLinkRequest}
                         onStudentLinked={(linkedStudent) => {
                             showToast(`Successfully linked ${linkedStudent?.name || 'Student'}! Dependent profile is now ACTIVE.`);
+                            if (linkedStudent) {
+                                setSelectedChild(linkedStudent);
+                            }
                             if (typeof onRefreshCloud === 'function') onRefreshCloud();
                         }}
                         showToast={showToast}
@@ -17483,8 +17532,8 @@
                             if (onSubmitDispute) {
                                 onSubmitDispute({
                                     ...ticketData,
-                                    studentId: activeChild?.studentId || activeChild?.id || '2023-01900',
-                                    studentName: activeChild?.name || 'Joshua Lupisan'
+                                    studentId: activeChild?.studentId || activeChild?.id || 'N/A',
+                                    studentName: activeChild?.name || 'Student'
                                 });
                             }
                             const newNotif = {
@@ -18558,9 +18607,420 @@
         }
 
         // =====================================================================
+        // TRANSACTION HISTORY VIEW (REAL-TIME REACTIVE STREAM & REVALIDATION)
+        // =====================================================================
+        function TransactionHistoryView({
+            initialOrders = [],
+            registeredUsers = [],
+            onOrdersUpdate = null,
+            onVoidClick = null,
+            onAuthorizeVoid = null
+        }) {
+            const [transactions, setTransactions] = useState(() => {
+                if (Array.isArray(initialOrders) && initialOrders.length > 0) return initialOrders;
+                const local = (window.CanteenDB ? window.CanteenDB.loadLocal('novalunch_recent_orders', []) : []) || [];
+                return local;
+            });
+            const [highlightedOrderId, setHighlightedOrderId] = useState(null);
+            const [currentPage, setCurrentPage] = useState(1);
+            const itemsPerPage = 5;
+            const [isLoading, setIsLoading] = useState(false);
+
+            // Synchronize with external prop when it changes
+            useEffect(() => {
+                if (Array.isArray(initialOrders) && initialOrders.length > 0) {
+                    setTransactions(prev => {
+                        const firstInitial = initialOrders[0]?.orderNo || initialOrders[0]?.order_number || initialOrders[0]?.id;
+                        const firstPrev = prev[0]?.orderNo || prev[0]?.order_number || prev[0]?.id;
+                        if (initialOrders.length !== prev.length || firstInitial !== firstPrev) {
+                            return initialOrders;
+                        }
+                        return prev;
+                    });
+                }
+            }, [initialOrders]);
+
+            // Requirement 4: Dynamic KPI Metric Recomputation
+            const kpiMetrics = useMemo(() => {
+                const list = transactions || [];
+                const validOrders = list.filter(o => o.status !== 'VOIDED' && !o.is_voided && o.order_status !== 'cancelled' && o.order_status !== 'voided');
+                const ordersCount = list.length;
+                const grossRevenue = validOrders.reduce((s, o) => s + (parseFloat(o.total || o.final_amount || o.total_amount || 0) || 0), 0);
+                const payLater = validOrders.filter(o => {
+                    const m = String(o.paymentMethod || o.payment_method || '').toUpperCase();
+                    return m.includes('PAY_LATER') || o.status === 'PAY_LATER';
+                }).reduce((s, o) => s + (parseFloat(o.total || o.final_amount || o.total_amount || 0) || 0), 0);
+                const voidedCount = list.filter(o => o.status === 'VOIDED' || o.is_voided || o.order_status === 'cancelled' || o.order_status === 'voided').length;
+
+                return { ordersCount, grossRevenue, payLater, voidedCount };
+            }, [transactions]);
+
+            // Pagination calculation
+            const totalPages = Math.ceil(transactions.length / itemsPerPage) || 1;
+            const paginatedOrders = useMemo(() => {
+                const start = (currentPage - 1) * itemsPerPage;
+                return transactions.slice(start, start + itemsPerPage);
+            }, [transactions, currentPage, itemsPerPage]);
+
+            // Requirement 2: Data refetch function
+            const fetchTransactions = useCallback(async () => {
+                setIsLoading(true);
+                try {
+                    let cloudOrders = [];
+                    const client = window.supabaseClient || (window.CanteenDB && window.CanteenDB.getClient ? window.CanteenDB.getClient() : null) || window.supabase;
+
+                    if (client && client.from) {
+                        const { data, error } = await client
+                            .from('orders')
+                            .select('*, order_items(*)')
+                            .order('created_at', { ascending: false });
+
+                        if (!error && Array.isArray(data) && data.length > 0) {
+                            cloudOrders = data.map(o => {
+                                const matchedProf = (registeredUsers || []).find(u =>
+                                    (o.user_id && u.id === o.user_id) ||
+                                    (u.studentId && o.order_number && o.order_number.includes(u.studentId.replace(/\D/g, ''))) ||
+                                    (u.student_id_number && o.order_number && o.order_number.includes(u.student_id_number.replace(/\D/g, '')))
+                                );
+                                const resolvedCustName = o.student_name || (matchedProf ? (matchedProf.name || matchedProf.full_name) : (o.payment_method === 'rfid' ? 'Student Member' : 'Walk-in Customer'));
+                                const resolvedCustId = o.student_id_number || (matchedProf ? (matchedProf.studentId || matchedProf.student_id_number) : '');
+
+                                return {
+                                    id: o.id,
+                                    orderNo: o.order_number || `ORD-${String(o.id).slice(-4)}`,
+                                    order_number: o.order_number,
+                                    ref_no: o.order_number || o.id,
+                                    date: new Date(o.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                                    timestamp: new Date(o.created_at || Date.now()).toLocaleString(),
+                                    created_at: o.created_at || new Date().toISOString(),
+                                    user_id: o.user_id,
+                                    student: resolvedCustName,
+                                    student_name: resolvedCustName,
+                                    customer_name: resolvedCustName,
+                                    userName: resolvedCustName,
+                                    studentId: resolvedCustId,
+                                    customer_id: resolvedCustId,
+                                    total: parseFloat(o.final_amount || o.total_amount) || 0,
+                                    subtotal: parseFloat(o.subtotal_amount || o.total_amount || o.final_amount) || 0,
+                                    discount_amount: parseFloat(o.discount_amount) || 0,
+                                    paymentMethod: (o.payment_method || 'CASH').toUpperCase(),
+                                    payment_method: (o.payment_method || 'CASH').toUpperCase(),
+                                    is_voided: Boolean(o.is_voided || o.order_status === 'cancelled' || o.order_status === 'voided'),
+                                    status: (o.is_voided || o.order_status === 'cancelled' || o.order_status === 'voided') ? 'VOIDED' : (o.order_status ? o.order_status.toUpperCase() : 'COMPLETED'),
+                                    items: (o.order_items || []).map(i => ({
+                                        id: i.product_id,
+                                        name: i.product_name || 'Item',
+                                        price: parseFloat(i.unit_price) || 0,
+                                        qty: i.quantity || 1
+                                    }))
+                                };
+                            });
+                        }
+                    }
+
+                    // Merge with local storage
+                    const localOrders = (window.CanteenDB ? window.CanteenDB.loadLocal('novalunch_recent_orders', []) : []) || JSON.parse(localStorage.getItem('novalunch_recent_orders') || '[]');
+                    const combinedMap = new Map();
+
+                    localOrders.forEach(o => {
+                        const key = o.orderNo || o.order_number || o.id;
+                        if (key) combinedMap.set(String(key), o);
+                    });
+
+                    cloudOrders.forEach(o => {
+                        const key = o.orderNo || o.order_number || o.id;
+                        if (key) {
+                            const prev = combinedMap.get(String(key));
+                            if (prev && (prev.status === 'VOIDED' || prev.is_voided)) {
+                                combinedMap.set(String(key), { ...o, status: 'VOIDED', is_voided: true });
+                            } else {
+                                combinedMap.set(String(key), o);
+                            }
+                        }
+                    });
+
+                    const merged = Array.from(combinedMap.values()).sort((a, b) => {
+                        const timeA = new Date(a.created_at || a.timestamp || 0).getTime();
+                        const timeB = new Date(b.created_at || b.timestamp || 0).getTime();
+                        return timeB - timeA;
+                    });
+
+                    if (merged.length > 0) {
+                        setTransactions(merged);
+                        if (typeof onOrdersUpdate === 'function') {
+                            onOrdersUpdate(merged);
+                        }
+                        if (window.CanteenDB && window.CanteenDB.saveLocal) {
+                            window.CanteenDB.saveLocal('novalunch_recent_orders', merged);
+                        }
+                        if (typeof CanteenCache !== 'undefined' && CanteenCache.set) {
+                            CanteenCache.set('recent_orders', merged);
+                        }
+                    }
+                } catch (err) {
+                    console.warn('[TransactionHistoryView] Refetch error:', err);
+                } finally {
+                    setIsLoading(false);
+                }
+            }, [registeredUsers, onOrdersUpdate]);
+
+            // Requirements 2 & 3: Listeners & Supabase Realtime Subscription
+            useEffect(() => {
+                // a) Custom event listener: window.addEventListener('canteen:transaction-updated', fetchTransactions);
+                const handleTransactionUpdated = (e) => {
+                    const detail = e?.detail;
+                    if (detail?.orderId) {
+                        setHighlightedOrderId(String(detail.orderId));
+                        setTimeout(() => setHighlightedOrderId(null), 3500);
+                        setCurrentPage(1);
+                    }
+                    if (detail?.order) {
+                        const newOrd = detail.order;
+                        setTransactions(prev => {
+                            const ordId = newOrd.orderNo || newOrd.order_number || newOrd.id;
+                            const filtered = prev.filter(o => (o.orderNo || o.order_number || o.id) !== ordId);
+                            return [newOrd, ...filtered];
+                        });
+                    }
+                    fetchTransactions();
+                };
+                window.addEventListener('canteen:transaction-updated', handleTransactionUpdated);
+
+                // b) Tab focus revalidation: window.addEventListener('focus', fetchTransactions);
+                const handleFocus = () => {
+                    fetchTransactions();
+                };
+                window.addEventListener('focus', handleFocus);
+
+                // Requirement 3: Add Supabase Realtime Subscription
+                let subscription = null;
+                const supabase = window.supabaseClient || (window.CanteenDB && window.CanteenDB.getClient ? window.CanteenDB.getClient() : null) || window.supabase;
+                if (supabase && typeof supabase.channel === 'function') {
+                    try {
+                        subscription = supabase
+                            .channel('realtime:orders-feed')
+                            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload) => {
+                                const newId = payload?.new?.order_number || payload?.new?.id;
+                                if (newId) {
+                                    setHighlightedOrderId(String(newId));
+                                    setTimeout(() => setHighlightedOrderId(null), 3500);
+                                    setCurrentPage(1);
+                                }
+                                fetchTransactions();
+                            })
+                            .on('postgres_changes', { event: '*', schema: 'public', table: 'wallet_transactions' }, () => {
+                                fetchTransactions();
+                            })
+                            .subscribe();
+                    } catch (subErr) {
+                        console.warn('[TransactionHistoryView] Supabase subscription notice:', subErr);
+                    }
+                }
+
+                // Initial fetch
+                fetchTransactions();
+
+                // Clean up listeners and remove subscription on unmount
+                return () => {
+                    window.removeEventListener('canteen:transaction-updated', handleTransactionUpdated);
+                    window.removeEventListener('focus', handleFocus);
+                    if (subscription && supabase && typeof supabase.removeChannel === 'function') {
+                        supabase.removeChannel(subscription);
+                    }
+                };
+            }, [fetchTransactions]);
+
+            return (
+                <div className="flex-1 p-6 space-y-6 overflow-y-auto">
+                    <div className="enterprise-card p-6 sm:p-7 rounded-3xl bg-white space-y-6 shadow-xs border border-slate-200/80">
+                        {/* HEADER & ACTIONS */}
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-5">
+                            <div className="flex items-center gap-3.5">
+                                <div className="w-10 h-10 rounded-2xl bg-brand-50 border border-brand-100/80 text-brand-700 flex items-center justify-center shadow-2xs shrink-0">
+                                    <Icon.FileText className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2.5">
+                                        <h2 className="font-outfit text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Transaction History</h2>
+                                        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200/60">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                            Live Sync
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-slate-400 font-medium mt-0.5">Real-time synchronized checkout, settlement & void audit feed</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2 self-stretch sm:self-auto">
+                                <button
+                                    type="button"
+                                    onClick={() => fetchTransactions()}
+                                    disabled={isLoading}
+                                    className="h-9 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs rounded-xl transition-all active:scale-98 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                    title="Manual Refresh"
+                                >
+                                    <Icon.RotateCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-brand-700' : 'text-slate-500'}`} />
+                                    <span className="hidden sm:inline">Refresh</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => onAuthorizeVoid && onAuthorizeVoid()}
+                                    className="h-9 px-3.5 bg-[#7B1E22] hover:bg-[#631418] text-white font-semibold text-xs rounded-xl shadow-2xs transition-all active:scale-98 flex items-center gap-2 cursor-pointer"
+                                >
+                                    <Icon.Lock className="w-3.5 h-3.5" />
+                                    <span>Authorize Void</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* DYNAMIC KPI SUMMARY METRICS */}
+                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                            <div className="p-4 sm:p-5 bg-slate-50/70 rounded-2xl border border-slate-200/60 space-y-1 transition-all">
+                                <span className="text-xs font-medium text-slate-500">Orders</span>
+                                <div className="font-outfit text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums">
+                                    {kpiMetrics.ordersCount}
+                                </div>
+                            </div>
+                            <div className="p-4 sm:p-5 bg-slate-50/70 rounded-2xl border border-slate-200/60 space-y-1 transition-all">
+                                <span className="text-xs font-medium text-slate-500">Gross Revenue</span>
+                                <div className="font-outfit text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums">
+                                    ₱{kpiMetrics.grossRevenue.toFixed(2)}
+                                </div>
+                            </div>
+                            <div className="p-4 sm:p-5 bg-slate-50/70 rounded-2xl border border-slate-200/60 space-y-1 transition-all">
+                                <span className="text-xs font-medium text-slate-500">Pay Later</span>
+                                <div className="font-outfit text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums">
+                                    ₱{kpiMetrics.payLater.toFixed(2)}
+                                </div>
+                            </div>
+                            <div className="p-4 sm:p-5 bg-slate-50/70 rounded-2xl border border-slate-200/60 space-y-1 transition-all">
+                                <span className="text-xs font-medium text-slate-500">Voided</span>
+                                <div className="font-outfit text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums">
+                                    {kpiMetrics.voidedCount}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* ORDERS STREAM WITH PAGINATION */}
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                                <h3 className="font-outfit font-bold text-slate-900 text-base tracking-tight">Transactions</h3>
+                                <span className="text-xs text-slate-400 font-medium">{transactions.length} {transactions.length === 1 ? 'order' : 'orders'}</span>
+                            </div>
+
+                            {transactions.length === 0 ? (
+                                <div className="p-12 text-center bg-slate-50/60 rounded-3xl border border-dashed border-slate-200 text-slate-400 text-xs space-y-2">
+                                    <Icon.FileText className="w-8 h-8 text-slate-300 mx-auto" />
+                                    <p className="font-medium text-slate-600 text-sm">No Transactions</p>
+                                    <p className="text-slate-400">No completed orders recorded in this shift session yet.</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {paginatedOrders.map((order, idx) => {
+                                        const methodText = (() => {
+                                            const m = (order.paymentMethod || order.payment_method || 'RFID').toUpperCase();
+                                            if (m.includes('PRE_ORDER') || m.includes('PREORDER')) return 'Pre-Order';
+                                            if (m.includes('PAY_LATER')) return 'Pay Later';
+                                            if (m.includes('CASH')) return 'Cash';
+                                            if (m.includes('RFID')) return 'RFID';
+                                            return m.replace(/_/g, ' ');
+                                        })();
+
+                                        const isHighlighted = highlightedOrderId && (
+                                            String(order.orderNo) === String(highlightedOrderId) ||
+                                            String(order.order_number) === String(highlightedOrderId) ||
+                                            String(order.id) === String(highlightedOrderId)
+                                        );
+
+                                        return (
+                                            <div
+                                                key={order.orderNo || order.id || idx}
+                                                className={`p-4 sm:p-5 rounded-2xl shadow-2xs hover:shadow-xs transition-all flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 ${
+                                                    isHighlighted
+                                                        ? 'bg-emerald-50/90 border-2 border-emerald-400 ring-4 ring-emerald-400/20 shadow-md scale-[1.01] duration-500'
+                                                        : 'bg-white border border-slate-200/80 hover:border-slate-300'
+                                                }`}
+                                            >
+                                                <div className="space-y-1.5 flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2.5 flex-wrap">
+                                                        <span className="font-mono font-bold text-xs text-slate-900">{order.orderNo || `TXN-${order.id}`}</span>
+                                                        {isHighlighted && (
+                                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 animate-pulse inline-flex items-center gap-1">
+                                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+                                                                JUST UPDATED
+                                                            </span>
+                                                        )}
+                                                        <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold inline-flex items-center gap-1.5 ${
+                                                            order.status === 'VOIDED' || order.is_voided
+                                                                ? 'bg-rose-50 text-rose-700 border border-rose-200/70'
+                                                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200/70'
+                                                        }`}>
+                                                            <span className={`w-1.5 h-1.5 rounded-full ${order.status === 'VOIDED' || order.is_voided ? 'bg-rose-500' : 'bg-emerald-500'}`}></span>
+                                                            <span>{order.status === 'VOIDED' || order.is_voided ? 'Voided' : 'Completed'}</span>
+                                                        </span>
+                                                        <span className="text-[11px] text-slate-400 font-mono">{order.timestamp || order.date || 'Today'}</span>
+                                                    </div>
+                                                    <div className="text-xs text-slate-600 flex items-center gap-2 flex-wrap">
+                                                        <span className="font-semibold text-slate-900">{order.student || order.student_name || 'Walk-in Customer'}</span>
+                                                        <span className="text-slate-400 font-mono text-[11px]">({order.studentId || order.student_id_number || 'Walk-in'})</span>
+                                                        <span className="text-slate-300">•</span>
+                                                        <span className="text-[11px] font-medium text-slate-600 px-2 py-0.5 bg-slate-100/90 border border-slate-200/60 rounded-md">{methodText}</span>
+                                                    </div>
+                                                    <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
+                                                        <Icon.ShoppingBag className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                                        <span className="truncate">{order.items && order.items.length > 0 ? order.items.map(i => `${i.qty || i.quantity || 1}x ${i.name || i.product_name}`).join(', ') : 'Canteen Meal Order'}</span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="text-right space-y-2 self-end sm:self-center shrink-0">
+                                                    <div className="font-outfit font-bold text-base sm:text-lg text-slate-900 tabular-nums">₱{(parseFloat(order.total || order.final_amount || 0)).toFixed(2)}</div>
+                                                    {(order.status !== 'VOIDED' && !order.is_voided) ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => onVoidClick && onVoidClick(order)}
+                                                            className="h-8 px-3 text-slate-600 hover:text-rose-700 bg-slate-50 hover:bg-rose-50/80 rounded-xl border border-slate-200/70 hover:border-rose-200 font-medium text-xs transition-all active:scale-98 flex items-center gap-1.5 cursor-pointer ml-auto"
+                                                            title="Void this order"
+                                                        >
+                                                            <Icon.RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+                                                            <span>Void Order</span>
+                                                        </button>
+                                                    ) : (
+                                                        <span className="px-2.5 py-1 rounded-xl bg-slate-100 border border-slate-200/60 text-slate-500 text-[11px] font-medium inline-block">
+                                                            Voided
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+
+                                    {/* PAGINATION BAR */}
+                                    {transactions.length > 0 && (
+                                        <div className="pt-2">
+                                            <Pagination
+                                                currentPage={currentPage}
+                                                totalPages={totalPages}
+                                                onPageChange={setCurrentPage}
+                                                totalItems={transactions.length}
+                                                itemsPerPage={itemsPerPage}
+                                                itemLabel="orders"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+        if (typeof window !== 'undefined') {
+            window.TransactionHistoryView = TransactionHistoryView;
+        }
+
+        // =====================================================================
         // 4. CASHIER POS MODULE (WITH DIETARY LOCK ALERTS & SHIFT DRAWER TALLY)
         // =====================================================================
-        function CashierView({ posCart, posTotal, menuCatalog, registeredUsers, recentOrders = [], preorders = [], inventoryBatches = [], onClaimPreorderPos, onUpdatePreorderStatus, onRefundPackagedPreorder, onAddToCart, onUpdateQty, onDeleteItem, onClearCart, onCompleteCheckout, onVoidOrder, onSettleDebt, activeTab = 'register', setActiveTab, onSignOut, onSelectRoleQuick, isCloudConnected, onRefreshCloud, notifications = [], onMarkNotifRead, onMarkAllNotifRead, onDeleteNotif, onClearReadNotifs, onActionClick, onRespondLinkRequest, onOpenCommandPalette, onOpenShiftZRead, onOpenMobileSidebar, kdsOrders = [], setKdsOrders, currentUser = null, showToast = () => { },
+        function CashierView({ posCart, posTotal, menuCatalog, registeredUsers, recentOrders = [], setRecentOrders = null, preorders = [], inventoryBatches = [], onClaimPreorderPos, onUpdatePreorderStatus, onRefundPackagedPreorder, onAddToCart, onUpdateQty, onDeleteItem, onClearCart, onCompleteCheckout, onVoidOrder, onSettleDebt, activeTab = 'register', setActiveTab, onSignOut, onSelectRoleQuick, isCloudConnected, onRefreshCloud, notifications = [], onMarkNotifRead, onMarkAllNotifRead, onDeleteNotif, onClearReadNotifs, onActionClick, onRespondLinkRequest, onOpenCommandPalette, onOpenShiftZRead, onOpenMobileSidebar, kdsOrders = [], setKdsOrders, currentUser = null, showToast = () => { },
             parentStudentLinks = [],
             // ── Governance Policy Props (sourced from canteen_settings DB via root app state) ──
             globalPayLaterCap = 1000.00,
@@ -18577,6 +19037,7 @@
             const cashierNotifs = (notifications || []).filter(n => !n.role || n.role === 'ALL' || n.role === 'CASHIER');
             const cashierUnreadCount = cashierNotifs.filter(n => !n.is_read && !n.read).length;
             const searchInputRef = useRef(null);
+            const prevKioskStateRef = useRef('IDLE');
 
             useEffect(() => {
                 const handleCmdK = (e) => {
@@ -18681,8 +19142,18 @@
                     const res = await window.CanteenDB.syncOfflineCache();
                     setOfflineQueueCount(0);
                     setSyncMessage('EDGE CACHE SYNC COMPLETE! All offline POS records committed.');
+                    if (typeof window !== 'undefined' && window.dispatchEvent) {
+                        window.dispatchEvent(new CustomEvent('canteen:transaction-updated', {
+                            detail: { orderId: 'EDGE-SYNC-' + Date.now(), totalAmount: 0 }
+                        }));
+                    }
                 } catch (err) {
                     setSyncMessage('EDGE CACHE SYNCED! 0 pending offline conflict records.');
+                    if (typeof window !== 'undefined' && window.dispatchEvent) {
+                        window.dispatchEvent(new CustomEvent('canteen:transaction-updated', {
+                            detail: { orderId: 'EDGE-SYNC-' + Date.now(), totalAmount: 0 }
+                        }));
+                    }
                 } finally {
                     setTimeout(() => {
                         setIsSyncingOffline(false);
@@ -19015,6 +19486,18 @@
 
                 const processKioskUpdate = (data) => {
                     if (!data) return;
+                    if (data.kiosk_state === 'SETTLEMENT' && prevKioskStateRef.current !== 'SETTLEMENT') {
+                        if (typeof window !== 'undefined' && window.dispatchEvent) {
+                            window.dispatchEvent(new CustomEvent('canteen:transaction-updated', {
+                                detail: {
+                                    orderId: data.order_number || data.orderNo || `KIOSK-${Date.now()}`,
+                                    totalAmount: parseFloat(data.total_amount) || 0
+                                }
+                            }));
+                        }
+                    }
+                    prevKioskStateRef.current = data.kiosk_state || 'IDLE';
+
                     setKioskStatus(prev => ({
                         ...prev,
                         online: true,
@@ -19043,7 +19526,7 @@
                     }
 
                     // Auto-mirror detected items to POS register ONLY if register is idle and mirroring enabled
-                    if (autoMirrorKiosk && isRegisterIdle && data.cart && data.cart.length > 0 && (data.kiosk_state === 'SCANNING' || data.kiosk_state === 'COUNTDOWN' || data.kiosk_state === 'SETTLEMENT')) {
+                    if (autoMirrorKiosk && isRegisterIdle && data.cart && data.cart.length > 0 && (data.kiosk_state === 'SCANNING' || data.kiosk_state === 'COUNTDOWN' || data.kiosk_state === 'CONFIRMATION' || data.kiosk_state === 'PAYMENT_CONFIRMATION' || data.kiosk_state === 'SETTLEMENT')) {
                         data.cart.forEach(kItem => {
                             const itemNameKey = (kItem.name || '').toLowerCase().trim();
                             if (dismissedAILabels && dismissedAILabels.has(itemNameKey)) return;
@@ -19454,6 +19937,15 @@
 
                     setLastCompletedOrder(orderData);
                     await onCompleteCheckout(orderData);
+                    if (typeof window !== 'undefined' && window.dispatchEvent) {
+                        window.dispatchEvent(new CustomEvent('canteen:transaction-updated', {
+                            detail: {
+                                orderId: orderData.orderNo,
+                                totalAmount: orderData.total,
+                                order: orderData
+                            }
+                        }));
+                    }
                     setReceiptModalOpen(true);
                     setCashTendered('');
                     setPayLaterNote('');
@@ -20409,140 +20901,20 @@
 
                     {/* SUB-TAB 4: SHIFT HISTORY & MANAGER VOID AUDIT */}
                     {currentTab === 'shift_history' && (
-                        <div className="flex-1 p-6 space-y-6 overflow-y-auto">
-                            <div className="enterprise-card p-6 sm:p-7 rounded-3xl bg-white space-y-6 shadow-xs border border-slate-200/80">
-                                {/* HEADER & VOID AUTH ACTION */}
-                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-5">
-                                    <div className="flex items-center gap-3.5">
-                                        <div className="w-10 h-10 rounded-2xl bg-brand-50 border border-brand-100/80 text-brand-700 flex items-center justify-center shadow-2xs shrink-0">
-                                            <Icon.FileText className="w-5 h-5" />
-                                        </div>
-                                        <div>
-                                            <h2 className="font-outfit text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Transaction History</h2>
-                                        </div>
-                                    </div>
-                                    <button
-                                        onClick={() => setVoidModalOpen(true)}
-                                        className="h-9 px-3.5 bg-[#7B1E22] hover:bg-[#631418] text-white font-semibold text-xs rounded-xl shadow-2xs transition-all active:scale-98 flex items-center gap-2 cursor-pointer"
-                                    >
-                                        <Icon.Lock className="w-3.5 h-3.5" />
-                                        <span>Authorize Void</span>
-                                    </button>
-                                </div>
-
-                                {/* APPLE HIG STAT METRICS */}
-                                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                                    <div className="p-4 sm:p-5 bg-slate-50/70 rounded-2xl border border-slate-200/60 space-y-1">
-                                        <span className="text-xs font-medium text-slate-500">Orders</span>
-                                        <div className="font-outfit text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums">{recentOrders.length}</div>
-                                    </div>
-                                    <div className="p-4 sm:p-5 bg-slate-50/70 rounded-2xl border border-slate-200/60 space-y-1">
-                                        <span className="text-xs font-medium text-slate-500">Gross Revenue</span>
-                                        <div className="font-outfit text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums">₱{recentOrders.filter(o => o.status !== 'VOIDED').reduce((s, o) => s + (o.total || 0), 0).toFixed(2)}</div>
-                                    </div>
-                                    <div className="p-4 sm:p-5 bg-slate-50/70 rounded-2xl border border-slate-200/60 space-y-1">
-                                        <span className="text-xs font-medium text-slate-500">Pay Later</span>
-                                        <div className="font-outfit text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums">₱{recentOrders.filter(o => o.paymentMethod === 'PAY_LATER' && o.status !== 'VOIDED').reduce((s, o) => s + (o.total || 0), 0).toFixed(2)}</div>
-                                    </div>
-                                    <div className="p-4 sm:p-5 bg-slate-50/70 rounded-2xl border border-slate-200/60 space-y-1">
-                                        <span className="text-xs font-medium text-slate-500">Voided</span>
-                                        <div className="font-outfit text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums">{recentOrders.filter(o => o.status === 'VOIDED').length}</div>
-                                    </div>
-                                </div>
-
-                                {/* ORDERS STREAM WITH PAGINATION */}
-                                <div className="space-y-4">
-                                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                                        <h3 className="font-outfit font-bold text-slate-900 text-base tracking-tight">Transactions</h3>
-                                        <span className="text-xs text-slate-400 font-medium">{recentOrders.length} {recentOrders.length === 1 ? 'order' : 'orders'}</span>
-                                    </div>
-                                    {recentOrders.length === 0 ? (
-                                        <div className="p-12 text-center bg-slate-50/60 rounded-3xl border border-dashed border-slate-200 text-slate-400 text-xs space-y-2">
-                                            <Icon.FileText className="w-8 h-8 text-slate-300 mx-auto" />
-                                            <p className="font-medium text-slate-600 text-sm">No Transactions</p>
-                                            <p className="text-slate-400">No completed orders recorded in this shift session yet.</p>
-                                        </div>
-                                    ) : (
-                                        <div className="space-y-3">
-                                            {paginatedShiftOrders.map((order, idx) => {
-                                                const methodText = (() => {
-                                                    const m = (order.paymentMethod || 'RFID').toUpperCase();
-                                                    if (m.includes('PRE_ORDER') || m.includes('PREORDER')) return 'Pre-Order';
-                                                    if (m.includes('PAY_LATER')) return 'Pay Later';
-                                                    if (m.includes('CASH')) return 'Cash';
-                                                    if (m.includes('RFID')) return 'RFID';
-                                                    return (order.paymentMethod || 'RFID').replace(/_/g, ' ');
-                                                })();
-
-                                                return (
-                                                    <div key={order.orderNo || idx} className="p-4 sm:p-5 bg-white border border-slate-200/80 hover:border-slate-300 rounded-2xl shadow-2xs hover:shadow-xs transition-all flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                                                        <div className="space-y-1.5 flex-1 min-w-0">
-                                                            <div className="flex items-center gap-2.5 flex-wrap">
-                                                                <span className="font-mono font-bold text-xs text-slate-900">{order.orderNo || `TXN-${order.id}`}</span>
-                                                                <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold inline-flex items-center gap-1.5 ${
-                                                                    order.status === 'VOIDED'
-                                                                        ? 'bg-rose-50 text-rose-700 border border-rose-200/70'
-                                                                        : 'bg-emerald-50 text-emerald-700 border border-emerald-200/70'
-                                                                }`}>
-                                                                    <span className={`w-1.5 h-1.5 rounded-full ${order.status === 'VOIDED' ? 'bg-rose-500' : 'bg-emerald-500'}`}></span>
-                                                                    <span>{order.status === 'VOIDED' ? 'Voided' : 'Completed'}</span>
-                                                                </span>
-                                                                <span className="text-[11px] text-slate-400 font-mono">{order.timestamp || order.date || 'Today'}</span>
-                                                            </div>
-                                                            <div className="text-xs text-slate-600 flex items-center gap-2 flex-wrap">
-                                                                <span className="font-semibold text-slate-900">{order.student || 'Walk-in Customer'}</span>
-                                                                <span className="text-slate-400 font-mono text-[11px]">({order.studentId || 'Walk-in'})</span>
-                                                                <span className="text-slate-300">•</span>
-                                                                <span className="text-[11px] font-medium text-slate-600 px-2 py-0.5 bg-slate-100/90 border border-slate-200/60 rounded-md">{methodText}</span>
-                                                            </div>
-                                                            <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
-                                                                <Icon.ShoppingBag className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                                                <span className="truncate">{order.items && order.items.length > 0 ? order.items.map(i => `${i.qty || 1}x ${i.name}`).join(', ') : 'Canteen Meal Order'}</span>
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="text-right space-y-2 self-end sm:self-center shrink-0">
-                                                            <div className="font-outfit font-bold text-base sm:text-lg text-slate-900 tabular-nums">₱{(order.total || 0).toFixed(2)}</div>
-                                                            {order.status !== 'VOIDED' ? (
-                                                                <button
-                                                                    onClick={() => {
-                                                                        setSelectedOrderToVoid(order);
-                                                                        setVoidModalOpen(true);
-                                                                    }}
-                                                                    className="h-8 px-3 text-slate-600 hover:text-rose-700 bg-slate-50 hover:bg-rose-50/80 rounded-xl border border-slate-200/70 hover:border-rose-200 font-medium text-xs transition-all active:scale-98 flex items-center gap-1.5 cursor-pointer ml-auto"
-                                                                    title="Void this order"
-                                                                >
-                                                                    <Icon.RotateCcw className="w-3.5 h-3.5 text-slate-400" />
-                                                                    <span>Void Order</span>
-                                                                </button>
-                                                            ) : (
-                                                                <span className="px-2.5 py-1 rounded-xl bg-slate-100 border border-slate-200/60 text-slate-500 text-[11px] font-medium inline-block">
-                                                                    Voided
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
-
-                                            {/* APPLE HIG PAGINATION BAR */}
-                                            {recentOrders.length > 0 && (
-                                                <div className="pt-2">
-                                                    <Pagination
-                                                        currentPage={shiftOrdersPage}
-                                                        totalPages={totalShiftOrdersPages}
-                                                        onPageChange={setShiftOrdersPage}
-                                                        totalItems={recentOrders.length}
-                                                        itemsPerPage={shiftOrdersPerPage}
-                                                        itemLabel="orders"
-                                                    />
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
+                        <TransactionHistoryView
+                            initialOrders={recentOrders}
+                            registeredUsers={registeredUsers}
+                            onOrdersUpdate={(updatedList) => {
+                                if (typeof setRecentOrders === 'function') {
+                                    setRecentOrders(updatedList);
+                                }
+                            }}
+                            onVoidClick={(order) => {
+                                setSelectedOrderToVoid(order);
+                                setVoidModalOpen(true);
+                            }}
+                            onAuthorizeVoid={() => setVoidModalOpen(true)}
+                        />
                     )}
 
                     {/* SUB-TAB: FACULTY & STAFF SALARY DEDUCTIONS MODULE (APPLE DESIGN 2026) */}
@@ -22247,21 +22619,23 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
             ]);
 
             // Trained Classes inside active PyTorch .pt Model Weights File (novalunch_yolo.pt)
-            const AI_CLASS_REGISTRY = [
+            const YOLO_PT_CLASSES = [
                 { classId: 0, label: 'Buttercream_Biscuits', name: 'Buttercream Biscuits', defaultCategory: 'Snacks & Bakery', source: 'novalunch_yolo.pt (Class 0)' },
                 { classId: 1, label: 'Jack_And_Jill_Magic_Chips', name: 'Jack & Jill Magic Chips', defaultCategory: 'Snacks & Bakery', source: 'novalunch_yolo.pt (Class 1)' }
             ];
+            const AI_CLASS_REGISTRY = YOLO_PT_CLASSES;
             window.AI_CLASS_REGISTRY = AI_CLASS_REGISTRY;
 
-            const [ptModelClasses, setPtModelClasses] = useState(AI_CLASS_REGISTRY);
+            const [ptModelClasses, setPtModelClasses] = useState(YOLO_PT_CLASSES);
 
             // Helper to find auto-match candidate product from menuCatalog
             const getAutoMatchCandidate = (clsLabel) => {
                 const clean = clsLabel.toLowerCase().replace(/_/g, ' ').replace(/-/g, ' ');
                 const words = clean.split(/\s+/).filter(w => w.length > 2);
                 return menuCatalog.find(p => {
+                    if (p.is_archived || p.status === 'archived' || p.available === false || p.is_available === false) return false;
                     const prodName = p.name.toLowerCase();
-                    const prodAi = (p.aiLabel || '').toLowerCase();
+                    const prodAi = (p.aiLabel || p.ai_label || '').toLowerCase();
                     if (prodAi === clsLabel.toLowerCase()) return true;
                     if (prodName.includes(clean) || clean.includes(prodName)) return true;
                     return words.some(w => prodName.includes(w));
@@ -22271,11 +22645,11 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
             const handleAutoAssignAll = () => {
                 let boundCount = 0;
                 ptModelClasses.forEach(cls => {
-                    const isAlreadyMapped = menuCatalog.some(p => p.aiLabel && p.aiLabel.toLowerCase() === cls.label.toLowerCase());
+                    const isAlreadyMapped = menuCatalog.some(p => !p.is_archived && p.status !== 'archived' && (p.aiLabel || p.ai_label || '').toLowerCase() === cls.label.toLowerCase());
                     if (!isAlreadyMapped) {
                         const candidate = getAutoMatchCandidate(cls.label);
                         if (candidate) {
-                            onUpdateProduct({ ...candidate, aiLabel: cls.label });
+                            onUpdateProduct({ ...candidate, aiLabel: cls.label, ai_label: cls.label });
                             if (window.CanteenDB && candidate.id) {
                                 window.CanteenDB.updateProductAiLabel(candidate.id, cls.label).catch(err => console.warn("AI sync error", err));
                             }
@@ -22291,20 +22665,27 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
             };
 
             const handleAutoAssignSingle = (clsLabel) => {
+                const existing = menuCatalog.find(p => !p.is_archived && p.status !== 'archived' && (p.aiLabel || p.ai_label || '').toLowerCase() === clsLabel.toLowerCase());
+                if (existing) {
+                    showToast(`AI Vision Class '${clsLabel}' is already mapped to ${existing.name}. Please unassign it first.`, "warning");
+                    return;
+                }
                 const candidate = getAutoMatchCandidate(clsLabel);
                 if (candidate) {
-                    onUpdateProduct({ ...candidate, aiLabel: clsLabel });
+                    onUpdateProduct({ ...candidate, aiLabel: clsLabel, ai_label: clsLabel });
                     if (window.CanteenDB && candidate.id) {
                         window.CanteenDB.updateProductAiLabel(candidate.id, clsLabel).catch(err => console.warn("AI sync error", err));
                     }
                     showToast(`Successfully bound AI class "${clsLabel}" to "${candidate.name}"!`, "success");
+                } else {
+                    showToast(`No unassigned matching menu item found for class "${clsLabel}".`, "info");
                 }
             };
 
             const handleUnlinkClass = (clsLabel) => {
-                const linkedProds = menuCatalog.filter(p => p.aiLabel && p.aiLabel.toLowerCase() === clsLabel.toLowerCase());
+                const linkedProds = menuCatalog.filter(p => (p.aiLabel || p.ai_label || '').toLowerCase() === clsLabel.toLowerCase());
                 linkedProds.forEach(prod => {
-                    onUpdateProduct({ ...prod, aiLabel: '' });
+                    onUpdateProduct({ ...prod, aiLabel: '', ai_label: null });
                     if (window.CanteenDB && prod.id) {
                         window.CanteenDB.updateProductAiLabel(prod.id, '').catch(err => console.warn("AI unlink sync error", err));
                     }
@@ -22335,6 +22716,108 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
             const [editRfidType, setEditRfidType] = useState('125kHz EM4100');
             const [editManagerPin, setEditManagerPin] = useState('1234');
             const [editShowPin, setEditShowPin] = useState(false);
+            const [rfidJustScanned, setRfidJustScanned] = useState(false);
+
+            // Web Audio API confirmation tone for successful RFID card capture
+            const playRfidBeep = () => {
+                try {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    if (!AudioCtx) return;
+                    const ctx = new AudioCtx();
+                    if (ctx.state === 'suspended') {
+                        ctx.resume();
+                    }
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(880, ctx.currentTime);
+                    gain.gain.setValueAtTime(0.18, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.14);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start();
+                    osc.stop(ctx.currentTime + 0.15);
+                } catch (_) {}
+            };
+
+            // Autofocus Badge UID input when Edit Account modal opens or RFID tab is selected
+            useEffect(() => {
+                if (editAccountModalOpen && editAccountTab === 'rfid_security') {
+                    const timer = setTimeout(() => {
+                        const input = document.getElementById('badge-uid-input');
+                        if (input) {
+                            input.focus();
+                            input.select?.();
+                        }
+                    }, 80);
+                    return () => clearTimeout(timer);
+                }
+            }, [editAccountModalOpen, editAccountTab]);
+
+            // USB Keyboard-Wedge RFID capture listener on Edit Account modal with memory leak cleanup
+            useEffect(() => {
+                if (!editAccountModalOpen) {
+                    setRfidJustScanned(false);
+                    return;
+                }
+
+                let rfidBuffer = '';
+                let lastKeyTime = 0;
+
+                const handleModalRfidWedge = (e) => {
+                    const now = Date.now();
+                    const timeDiff = now - lastKeyTime;
+                    lastKeyTime = now;
+
+                    if (e.key === 'Enter') {
+                        const trimmed = rfidBuffer.trim();
+                        if (trimmed.length >= 4) {
+                            e.preventDefault();
+                            e.stopPropagation();
+
+                            // Clean and normalize buffered UID (strip dashes, whitespace, non-alphanumeric)
+                            const cleanUid = trimmed.replace(/[\s\-_]/g, '').toUpperCase();
+                            setEditRfidUid(cleanUid);
+                            setEditAccountTab('rfid_security');
+                            setRfidJustScanned(true);
+
+                            const inputEl = document.getElementById('badge-uid-input');
+                            if (inputEl) {
+                                inputEl.value = cleanUid;
+                                inputEl.focus();
+                            }
+
+                            playRfidBeep();
+                            showToast(`Badge UID Captured: ${cleanUid}`, "success");
+
+                            setTimeout(() => {
+                                setRfidJustScanned(false);
+                            }, 3000);
+                        }
+                        rfidBuffer = '';
+                        return;
+                    }
+
+                    // Buffer rapid numeric/hex keystrokes (< 50ms interval typical of USB wedge scanners)
+                    if (e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                        if (/^[0-9a-zA-Z\-_]$/.test(e.key)) {
+                            // If interval between keys is > 60ms, user is typing manually; restart buffer
+                            if (rfidBuffer.length > 0 && timeDiff > 60) {
+                                rfidBuffer = e.key;
+                            } else {
+                                rfidBuffer += e.key;
+                            }
+                        } else {
+                            rfidBuffer = '';
+                        }
+                    }
+                };
+
+                window.addEventListener('keydown', handleModalRfidWedge, true);
+                return () => {
+                    window.removeEventListener('keydown', handleModalRfidWedge, true);
+                };
+            }, [editAccountModalOpen]);
 
             // Dietary & Family / Wards
             const [editAllergens, setEditAllergens] = useState([]);
@@ -22741,6 +23224,9 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                         salaryDeductionEligible: isTeacher || accountRole === 'cashier',
                         accumulatedSalaryDeduction: 0.00,
                         guardian: accountRole === 'parent' ? (accountGuardianName.trim() || (accountWardStudentId.trim() ? `Ward: ${accountWardStudentId.trim()}` : undefined)) : undefined,
+                        linked_students: (accountRole === 'parent' && accountWardStudentId.trim()) ? [accountWardStudentId.trim()] : [],
+                        linkedStudentId: (accountRole === 'parent' && accountWardStudentId.trim()) ? accountWardStudentId.trim() : null,
+                        linkedStudentName: (accountRole === 'parent' && accountGuardianName.trim()) ? accountGuardianName.trim() : null,
                         allergies: cleanedAllergies,
                         tempPassword: accountPassword,
                         managerPin: finalManagerPin,
@@ -22802,13 +23288,23 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                 return matchesRole && matchesSearch;
             });
 
-            const filteredStudents = registeredUsers.filter(u =>
-                (u.role?.toLowerCase() || '') === 'student' && (
-                    u.name?.toLowerCase().includes(studentSearchQuery.toLowerCase()) ||
-                    u.studentId?.toLowerCase().includes(studentSearchQuery.toLowerCase()) ||
-                    (u.rfidUid || '').toLowerCase().includes(studentSearchQuery.toLowerCase())
-                )
-            );
+            const filteredStudents = (registeredUsers || []).filter(u => {
+                if (!u) return false;
+                const role = (u.role?.toLowerCase() || '');
+                if (role !== 'student') return false;
+                if (studentSubFilter === 'linked' && !u.rfidUid) return false;
+                if (studentSubFilter === 'unlinked' && u.rfidUid) return false;
+                const q = (studentSearchQuery || '').toLowerCase().trim();
+                if (!q) return true;
+                return (
+                    (u.name || '').toLowerCase().includes(q) ||
+                    (u.studentId || '').toLowerCase().includes(q) ||
+                    (u.rfidUid || '').toLowerCase().includes(q) ||
+                    (u.email || '').toLowerCase().includes(q) ||
+                    (u.phone || '').toLowerCase().includes(q) ||
+                    (u.department || '').toLowerCase().includes(q)
+                );
+            });
 
             const unlinkedRfidCount = registeredUsers.filter(u => u.role?.toLowerCase() === 'student' && !u.rfidUid).length;
 
@@ -23013,15 +23509,18 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                 }
 
                 const cleanAiLabel = (editProdAiLabel && editProdAiLabel !== 'NONE') ? editProdAiLabel.trim() : null;
-                if (cleanAiLabel && editProdAvailable) {
+                if (cleanAiLabel && editProdAvailable && !selectedProduct.is_archived && selectedProduct.status !== 'archived') {
                     const duplicateAi = menuCatalog.find(p =>
                         p.id !== selectedProduct.id &&
+                        !p.is_archived &&
+                        p.status !== 'archived' &&
                         p.available !== false &&
                         p.is_available !== false &&
                         (p.aiLabel || p.ai_label || '').toLowerCase() === cleanAiLabel.toLowerCase()
                     );
                     if (duplicateAi) {
-                        setEditProductError(`AI Detection Class "${cleanAiLabel}" is already assigned to active item "${duplicateAi.name}". Each detection class can only be assigned to one active item.`);
+                        showToast(`AI Vision Class '${cleanAiLabel}' is already mapped to ${duplicateAi.name}. Please unassign it first.`, "warning");
+                        setEditProductError(`AI Vision Class '${cleanAiLabel}' is already mapped to ${duplicateAi.name}. Please unassign it first.`);
                         return;
                     }
                 }
@@ -23033,6 +23532,9 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                     stock: stockNum,
                     category: editProdCategory,
                     available: editProdAvailable,
+                    is_available: editProdAvailable,
+                    is_archived: Boolean(selectedProduct.is_archived === true || selectedProduct.is_archived === 'true'),
+                    status: Boolean(selectedProduct.is_archived === true || selectedProduct.is_archived === 'true') ? 'archived' : 'active',
                     ai_label: cleanAiLabel,
                     aiLabel: cleanAiLabel,
                     calories: parseInt(editProdCalories) || 0,
@@ -23074,12 +23576,15 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                 const cleanAiLabel = (prodAiLabel && prodAiLabel !== 'NONE') ? prodAiLabel.trim() : null;
                 if (cleanAiLabel) {
                     const duplicateAi = menuCatalog.find(p =>
+                        !p.is_archived &&
+                        p.status !== 'archived' &&
                         p.available !== false &&
                         p.is_available !== false &&
                         (p.aiLabel || p.ai_label || '').toLowerCase() === cleanAiLabel.toLowerCase()
                     );
                     if (duplicateAi) {
-                        setAddProductError(`AI Detection Class "${cleanAiLabel}" is already assigned to active item "${duplicateAi.name}". Each detection class can only be assigned to one active item.`);
+                        showToast(`AI Vision Class '${cleanAiLabel}' is already mapped to ${duplicateAi.name}. Please unassign it first.`, "warning");
+                        setAddProductError(`AI Vision Class '${cleanAiLabel}' is already mapped to ${duplicateAi.name}. Please unassign it first.`);
                         return;
                     }
                 }
@@ -23091,6 +23596,9 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                     price: priceNum,
                     stock: stockNum,
                     available: true,
+                    is_available: true,
+                    is_archived: false,
+                    status: 'active',
                     ai_label: cleanAiLabel,
                     aiLabel: cleanAiLabel,
                     calories: parseInt(prodCalories) || 0,
@@ -24135,21 +24643,14 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                                     Array.from({ length: 5 }).map((_, idx) => (
                                                         <SkeletonTableRow key={idx} columns={9} />
                                                     ))
-                                                ) : filteredUsers.length === 0 ? (
+                                                ) : (!filteredStudents || filteredStudents.length === 0) ? (
                                                     <tr>
-                                                        <td colSpan="9" className="py-8">
-                                                            <EmptyStateCard
-                                                                icon={Icon.Users}
-                                                                title="No Student Records Found"
-                                                                description={`No student accounts match "${userSearchQuery || studentSubFilter}".`}
-                                                                actionText="Reset Search"
-                                                                onAction={() => { setUserSearchQuery(''); setStudentSubFilter('all'); }}
-                                                                className="my-2"
-                                                            />
+                                                        <td colSpan="100%" className="text-center py-8 text-gray-500">
+                                                            No students match this filter.
                                                         </td>
                                                     </tr>
                                                 ) : (
-                                                    filteredUsers.map(user => (
+                                                    filteredStudents.map(user => (
                                                         <tr key={user.id} className="hover:bg-slate-50/80 transition-colors">
                                                             <td className="py-3.5 px-3.5">
                                                                 <div className="font-bold text-slate-900 flex items-center gap-2.5">
@@ -24264,7 +24765,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                                                 title="No Staff Accounts Found"
                                                                 description="No staff or faculty accounts match the current filter."
                                                                 actionText="Reset Search"
-                                                                onAction={() => { setUserSearchQuery(''); setStaffSubFilter('all'); }}
+                                                                onAction={() => { setStudentSearchQuery(''); setStaffSubFilter('all'); }}
                                                                 className="my-2"
                                                             />
                                                         </td>
@@ -24365,7 +24866,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                                                 title="No Parent Accounts Found"
                                                                 description="No registered parent or guardian accounts match your search."
                                                                 actionText="Reset Search"
-                                                                onAction={() => { setUserSearchQuery(''); }}
+                                                                onAction={() => { setStudentSearchQuery(''); }}
                                                                 className="my-2"
                                                             />
                                                         </td>
@@ -24394,10 +24895,14 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                                                 </span>
                                                             </td>
                                                             <td className="py-3.5 px-3">
-                                                                <div className="inline-flex items-center gap-1.5 bg-brand-50 border border-brand-200 px-2.5 py-1 rounded-xl text-brand-900 font-bold shadow-2xs">
-                                                                    <Icon.GraduationCap className="w-3.5 h-3.5 text-brand-700" />
-                                                                    <span>{user.guardian || user.linkedStudentName || "Joshua Lupisan (2023-01900)"}</span>
-                                                                </div>
+                                                                {user.guardian || user.linkedStudentName || (Array.isArray(user.linked_students) && user.linked_students.length > 0) ? (
+                                                                    <div className="inline-flex items-center gap-1.5 bg-brand-50 border border-brand-200 px-2.5 py-1 rounded-xl text-brand-900 font-bold shadow-2xs">
+                                                                        <Icon.GraduationCap className="w-3.5 h-3.5 text-brand-700" />
+                                                                        <span>{user.guardian || user.linkedStudentName || (Array.isArray(user.linked_students) ? user.linked_students.join(', ') : 'Linked Student')}</span>
+                                                                    </div>
+                                                                ) : (
+                                                                    <span className="text-slate-400 text-xs italic">No Dependents Linked</span>
+                                                                )}
                                                             </td>
                                                             <td className="py-3.5 px-3">
                                                                 <StatusBadge type={user.status === 'active' ? 'success' : 'archived'} text={user.status || 'active'} />
@@ -24499,7 +25004,9 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                                                             <div className="text-[10px] text-slate-400">Cap: ₱{(parseFloat(user.dailyCap) || 200).toFixed(2)}</div>
                                                                         </div>
                                                                     ) : role === 'parent' ? (
-                                                                        <span className="font-semibold text-indigo-900 text-[11px]">{user.guardian || user.linkedStudentName || "Joshua Lupisan (2023-01900)"}</span>
+                                                                        <span className={user.guardian || user.linkedStudentName || (Array.isArray(user.linked_students) && user.linked_students.length > 0) ? "font-semibold text-indigo-900 text-[11px]" : "text-slate-400 text-[11px] italic"}>
+                                                                            {user.guardian || user.linkedStudentName || (Array.isArray(user.linked_students) && user.linked_students.length > 0 ? user.linked_students.join(', ') : "No Dependents Linked")}
+                                                                        </span>
                                                                     ) : role === 'teacher' ? (
                                                                         <span className="font-bold text-indigo-700 text-[11px]">Payroll: ₱{(parseFloat(user.accumulatedSalaryDeduction) || 0).toFixed(2)}</span>
                                                                     ) : (
@@ -24644,10 +25151,41 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                                                 <td className="py-2.5 px-3 text-slate-500">{item.category}</td>
                                                                 <td className="py-2.5 px-3 font-outfit font-semibold tabular-nums text-slate-900">₱{item.price.toFixed(2)}</td>
                                                                 <td className="py-2.5 px-3 font-medium text-slate-700 tabular-nums">{item.stock} units</td>
-                                                                <td className="py-2.5 px-3"><StatusBadge type={item.available !== false ? 'success' : 'archived'} text={item.available !== false ? 'Available' : 'Archived'} /></td>
+                                                                <td className="py-2.5 px-3">
+                                                                    {(() => {
+                                                                        const isArchived = Boolean(item.is_archived === true || item.is_archived === 'true' || item.archived === true || item.status === 'archived');
+                                                                        const itemStock = parseInt(item.stock !== undefined ? item.stock : (item.stock_quantity !== undefined ? item.stock_quantity : 0)) || 0;
+                                                                        if (isArchived) {
+                                                                            return <StatusBadge type="archived" text="Archived" />;
+                                                                        }
+                                                                        if (itemStock <= 0) {
+                                                                            return <StatusBadge type="warning" text="Out of Stock" />;
+                                                                        }
+                                                                        if (item.available === false || item.is_available === false) {
+                                                                            return <StatusBadge type="neutral" text="Unavailable" />;
+                                                                        }
+                                                                        return <StatusBadge type="success" text="Available" />;
+                                                                    })()}
+                                                                </td>
                                                                 <td className="py-2.5 px-3 text-right space-x-2 whitespace-nowrap">
                                                                     <button onClick={() => openEditProduct(item)} className="text-slate-700 hover:text-slate-900 font-semibold inline-flex items-center gap-1 cursor-pointer transition-colors"><Icon.Edit className="w-3.5 h-3.5" /> Edit</button>
-                                                                    <button onClick={() => setArchiveItem({ id: item.id, name: item.name, type: 'product' })} className="text-slate-400 hover:text-rose-600 font-semibold inline-flex items-center gap-1 ml-2 cursor-pointer transition-colors"><Icon.Archive className="w-3.5 h-3.5" /> Archive</button>
+                                                                    {Boolean(item.is_archived === true || item.is_archived === 'true' || item.archived === true || item.status === 'archived') ? (
+                                                                        <button
+                                                                            onClick={() => onUnarchiveProduct ? onUnarchiveProduct(item.id) : null}
+                                                                            className="text-emerald-600 hover:text-emerald-800 font-semibold inline-flex items-center gap-1 ml-2 cursor-pointer transition-colors"
+                                                                            title="Restore to active catalog"
+                                                                        >
+                                                                            <Icon.RotateCcw className="w-3.5 h-3.5" /> Restore
+                                                                        </button>
+                                                                    ) : (
+                                                                        <button
+                                                                            onClick={() => setArchiveItem({ id: item.id, name: item.name, type: 'product' })}
+                                                                            className="text-slate-400 hover:text-rose-600 font-semibold inline-flex items-center gap-1 ml-2 cursor-pointer transition-colors"
+                                                                            title="Archive product"
+                                                                        >
+                                                                            <Icon.Archive className="w-3.5 h-3.5" /> Archive
+                                                                        </button>
+                                                                    )}
                                                                 </td>
                                                             </tr>
                                                         );
@@ -25023,42 +25561,6 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                                 <div className="text-[11px] text-slate-500">Minimum Threshold</div>
                                             </div>
                                         </div>
-
-                                        {/* MODEL WEIGHTS & CONFIDENCE CONTROLS */}
-                                        <div className="p-4 bg-slate-50/70 rounded-2xl border border-slate-200/60 grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-                                            <div>
-                                                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Vision Weights Engine</label>
-                                                <select
-                                                    value={selectedAiModel}
-                                                    onChange={(e) => setSelectedAiModel(e.target.value)}
-                                                    className="w-full bg-white border border-slate-200/80 rounded-xl p-2 text-xs font-mono text-slate-800 font-medium focus:ring-2 focus:ring-slate-900 outline-none"
-                                                >
-                                                    <option value="novalunch_yolo.pt">novalunch_yolo.pt (Primary YOLO11-OBB)</option>
-                                                    <option value="novalunch_mobilenet_edge.pt">novalunch_mobilenet_edge.pt (Low-Power Edge)</option>
-                                                </select>
-                                            </div>
-                                            <div>
-                                                <div className="flex justify-between items-center text-xs font-semibold mb-1.5">
-                                                    <span className="text-slate-700">Minimum Scan Confidence</span>
-                                                    <span className="text-slate-900 font-mono px-2 py-0.5 bg-white rounded-full border border-slate-200/80 shadow-2xs tabular-nums">{aiConfidenceCutoff}%</span>
-                                                </div>
-                                                <input
-                                                    type="range"
-                                                    min="50"
-                                                    max="95"
-                                                    step="5"
-                                                    value={aiConfidenceCutoff}
-                                                    onChange={(e) => {
-                                                        const val = parseInt(e.target.value);
-                                                        setAiConfidenceCutoff(val);
-                                                        if (window.CanteenDB) {
-                                                            window.CanteenDB.updateSystemSetting('ai_kiosk_mode', { min_confidence: val / 100, review_confidence: aiReviewConfidenceCutoff / 100, enabled: true, auto_checkout: autoCheckoutEnabled });
-                                                        }
-                                                    }}
-                                                    className="w-full accent-slate-900 cursor-pointer"
-                                                />
-                                            </div>
-                                        </div>
                                     </div>
 
                                     {/* 2. CLASSES INSIDE .PT FILE & MENU ASSIGNMENT TABLE */}
@@ -25236,11 +25738,24 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                             if (!linkAiClass) return;
                                             const prod = menuCatalog.find(p => p.id === linkAiSelectedProdId);
                                             if (prod) {
-                                                onUpdateProduct({ ...prod, aiLabel: linkAiClass.aiLabel });
-                                                if (window.CanteenDB && prod.id) {
-                                                    window.CanteenDB.updateProductAiLabel(prod.id, linkAiClass.aiLabel).catch(err => console.warn("AI label cloud sync error", err));
+                                                const cleanClass = linkAiClass.aiLabel;
+                                                const duplicateAi = menuCatalog.find(p =>
+                                                    p.id !== prod.id &&
+                                                    !p.is_archived &&
+                                                    p.status !== 'archived' &&
+                                                    p.available !== false &&
+                                                    p.is_available !== false &&
+                                                    (p.aiLabel || p.ai_label || '').toLowerCase() === cleanClass.toLowerCase()
+                                                );
+                                                if (duplicateAi) {
+                                                    showToast(`AI Vision Class '${cleanClass}' is already mapped to ${duplicateAi.name}. Please unassign it first.`, "warning");
+                                                    return;
                                                 }
-                                                showToast(`Successfully bound AI class "${linkAiClass.aiLabel}" to menu item "${prod.name}" (₱${prod.price.toFixed(2)})!`, "success");
+                                                onUpdateProduct({ ...prod, aiLabel: cleanClass, ai_label: cleanClass });
+                                                if (window.CanteenDB && prod.id) {
+                                                    window.CanteenDB.updateProductAiLabel(prod.id, cleanClass).catch(err => console.warn("AI label cloud sync error", err));
+                                                }
+                                                showToast(`Successfully bound AI class "${cleanClass}" to menu item "${prod.name}" (₱${prod.price.toFixed(2)})!`, "success");
                                             }
                                             setLinkAiModalOpen(false);
                                         }} className="space-y-4">
@@ -25411,7 +25926,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                         {(activeTab === 'audit_logs' || activeTab === 'archive_center') && (() => {
                             // Gather all archived entities across categories
                             const archivedUsers = registeredUsers.filter(u => u.status === 'archived');
-                            const archivedProducts = menuCatalog.filter(p => p.available === false || p.status === 'archived');
+                            const archivedProducts = menuCatalog.filter(p => Boolean(p.is_archived === true || p.is_archived === 'true' || p.archived === true || p.status === 'archived'));
                             const archivedOrders = recentOrders.filter(o => o.status === 'voided' || o.status === 'VOIDED' || o.is_voided || o.order_status === 'voided' || o.order_status === 'cancelled' || o.status === 'archived');
                             const archivedBatches = inventoryBatches.filter(b => ['EXPIRED', 'SPOILED', 'ROLLED_OVER', 'DEPLETED', 'archived'].includes(b.status));
                             const archivedTopups = gcashQueue.filter(t => t.status === 'Rejected' || t.status === 'Archived');
@@ -26071,7 +26586,10 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
 
                                     <button
                                         type="button"
-                                        onClick={() => setEditAccountTab('rfid_security')}
+                                        onClick={() => {
+                                            setEditAccountTab('rfid_security');
+                                            setTimeout(() => document.getElementById('badge-uid-input')?.focus(), 60);
+                                        }}
                                         className={`py-1.5 px-2 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer select-none active:scale-95 ${
                                             editAccountTab === 'rfid_security' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
                                         }`}
@@ -26403,7 +26921,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                     <div className="space-y-3.5 p-4 bg-slate-50/70 rounded-2xl border border-slate-200/70">
                                         {/* RFID CARD */}
                                         <div className="p-4 bg-white rounded-xl border border-slate-200/80 space-y-3.5 shadow-2xs">
-                                            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                                            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 flex-wrap gap-2">
                                                 <div className="flex items-center gap-2.5">
                                                     <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
                                                         <Icon.CreditCard className="w-4 h-4" />
@@ -26413,23 +26931,45 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                                         <div className="text-[11px] text-slate-400">10-digit decimal or hex UID</div>
                                                     </div>
                                                 </div>
-                                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider ${
-                                                    editRfidUid ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'
-                                                }`}>
-                                                    {editRfidUid ? 'Linked' : 'Not Linked'}
-                                                </span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200/80 shadow-2xs">
+                                                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                                        <span>Ready for Card Tap...</span>
+                                                    </span>
+                                                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider ${
+                                                        editRfidUid ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'
+                                                    }`}>
+                                                        {editRfidUid ? 'Linked' : 'Not Linked'}
+                                                    </span>
+                                                </div>
                                             </div>
 
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                                                 <div>
-                                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Badge UID</label>
-                                                    <input
-                                                        type="text"
-                                                        value={editRfidUid}
-                                                        onChange={(e) => setEditRfidUid(e.target.value.toUpperCase().trim())}
-                                                        placeholder="e.g. 0008839210"
-                                                        className="w-full bg-slate-50/80 border border-slate-200/80 rounded-xl px-3.5 py-2 text-xs font-mono font-bold text-slate-900 focus:bg-white focus:border-[#7B1E22] transition-all outline-hidden focus:ring-2 focus:ring-[#7B1E22]/15"
-                                                    />
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <label htmlFor="badge-uid-input" className="block text-[11px] font-semibold text-slate-500">Badge UID</label>
+                                                        {rfidJustScanned && (
+                                                            <span className="text-[10px] font-bold text-emerald-600 inline-flex items-center gap-1">
+                                                                <Icon.CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                                                Scanned Successfully
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="relative">
+                                                        <input
+                                                            id="badge-uid-input"
+                                                            type="text"
+                                                            value={editRfidUid}
+                                                            onChange={(e) => setEditRfidUid(e.target.value.toUpperCase().trim())}
+                                                            placeholder="e.g. 0008839210"
+                                                            className="w-full bg-slate-50/80 border border-slate-200/80 rounded-xl pl-3.5 pr-9 py-2 text-xs font-mono font-bold text-slate-900 focus:bg-white focus:border-[#7B1E22] transition-all outline-hidden focus:ring-2 focus:ring-[#7B1E22]/15"
+                                                        />
+                                                        {editRfidUid && (
+                                                            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                                                                <Icon.CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
                                                 <div>
                                                     <label className="block text-[11px] font-semibold text-slate-500 mb-1">Card Standard</label>
@@ -26744,7 +27284,28 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                     <div className="relative">
                                         <select
                                             value={editProdAiLabel}
-                                            onChange={(e) => { setEditProdAiLabel(e.target.value); setEditProductError(''); }}
+                                            onChange={(e) => {
+                                                const selectedVal = e.target.value;
+                                                const cleanVal = (selectedVal && selectedVal !== 'NONE') ? selectedVal.trim() : '';
+                                                if (cleanVal) {
+                                                    const duplicateAi = menuCatalog.find(p =>
+                                                        p.id !== selectedProduct?.id &&
+                                                        !p.is_archived &&
+                                                        p.status !== 'archived' &&
+                                                        p.available !== false &&
+                                                        p.is_available !== false &&
+                                                        (p.aiLabel || p.ai_label || '').toLowerCase() === cleanVal.toLowerCase()
+                                                    );
+                                                    if (duplicateAi) {
+                                                        showToast(`AI Vision Class '${cleanVal}' is already mapped to ${duplicateAi.name}. Please unassign it first.`, "warning");
+                                                        setEditProductError(`AI Vision Class '${cleanVal}' is already mapped to ${duplicateAi.name}. Please unassign it first.`);
+                                                        setEditProdAiLabel('');
+                                                        return;
+                                                    }
+                                                }
+                                                setEditProdAiLabel(selectedVal);
+                                                setEditProductError('');
+                                            }}
                                             className="w-full bg-white hover:bg-slate-50/50 focus:bg-white border border-slate-200/80 focus:border-[#7B1E22] rounded-xl pl-3.5 pr-8 py-2 text-xs font-semibold text-slate-900 appearance-none transition-all outline-hidden focus:ring-2 focus:ring-[#7B1E22]/15 shadow-2xs cursor-pointer"
                                         >
                                             <option value="">None (Manual / Barcode Only)</option>
@@ -26753,6 +27314,11 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                                     {cls.name} ({cls.label})
                                                 </option>
                                             ))}
+                                            {editProdAiLabel && !AI_CLASS_REGISTRY.some(cls => cls.label === editProdAiLabel) && (
+                                                <option value={editProdAiLabel}>
+                                                    {editProdAiLabel}
+                                                </option>
+                                            )}
                                         </select>
                                         <Icon.ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                                     </div>
@@ -27677,7 +28243,27 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                 <div className="relative">
                                     <select
                                         value={prodAiLabel}
-                                        onChange={(e) => { setProdAiLabel(e.target.value); setAddProductError(''); }}
+                                        onChange={(e) => {
+                                            const selectedVal = e.target.value;
+                                            const cleanVal = (selectedVal && selectedVal !== 'NONE') ? selectedVal.trim() : '';
+                                            if (cleanVal) {
+                                                const duplicateAi = menuCatalog.find(p =>
+                                                    !p.is_archived &&
+                                                    p.status !== 'archived' &&
+                                                    p.available !== false &&
+                                                    p.is_available !== false &&
+                                                    (p.aiLabel || p.ai_label || '').toLowerCase() === cleanVal.toLowerCase()
+                                                );
+                                                if (duplicateAi) {
+                                                    showToast(`AI Vision Class '${cleanVal}' is already mapped to ${duplicateAi.name}. Please unassign it first.`, "warning");
+                                                    setAddProductError(`AI Vision Class '${cleanVal}' is already mapped to ${duplicateAi.name}. Please unassign it first.`);
+                                                    setProdAiLabel('');
+                                                    return;
+                                                }
+                                            }
+                                            setProdAiLabel(selectedVal);
+                                            setAddProductError('');
+                                        }}
                                         className="w-full bg-slate-50/70 border border-slate-200/80 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 font-medium focus:bg-white focus:ring-2 focus:ring-[#7B1E22]/15 focus:border-[#7B1E22]/40 transition-all outline-none appearance-none cursor-pointer pr-9"
                                     >
                                         <option value="">None (Manual / Barcode Only)</option>
@@ -28538,9 +29124,33 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
 
             // ── Entity States with Multi-Tier Caching (Memory + LocalStorage + SWR) ──
             const [menuCatalog, setMenuCatalog] = useState(() => {
+                const sanitizeCatalog = (list) => {
+                    if (!list || !Array.isArray(list)) return INITIAL_MOCK_MENU;
+                    return list
+                        .filter(p => p && p.name !== 'ugfiuc')
+                        .map(p => {
+                            const validAiLabels = ['Buttercream_Biscuits', 'Jack_And_Jill_Magic_Chips'];
+                            let cleanAi = (p.aiLabel || p.ai_label || null);
+                            if (cleanAi && !validAiLabels.includes(cleanAi)) {
+                                cleanAi = null;
+                            }
+                            if (p.name === 'Buttercream Biscuits') {
+                                return { ...p, ai_label: 'Buttercream_Biscuits', aiLabel: 'Buttercream_Biscuits', category: 'Snacks & Bakery', price: 30.00 };
+                            }
+                            if (p.name === "Jack 'n Jill Magic Chips" || p.name === 'Jack & Jill Magic Chips') {
+                                return { ...p, ai_label: 'Jack_And_Jill_Magic_Chips', aiLabel: 'Jack_And_Jill_Magic_Chips', category: 'Snacks & Bakery', price: 25.00 };
+                            }
+                            if (p.name === 'Buttercream Crackers') {
+                                return { ...p, ai_label: null, aiLabel: null, category: 'Snacks & Bakery', price: 35.00 };
+                            }
+                            return { ...p, ai_label: cleanAi, aiLabel: cleanAi };
+                        });
+                };
                 const cached = CanteenCache.getData('products_catalog');
-                if (cached && Array.isArray(cached) && cached.length > 0) return cached;
-                return db?.loadLocal('novalunch_products_catalog', INITIAL_MOCK_MENU) || INITIAL_MOCK_MENU;
+                if (cached && Array.isArray(cached) && cached.length > 0) return sanitizeCatalog(cached);
+                const local = db?.loadLocal('novalunch_products_catalog', null);
+                if (local && Array.isArray(local) && local.length > 0) return sanitizeCatalog(local);
+                return INITIAL_MOCK_MENU;
             });
             const [registeredUsers, setRegisteredUsers] = useState(() => {
                 const memCached = CanteenCache.getData('registered_users');
@@ -28888,6 +29498,73 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
             useEffect(() => { if (db) { db.saveLocal('novalunch_parent_link_requests', parentStudentLinkRequests); CanteenCache.set('parent_link_requests', parentStudentLinkRequests); } }, [parentStudentLinkRequests]);
             useEffect(() => { if (db) { db.saveLocal('novalunch_parent_links', parentStudentLinks); CanteenCache.set('parent_links', parentStudentLinks); } }, [parentStudentLinks]);
 
+            // Reactive listener for student-parent pairing via QR code or 6-digit code
+            useEffect(() => {
+                const handleParentStudentLinked = (e) => {
+                    const detail = e?.detail;
+                    if (!detail) return;
+                    const { parentId, studentId, student } = detail;
+
+                    setParentStudentLinks(prev => {
+                        const existing = prev || [];
+                        const alreadyLinked = existing.some(l => 
+                            (l.parentId === parentId || l.parent_id === parentId) && 
+                            (l.studentId === studentId || l.student_id === studentId)
+                        );
+                        if (alreadyLinked) return existing;
+                        const newLink = {
+                            id: 'link_' + Date.now(),
+                            parentId,
+                            parent_id: parentId,
+                            studentId,
+                            student_id: studentId,
+                            studentIdNumber: student?.studentId || student?.student_id_number,
+                            studentName: student?.name,
+                            relationship: 'Parent',
+                            status: 'ACTIVE'
+                        };
+                        return [...existing, newLink];
+                    });
+
+                    setRegisteredUsers(prev => {
+                        return (prev || []).map(u => {
+                            if (u.id === parentId || u.studentId === parentId || (u.email && currentParent?.email && u.email.toLowerCase() === currentParent.email.toLowerCase())) {
+                                const currentLinked = Array.isArray(u.linked_students) ? u.linked_students : [];
+                                const studentIdent = student?.studentId || studentId;
+                                const nextLinked = currentLinked.includes(studentIdent) ? currentLinked : [...currentLinked, studentIdent];
+                                return {
+                                    ...u,
+                                    linked_students: nextLinked,
+                                    linkedStudentId: studentId,
+                                    linkedStudentName: student?.name,
+                                    guardian: `${student?.name || 'Student'}${student?.studentId ? ` (${student.studentId})` : ''}`
+                                };
+                            }
+                            return u;
+                        });
+                    });
+
+                    if (currentParent && (currentParent.id === parentId || (currentParent.email && detail.parentEmail && currentParent.email.toLowerCase() === detail.parentEmail.toLowerCase()))) {
+                        setCurrentParent(prev => prev ? {
+                            ...prev,
+                            linked_students: Array.isArray(prev.linked_students) ? [...prev.linked_students, studentId] : [studentId],
+                            linkedStudentId: studentId,
+                            linkedStudentName: student?.name
+                        } : prev);
+                    }
+                    if (student) {
+                        setCurrentStudent(student);
+                        setStudentBalance(typeof student.balance === 'number' ? student.balance : (parseFloat(student.balance) || 0));
+                        setDailyLimit(typeof student.dailyCap === 'number' ? student.dailyCap : (parseFloat(student.dailyCap || student.daily_limit) || 200));
+                    }
+                };
+
+                window.addEventListener('canteen:parent-student-linked', handleParentStudentLinked);
+                return () => {
+                    window.removeEventListener('canteen:parent-student-linked', handleParentStudentLinked);
+                };
+            }, [currentParent]);
+
             const showToast = (msg, type = 'info') => {
                 if (!msg) return;
                 if (typeof msg === 'object') {
@@ -28979,7 +29656,16 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                     setDailyLimit(typeof createdUser.dailyCap === 'number' ? createdUser.dailyCap : (parseFloat(createdUser.dailyCap || createdUser.daily_limit) || 200));
                     setActiveRole('STUDENT');
                 } else if (roleLower === 'parent') {
-                    setCurrentParent(createdUser);
+                    const freshParent = {
+                        ...createdUser,
+                        linked_students: Array.isArray(createdUser.linked_students) ? createdUser.linked_students : [],
+                        linkedStudentId: createdUser.linkedStudentId || null,
+                        linkedStudentName: createdUser.linkedStudentName || null,
+                        guardian: createdUser.guardian || null
+                    };
+                    setCurrentParent(freshParent);
+                    setCurrentStudent(null);
+                    setStudentBalance(0);
                     setActiveRole('PARENT');
                 } else if (roleLower === 'cashier') {
                     setActiveRole('CASHIER');
@@ -29101,13 +29787,19 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                             const walletsData = walletsRes.data || [];
 
                             if (prodsData.length > 0) {
-                                const cloudProds = prodsData.map(p => ({
+                                const cloudProds = prodsData.filter(p => p && p.name !== 'ugfiuc').map(p => ({
                                     id: p.id,
                                     name: p.name,
                                     category: p.category || p.menu_categories?.name || "Meals & Mains",
                                     price: parseFloat(p.price) || 0,
                                     stock: p.stock ?? p.stock_quantity ?? 0,
                                     available: p.available ?? p.is_available ?? true,
+                                    is_available: p.is_available ?? p.available ?? true,
+                                    is_archived: Boolean(p.is_archived === true || p.is_archived === 'true' || p.archived === true || p.status === 'archived'),
+                                    status: p.status || (Boolean(p.is_archived === true || p.is_archived === 'true' || p.archived === true) ? 'archived' : 'active'),
+                                    ai_label: p.ai_label || p.aiLabel || null,
+                                    aiLabel: p.ai_label || p.aiLabel || null,
+                                    barcode: p.barcode || null,
                                     calories: parseInt(p.calories) || 0,
                                     protein: p.protein || p.protein_grams || "0g",
                                     allergens: Array.isArray(p.allergens) ? p.allergens : [],
@@ -29564,6 +30256,11 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                     name: updatedProd.name,
                                     stock: updatedProd.stock ?? updatedProd.stock_quantity ?? 0,
                                     available: updatedProd.available ?? updatedProd.is_available ?? true,
+                                    is_available: updatedProd.is_available ?? updatedProd.available ?? true,
+                                    is_archived: Boolean(updatedProd.is_archived === true || updatedProd.is_archived === 'true' || updatedProd.archived === true || updatedProd.status === 'archived'),
+                                    status: updatedProd.status || (Boolean(updatedProd.is_archived === true || updatedProd.is_archived === 'true') ? 'archived' : 'active'),
+                                    ai_label: updatedProd.ai_label || updatedProd.aiLabel || null,
+                                    aiLabel: updatedProd.ai_label || updatedProd.aiLabel || null,
                                     price: parseFloat(updatedProd.price) || 0,
                                     img: updatedProd.img || updatedProd.image_url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&auto=format&fit=crop',
                                     category: updatedProd.category || 'Mains',
@@ -29579,6 +30276,11 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                     name: updatedProd.name || p.name,
                                     stock: updatedProd.stock ?? updatedProd.stock_quantity ?? p.stock,
                                     available: updatedProd.available ?? updatedProd.is_available ?? p.available,
+                                    is_available: updatedProd.is_available ?? updatedProd.available ?? p.is_available,
+                                    is_archived: updatedProd.is_archived !== undefined ? Boolean(updatedProd.is_archived === true || updatedProd.is_archived === 'true') : p.is_archived,
+                                    status: updatedProd.status || p.status,
+                                    ai_label: updatedProd.ai_label || updatedProd.aiLabel || p.ai_label,
+                                    aiLabel: updatedProd.ai_label || updatedProd.aiLabel || p.aiLabel,
                                     price: updatedProd.price !== undefined ? parseFloat(updatedProd.price) : p.price,
                                     img: updatedProd.img || updatedProd.image_url || p.img,
                                     category: updatedProd.category || p.category,
@@ -29751,13 +30453,17 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                         if (!child && pName) {
                             child = registeredUsers.find(u => u.guardian && u.guardian.toLowerCase().includes(pName));
                         }
-                        if (!child) {
+                        const isDemoParent = prnt.email === 'parent@gmail.com' || prnt.id === 'u201' || prnt.id === 'p201';
+                        if (!child && isDemoParent) {
                             child = registeredUsers.find(u => (u.role || '').toLowerCase() === 'student');
                         }
                         if (child) {
                             setCurrentStudent(child);
                             setStudentBalance(typeof child.balance === 'number' ? child.balance : (parseFloat(child.balance) || 0));
                             setDailyLimit(typeof child.dailyCap === 'number' ? child.dailyCap : (parseFloat(child.dailyCap) || 200));
+                        } else {
+                            setCurrentStudent(null);
+                            setStudentBalance(0);
                         }
                         setActiveTab('family');
                         setActiveRole('PARENT');
@@ -30119,13 +30825,13 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                 }
 
                 const targetStudentId = uploadObj.studentId || (currentStudent ? currentStudent.id : "u101");
-                const targetStudentObj = registeredUsers.find(u => u.id === targetStudentId || u.studentId === uploadObj.studentIdNumber) || currentStudent || { name: uploadObj.studentName || "Joshua Lupisan", studentId: "2023-01900" };
+                const targetStudentObj = registeredUsers.find(u => u.id === targetStudentId || u.studentId === uploadObj.studentIdNumber) || currentStudent || { name: uploadObj.studentName || (currentParent ? "Linked Student" : "Student"), studentId: uploadObj.studentIdNumber || "" };
 
                 const newReq = {
                     id: "top_" + Date.now(),
-                    parent: activeRole === 'PARENT' ? (currentParent ? currentParent.name : "Maria Santos") : (currentStudent ? currentStudent.name : (uploadObj.studentName || "Joshua Lupisan")),
-                    student: `${targetStudentObj.name} (${targetStudentObj.studentId || "2023-01900"})`,
-                    studentId: targetStudentObj.id || "u101",
+                    parent: activeRole === 'PARENT' ? (currentParent ? currentParent.name : "Guardian") : (currentStudent ? currentStudent.name : (uploadObj.studentName || "Student")),
+                    student: `${targetStudentObj.name}${targetStudentObj.studentId ? ` (${targetStudentObj.studentId})` : ''}`,
+                    studentId: targetStudentObj.id || targetStudentId,
                     amount: uploadObj.amount,
                     date: new Date().toLocaleString(),
                     refNo: cleanRef,
@@ -30133,7 +30839,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                     receiptImg: uploadObj.receiptImg || null,
                     proofType: 'SCREENSHOT',
                     submitterRole: activeRole,
-                    submitterName: activeRole === 'PARENT' ? (currentParent?.name || "Maria Santos") : (currentStudent?.name || "Joshua Lupisan")
+                    submitterName: activeRole === 'PARENT' ? (currentParent?.name || "Guardian") : (currentStudent?.name || "Student")
                 };
 
                 setGcashQueue([newReq, ...gcashQueue]);
@@ -30498,6 +31204,11 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                     type: 'financial'
                 };
                 setNotifications(prev => [newNotif, ...prev]);
+                if (typeof window !== 'undefined' && window.dispatchEvent) {
+                    window.dispatchEvent(new CustomEvent('canteen:transaction-updated', {
+                        detail: { orderId: generatedRef, totalAmount: cleanPaid }
+                    }));
+                }
                 showToast(isWaiver ? `Reset tab debt for ${targetUser.name} to ₱0.00!` : `Settled ₱${cleanPaid.toFixed(2)} tab debt for ${targetUser.name}!`);
                 return { success: true, remainingLiability: newLiability, referenceNo: generatedRef, amountPaid: cleanPaid };
             };
@@ -30506,6 +31217,22 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                 const cleanAiLabel = (updatedProd.ai_label && updatedProd.ai_label !== 'NONE')
                     ? String(updatedProd.ai_label).trim()
                     : ((updatedProd.aiLabel && updatedProd.aiLabel !== 'NONE') ? String(updatedProd.aiLabel).trim() : null);
+
+                if (cleanAiLabel && updatedProd.available !== false && updatedProd.is_available !== false && !updatedProd.is_archived && updatedProd.status !== 'archived') {
+                    const duplicateAi = menuCatalog.find(p =>
+                        p.id !== updatedProd.id &&
+                        p.name !== updatedProd.name &&
+                        !p.is_archived &&
+                        p.status !== 'archived' &&
+                        p.available !== false &&
+                        p.is_available !== false &&
+                        (p.aiLabel || p.ai_label || '').toLowerCase() === cleanAiLabel.toLowerCase()
+                    );
+                    if (duplicateAi) {
+                        showToast(`AI Vision Class '${cleanAiLabel}' is already mapped to ${duplicateAi.name}. Please unassign it first.`, "warning");
+                        return;
+                    }
+                }
 
                 const normalizedProd = {
                     ...updatedProd,
@@ -30585,21 +31312,39 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
 
             const handleArchiveProduct = async (prodId) => {
                 const prevMenu = menuCatalog;
-                const nextMenu = prevMenu.map(p => p.id === prodId ? { ...p, available: false, is_available: false, status: 'archived' } : p);
+                const nextMenu = prevMenu.map(p => p.id === prodId ? { ...p, is_archived: true, available: false, is_available: false, status: 'archived' } : p);
                 setMenuCatalog(nextMenu);
                 CanteenCache.set('products_catalog', nextMenu);
+                if (typeof db !== 'undefined' && db && db.saveLocal) {
+                    db.saveLocal('novalunch_products_catalog', nextMenu);
+                }
                 showToast(`Archived menu product`);
+
+                // Push to Edge Kiosk (:8085)
+                try {
+                    const archivedItem = nextMenu.find(p => p.id === prodId);
+                    if (archivedItem) {
+                        fetch('http://localhost:8085/api/kiosk/sync', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action: 'update_product', product: archivedItem })
+                        }).catch(() => {});
+                    }
+                } catch (e) {}
 
                 try {
                     if (window.CanteenDB && prodId) {
-                        await window.CanteenDB.updateProduct(prodId, { is_available: false, status: 'archived' });
+                        await window.CanteenDB.updateProduct(prodId, { is_archived: true, is_available: false, available: false, status: 'archived' });
                     } else if (supabaseClient) {
-                        await supabaseClient.from('products').update({ is_available: false, status: 'archived' }).eq('id', prodId);
+                        await supabaseClient.from('products').update({ is_available: false, available: false, status: 'archived' }).eq('id', prodId);
                     }
                 } catch (e) {
                     console.warn("Archive product error, rolling back:", e);
                     setMenuCatalog(prevMenu);
                     CanteenCache.set('products_catalog', prevMenu);
+                    if (typeof db !== 'undefined' && db && db.saveLocal) {
+                        db.saveLocal('novalunch_products_catalog', prevMenu);
+                    }
                     showToast(`Cloud archive failed: ${e.message}`, "danger");
                 }
             };
@@ -30624,21 +31369,39 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
 
             const handleUnarchiveProduct = async (prodId) => {
                 const prevMenu = menuCatalog;
-                const nextMenu = prevMenu.map(p => p.id === prodId ? { ...p, available: true, status: 'active', is_available: true } : p);
+                const nextMenu = prevMenu.map(p => p.id === prodId ? { ...p, is_archived: false, available: true, is_available: true, status: 'active' } : p);
                 setMenuCatalog(nextMenu);
                 CanteenCache.set('products_catalog', nextMenu);
+                if (typeof db !== 'undefined' && db && db.saveLocal) {
+                    db.saveLocal('novalunch_products_catalog', nextMenu);
+                }
                 showToast(`Restored product to active catalog!`);
+
+                // Push to Edge Kiosk (:8085)
+                try {
+                    const restoredItem = nextMenu.find(p => p.id === prodId);
+                    if (restoredItem) {
+                        fetch('http://localhost:8085/api/kiosk/sync', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action: 'update_product', product: restoredItem })
+                        }).catch(() => {});
+                    }
+                } catch (e) {}
 
                 try {
                     if (window.CanteenDB && window.CanteenDB.unarchiveProduct) {
                         await window.CanteenDB.unarchiveProduct(prodId);
                     } else if (supabaseClient) {
-                        await supabaseClient.from('products').update({ is_available: true, status: 'active' }).eq('id', prodId);
+                        await supabaseClient.from('products').update({ is_available: true, available: true, status: 'active' }).eq('id', prodId);
                     }
                 } catch (e) {
                     console.warn("Unarchive product notice:", e);
                     setMenuCatalog(prevMenu);
                     CanteenCache.set('products_catalog', prevMenu);
+                    if (typeof db !== 'undefined' && db && db.saveLocal) {
+                        db.saveLocal('novalunch_products_catalog', prevMenu);
+                    }
                 }
             };
 
@@ -31003,8 +31766,8 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                         onClaimClick={(item) => setClaimTokenModalData({
                                             item: item || { name: "Pre-Order Meal Tray", price: 120.00 },
                                             token: item?.token || `QR-2026-${Math.floor(1000 + Math.random() * 9000)}`,
-                                            studentName: currentStudent ? currentStudent.name : "Joshua Lupisan",
-                                            studentId: currentStudent ? currentStudent.studentId : "2023-01900",
+                                            studentName: currentStudent ? currentStudent.name : "Student",
+                                            studentId: currentStudent ? (currentStudent.studentId || currentStudent.id) : "",
                                             date: new Date().toLocaleDateString()
                                         })}
                                         activeTab={activeTab}
@@ -31111,6 +31874,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                         inventoryBatches={inventoryBatches}
                                         registeredUsers={registeredUsers}
                                         recentOrders={recentOrders}
+                                        setRecentOrders={setRecentOrders}
                                         preorders={preorders}
                                         onClaimPreorderPos={handleClaimPreorderPos}
                                         onUpdatePreorderStatus={handleUpdatePreorderStatus}
@@ -31137,6 +31901,17 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                             const isPreOrderHandover = rawMethod.includes('PRE_ORDER') || rawMethod.includes('PREORDER') || orderNoStr.startsWith('CLAIM-') || orderNoStr.startsWith('PO-');
                                             const isRfid = rawMethod.includes('RFID') || rawMethod.includes('WALLET') || isPreOrderHandover;
                                             const voidTotal = parseFloat(orderToVoid.total || orderToVoid.final_amount || 0) || 0;
+
+                                            if (typeof window !== 'undefined' && window.dispatchEvent) {
+                                                window.dispatchEvent(new CustomEvent('canteen:transaction-updated', {
+                                                    detail: {
+                                                        orderId: orderNoStr || orderToVoid.id,
+                                                        totalAmount: voidTotal,
+                                                        status: 'VOIDED',
+                                                        action: 'VOID'
+                                                    }
+                                                }));
+                                            }
 
                                             // Resolve matched student profile
                                             const matchedStud = registeredUsers.find(u =>
@@ -31561,6 +32336,15 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                                 }
 
                                                 setPosCart([]);
+                                                if (typeof window !== 'undefined' && window.dispatchEvent) {
+                                                    window.dispatchEvent(new CustomEvent('canteen:transaction-updated', {
+                                                        detail: {
+                                                            orderId: order.orderNo,
+                                                            totalAmount: order.total,
+                                                            order
+                                                        }
+                                                    }));
+                                                }
                                                 showToast(`Completed POS Order ${order.orderNo} (₱${order.total.toFixed(2)})!`);
                                             } catch (checkoutErr) {
                                                 console.error('[Checkout Error]', checkoutErr);
@@ -31617,7 +32401,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                         onRejectTopup={handleRejectTopup}
                                         onAddProduct={async (p) => {
                                             const cleanAi = (p.aiLabel && p.aiLabel !== 'NONE') ? String(p.aiLabel).trim() : ((p.ai_label && p.ai_label !== 'NONE') ? String(p.ai_label).trim() : null);
-                                            let created = { ...p, ai_label: cleanAi, aiLabel: cleanAi };
+                                            let created = { ...p, ai_label: cleanAi, aiLabel: cleanAi, is_archived: false, is_available: true, available: true, status: 'active' };
                                             if (window.CanteenDB) {
                                                 try {
                                                     created = await window.CanteenDB.createProduct({
@@ -31636,13 +32420,25 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                                         ai_label: cleanAi,
                                                         barcode: p.barcode || null,
                                                         available: true,
-                                                        is_available: true
+                                                        is_available: true,
+                                                        is_archived: false,
+                                                        status: 'active'
                                                     });
                                                 } catch (err) {
                                                     console.warn("Cloud product creation warning", err);
                                                 }
                                             }
-                                            const finalProd = { ...p, ...created, id: created?.id || p.id, ai_label: cleanAi, aiLabel: cleanAi };
+                                            const finalProd = {
+                                                ...p,
+                                                ...created,
+                                                id: created?.id || p.id,
+                                                ai_label: cleanAi,
+                                                aiLabel: cleanAi,
+                                                is_archived: false,
+                                                is_available: true,
+                                                available: true,
+                                                status: 'active'
+                                            };
                                             setMenuCatalog(prev => {
                                                 const next = [finalProd, ...prev.filter(item => item.id !== finalProd.id && item.name !== finalProd.name)];
                                                 if (db && db.saveLocal) db.saveLocal('novalunch_products_catalog', next);

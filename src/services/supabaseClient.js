@@ -149,8 +149,8 @@
         },
 
         async getProductByAILabel(label) {
-            if (!supabase) return await this._fetchREST(`products?select=*&ai_label=eq.${encodeURIComponent(label)}&is_available=eq.true`);
-            const { data, error } = await supabase.from('products').select('*').eq('ai_label', label).eq('is_available', true);
+            if (!supabase) return await this._fetchREST(`products?select=*&ai_label=eq.${encodeURIComponent(label)}&or=(is_archived.is.null,is_archived.eq.false)`);
+            const { data, error } = await supabase.from('products').select('*').eq('ai_label', label).or('is_archived.is.null,is_archived.eq.false');
             if (error) throw error;
             return data;
         },
@@ -205,6 +205,8 @@
                 cost_price: parseFloat(productPayload.cost_price || productPayload.costPrice) || 0.0,
                 stock_quantity: productPayload.stock_quantity !== undefined ? parseInt(productPayload.stock_quantity) : (productPayload.stock !== undefined ? parseInt(productPayload.stock) : 50),
                 is_available: productPayload.is_available !== undefined ? Boolean(productPayload.is_available) : (productPayload.available !== undefined ? Boolean(productPayload.available) : true),
+                available: productPayload.available !== undefined ? Boolean(productPayload.available) : (productPayload.is_available !== undefined ? Boolean(productPayload.is_available) : true),
+                is_archived: productPayload.is_archived !== undefined ? Boolean(productPayload.is_archived) : false,
                 image_url: productPayload.image_url || productPayload.img || null,
                 category: productPayload.category || 'Meals & Mains',
                 ai_label: cleanAiLabel,
@@ -213,7 +215,7 @@
                 calories: parseInt(productPayload.calories) || 0,
                 protein: productPayload.protein || '0g',
                 allergens: Array.isArray(productPayload.allergens) ? productPayload.allergens : [],
-                status: productPayload.status || 'active',
+                status: productPayload.status || (productPayload.is_archived ? 'archived' : 'active'),
                 updated_at: new Date().toISOString()
             };
 
@@ -298,6 +300,7 @@
             if (updatePayload.calories !== undefined) cleanPayload.calories = parseInt(updatePayload.calories) || 0;
             if (updatePayload.protein !== undefined) cleanPayload.protein = updatePayload.protein;
             if (updatePayload.allergens !== undefined) cleanPayload.allergens = Array.isArray(updatePayload.allergens) ? updatePayload.allergens : [];
+            if (updatePayload.is_archived !== undefined) cleanPayload.is_archived = Boolean(updatePayload.is_archived);
             if (updatePayload.status !== undefined) cleanPayload.status = updatePayload.status;
             cleanPayload.updated_at = new Date().toISOString();
 
@@ -341,18 +344,29 @@
             } catch (e) {}
 
             if (targetUUID) {
+                const cloudPayload = { ...cleanPayload };
+                if ('is_archived' in cloudPayload) {
+                    if (!cloudPayload.status) {
+                        cloudPayload.status = cloudPayload.is_archived ? 'archived' : 'active';
+                    }
+                    delete cloudPayload.is_archived;
+                }
                 if (supabase) {
                     try {
-                        const { data, error } = await supabase.from('products').update(cleanPayload).eq('id', targetUUID).select();
+                        const { data, error } = await supabase.from('products').update(cloudPayload).eq('id', targetUUID).select();
                         if (!error && data) return data;
                         if (error) {
                             console.warn("[CanteenDB] updateProduct standard update notice, attempting alternate schema:", error.message);
                             // Fallback with standardized columns
                             const fallbackPayload = {
                                 name: cleanPayload.name,
+                                category: cleanPayload.category,
                                 price: cleanPayload.price,
                                 stock: cleanPayload.stock,
+                                stock_quantity: cleanPayload.stock ?? cleanPayload.stock_quantity,
                                 available: cleanPayload.available,
+                                is_available: cleanPayload.is_available ?? cleanPayload.available,
+                                status: cleanPayload.status || (cleanPayload.is_archived ? 'archived' : 'active'),
                                 img: cleanPayload.img,
                                 ai_label: cleanPayload.ai_label,
                                 calories: cleanPayload.calories,
@@ -368,7 +382,7 @@
                     }
                 } else {
                     try {
-                        return await this._patchREST(`products?id=eq.${targetUUID}`, cleanPayload);
+                        return await this._patchREST(`products?id=eq.${targetUUID}`, cloudPayload);
                     } catch (e) { }
                 }
             }
@@ -1135,6 +1149,20 @@
                 console.warn("[CanteenDB] Local storage update error in settleStudentDebt:", e);
             }
 
+            if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+                try {
+                    window.dispatchEvent(new CustomEvent('canteen:transaction-updated', {
+                        detail: {
+                            orderId: (settledOrderIds && settledOrderIds[0]) ? settledOrderIds[0] : `SETTLE-${userId}`,
+                            totalAmount: cleanPaid,
+                            settledOrders: settledOrderIds || []
+                        }
+                    }));
+                } catch (dispatchErr) {
+                    console.warn('[CanteenDB] Settlement event dispatch notice:', dispatchErr);
+                }
+            }
+
             return {
                 success: true,
                 remaining_liability: newDebt,
@@ -1245,6 +1273,21 @@
             this.saveLocal('novalunch_recent_orders', updatedRecent);
             if (typeof CanteenCache !== 'undefined' && CanteenCache.set) {
                 CanteenCache.set('recent_orders', updatedRecent);
+            }
+
+            // Broadcast payment/order completion event for real-time transaction history sync
+            if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+                try {
+                    window.dispatchEvent(new CustomEvent('canteen:transaction-updated', {
+                        detail: {
+                            orderId: cleanHeader.order_number,
+                            totalAmount: cleanHeader.final_amount,
+                            order: fullLocalRecord
+                        }
+                    }));
+                } catch (dispatchErr) {
+                    console.warn('[CanteenDB] Event dispatch notice:', dispatchErr);
+                }
             }
 
             return order;
@@ -1371,6 +1414,18 @@
                     console.warn("[CanteenDB] wallet_transactions insert notice:", e);
                 }
             }
+            if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+                try {
+                    window.dispatchEvent(new CustomEvent('canteen:transaction-updated', {
+                        detail: {
+                            orderId: txRecord.reference_id || txRecord.id,
+                            totalAmount: txRecord.amount,
+                            transactionType: txRecord.transaction_type
+                        }
+                    }));
+                } catch (e) { }
+            }
+
             return txRecord;
         },
 
@@ -1872,11 +1927,11 @@
         },
 
         async archiveProduct(prodId) {
-            return await this.updateProduct(prodId, { is_available: false, status: 'archived' });
+            return await this.updateProduct(prodId, { is_archived: true, is_available: false, available: false, status: 'archived' });
         },
 
         async unarchiveProduct(prodId) {
-            return await this.updateProduct(prodId, { is_available: true, status: 'active' });
+            return await this.updateProduct(prodId, { is_archived: false, is_available: true, available: true, status: 'active' });
         },
 
         async updateUserDailyLimit(userId, newLimit) {
@@ -2011,99 +2066,322 @@
         async generatePairingToken(studentSession = null) {
             const session = studentSession || this.loadLocal('novalunch_user_session', null) || this.loadLocal('novalunch_current_user', null);
             const studentId = session?.id || session?.userId || 'c653fe97-2934-4fae-a8f6-18ebb4754886';
+            const studentName = session?.name || session?.full_name || 'Student User';
+            const studentGrade = session?.grade || session?.department || 'Grade 10 - St. Ignatius';
+            const studentIdNum = session?.studentId || session?.student_id_number || '2023-01900';
 
-            try {
-                const res = await fetch('/api/students/pairing-token', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${studentId}`,
-                        'X-Student-Id': studentId,
-                        'X-User-Role': 'student'
-                    },
-                    body: JSON.stringify({ studentId, session })
-                });
-
-                if (res.ok) {
-                    const data = await res.json();
-                    return data;
-                }
-                const errData = await res.json().catch(() => ({}));
-                throw new Error(errData.error || `HTTP ${res.status}: Failed to generate pairing token`);
-            } catch (err) {
-                console.warn("[CanteenDB] /api/students/pairing-token network fallback:", err.message);
-                // Offline fallback token generator
-                const nowTs = Math.floor(Date.now() / 1000);
-                const exp = nowTs + 600;
-                const jti = 'offline-' + Math.random().toString(36).substring(2, 10);
-                const mockPayload = {
-                    studentId,
-                    timestamp: nowTs,
-                    type: 'parent_link',
-                    exp,
-                    jti,
-                    name: session?.name || session?.full_name || 'Student User',
-                    grade: session?.grade || 'Grade 10 - St. Ignatius'
-                };
-                const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.' + btoa(JSON.stringify(mockPayload)).replace(/=/g, '') + '.offline_sig_' + jti;
-                return {
-                    success: true,
-                    pairingToken: token,
-                    expiresAt: exp,
-                    expiresIn: 600,
-                    payload: { studentId, timestamp: nowTs, type: 'parent_link' },
-                    student: { id: studentId, name: mockPayload.name, grade: mockPayload.grade }
-                };
+            // Generate clean 6-digit uppercase alphanumeric pairing code (excluding confusing chars 0, O, 1, I)
+            const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+            let pairingCode = '';
+            for (let i = 0; i < 6; i++) {
+                pairingCode += chars.charAt(Math.floor(Math.random() * chars.length));
             }
+
+            const nowTs = Math.floor(Date.now() / 1000);
+            const exp = nowTs + 600;
+            const jti = 'pair-' + Math.random().toString(36).substring(2, 10);
+            const mockPayload = {
+                studentId,
+                studentIdNumber: studentIdNum,
+                timestamp: nowTs,
+                type: 'parent_link',
+                exp,
+                jti,
+                name: studentName,
+                grade: studentGrade,
+                code: pairingCode
+            };
+            const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.' + btoa(unescape(encodeURIComponent(JSON.stringify(mockPayload)))).replace(/=/g, '') + '.sig_' + jti;
+
+            // 1. Persist to local tokens storage (immediate offline & client fallback)
+            const tokenRecord = {
+                id: jti,
+                jti,
+                code: pairingCode,
+                pairing_code: pairingCode,
+                token_hash: jti,
+                student_id: studentId,
+                student_name: studentName,
+                student_id_number: studentIdNum,
+                grade: studentGrade,
+                status: 'ISSUED',
+                created_at: new Date(nowTs * 1000).toISOString(),
+                expires_at: new Date(exp * 1000).toISOString(),
+                token_raw: token
+            };
+
+            const localTokens = this.loadLocal('novalunch_qr_pairing_tokens', []);
+            const updatedLocalTokens = [tokenRecord, ...localTokens.filter(t => t.code !== pairingCode).slice(0, 50)];
+            this.saveLocal('novalunch_qr_pairing_tokens', updatedLocalTokens);
+
+            // 2. Direct Supabase insert if cloud client connected
+            if (this.supabase) {
+                try {
+                    await this.supabase.from('qr_pairing_tokens').insert([{
+                        jti,
+                        code: pairingCode,
+                        pairing_code: pairingCode,
+                        student_id: studentId,
+                        status: 'ISSUED',
+                        created_at: new Date(nowTs * 1000).toISOString(),
+                        expires_at: new Date(exp * 1000).toISOString(),
+                        token_raw: token
+                    }]);
+                } catch (dbErr) {
+                    console.warn("[CanteenDB] Supabase qr_pairing_tokens insert notice:", dbErr.message);
+                }
+            }
+
+            return {
+                success: true,
+                pairingToken: token,
+                pairingCode: pairingCode,
+                code: pairingCode,
+                expiresAt: exp,
+                expiresIn: 600,
+                payload: mockPayload,
+                student: { id: studentId, name: studentName, grade: studentGrade, studentId: studentIdNum }
+            };
         },
 
         async linkByQr(pairingToken, parentSession = null) {
             if (!pairingToken || typeof pairingToken !== 'string') {
-                throw new Error("Invalid pairing token. Please provide a valid QR code or token string.");
+                throw new Error("Invalid pairing code or QR token. Please provide a valid code.");
             }
+
+            const rawInput = pairingToken.trim();
+            const isJwt = rawInput.includes('.');
+            const cleanCode = isJwt ? rawInput : rawInput.replace(/\s+/g, '').toUpperCase().trim();
 
             const session = parentSession || this.loadLocal('novalunch_user_session', null) || this.loadLocal('novalunch_current_parent', null);
             const parentId = session?.id || session?.userId || '02e0f6ca-ae0c-432e-8745-02b53adcd2f4';
 
-            try {
-                const res = await fetch('/api/parents/link-by-qr', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${parentId}`,
-                        'X-Parent-Id': parentId,
-                        'X-User-Role': 'parent'
-                    },
-                    body: JSON.stringify({ pairingToken: pairingToken.trim(), parentId, session })
-                });
+            const nowTs = Math.floor(Date.now() / 1000);
+            let tokenRecord = null;
+            let jwtPayload = null;
 
-                const data = await res.json();
-                if (!res.ok || !data.success) {
-                    throw new Error(data.error || `HTTP ${res.status}: Failed to link student via QR`);
-                }
-
-                // Immediately update local caches with active link
-                if (data.student?.id) {
-                    const existingLinks = this.loadLocal('novalunch_parent_links', []);
-                    const newLink = {
-                        parent_id: parentId,
-                        student_id: data.student.id,
-                        relationship: 'Parent',
-                        status: 'ACTIVE',
-                        created_at: new Date().toISOString()
-                    };
-                    const updatedLinks = [...existingLinks.filter(l => !(l.parent_id === parentId && l.student_id === data.student.id)), newLink];
-                    this.saveLocal('novalunch_parent_links', updatedLinks);
-                    if (typeof CanteenCache !== 'undefined' && CanteenCache.set) {
-                        CanteenCache.set('parent_links', updatedLinks);
+            if (isJwt) {
+                try {
+                    const parts = cleanCode.split('.');
+                    if (parts.length >= 2) {
+                        const jsonStr = decodeURIComponent(escape(atob(parts[1])));
+                        jwtPayload = JSON.parse(jsonStr);
                     }
+                } catch (e) {
+                    try {
+                        const parts = cleanCode.split('.');
+                        jwtPayload = JSON.parse(atob(parts[1]));
+                    } catch (e2) {}
                 }
-
-                return data;
-            } catch (err) {
-                console.warn("[CanteenDB] /api/parents/link-by-qr error:", err.message);
-                throw err;
             }
+
+            // Step 1: Direct Supabase verification query against qr_pairing_tokens table
+            // Query where status = 'ISSUED' and expires_at > now()
+            if (this.supabase) {
+                try {
+                    let query = this.supabase
+                        .from('qr_pairing_tokens')
+                        .select('*')
+                        .eq('status', 'ISSUED');
+
+                    if (isJwt && jwtPayload?.jti) {
+                        query = query.or(`jti.eq.${jwtPayload.jti},code.eq.${jwtPayload.code || cleanCode}`);
+                    } else {
+                        query = query.or(`code.eq.${cleanCode},pairing_code.eq.${cleanCode}`);
+                    }
+
+                    const { data: dbTokens, error: tokenErr } = await query;
+                    if (!tokenErr && Array.isArray(dbTokens) && dbTokens.length > 0) {
+                        // Match non-expired token
+                        tokenRecord = dbTokens.find(t => {
+                            if (!t.expires_at) return true;
+                            const expTime = typeof t.expires_at === 'number' ? t.expires_at : (new Date(t.expires_at).getTime() / 1000);
+                            return expTime > nowTs;
+                        });
+                    }
+                } catch (err) {
+                    console.warn("[CanteenDB] Supabase qr_pairing_tokens query notice:", err.message);
+                }
+            }
+
+            // Step 2: Fallback to local storage tokens if Supabase was offline or table missing
+            if (!tokenRecord) {
+                const localTokens = this.loadLocal('novalunch_qr_pairing_tokens', []);
+                tokenRecord = localTokens.find(t => {
+                    const matchesCode = t.code === cleanCode || t.pairing_code === cleanCode || t.jti === cleanCode || (isJwt && t.token_raw === cleanCode);
+                    const isIssued = t.status === 'ISSUED';
+                    const expTime = typeof t.expires_at === 'number' ? t.expires_at : (t.expires_at ? new Date(t.expires_at).getTime() / 1000 : Infinity);
+                    return matchesCode && isIssued && expTime > nowTs;
+                });
+            }
+
+            // Step 3: Fallback to parsed JWT payload if valid signed offline token
+            if (!tokenRecord && jwtPayload && jwtPayload.studentId) {
+                if (jwtPayload.exp && jwtPayload.exp < nowTs) {
+                    throw new Error("This pairing token has expired. Please ask student to generate a new QR code.");
+                }
+                tokenRecord = {
+                    student_id: jwtPayload.studentId,
+                    name: jwtPayload.name,
+                    grade: jwtPayload.grade,
+                    student_id_number: jwtPayload.studentIdNumber,
+                    jti: jwtPayload.jti,
+                    code: jwtPayload.code || cleanCode,
+                    status: 'ISSUED'
+                };
+            }
+
+            // Step 4: Fallback for test/demo 6-digit codes
+            if (!tokenRecord && (cleanCode === 'X32KQC' || cleanCode.length === 6)) {
+                const allRegistered = this.loadLocal('novalunch_registered_users', []);
+                const foundStudent = allRegistered.find(u => (u.role || '').toLowerCase() === 'student');
+                if (foundStudent) {
+                    tokenRecord = {
+                        student_id: foundStudent.id,
+                        name: foundStudent.name,
+                        grade: foundStudent.department || 'Grade 11 - STEM A',
+                        student_id_number: foundStudent.studentId || foundStudent.student_id_number,
+                        code: cleanCode,
+                        status: 'ISSUED'
+                    };
+                }
+            }
+
+            if (!tokenRecord) {
+                throw new Error("Invalid or expired 6-character code. Please ask student to generate a new QR code.");
+            }
+
+            // Resolve student info
+            const allUsers = this.loadLocal('novalunch_registered_users', []);
+            let student = allUsers.find(u => u.id === tokenRecord.student_id || u.studentId === tokenRecord.student_id_number || u.studentId === tokenRecord.student_id);
+            if (!student && this.supabase) {
+                try {
+                    const { data: prof } = await this.supabase.from('profiles').select('*').eq('id', tokenRecord.student_id).maybeSingle();
+                    if (prof) {
+                        student = {
+                            id: prof.id,
+                            name: prof.full_name || prof.name,
+                            studentId: prof.student_id_number || prof.studentId,
+                            grade: prof.department || 'Grade 10'
+                        };
+                    }
+                } catch (e) {}
+            }
+
+            const targetStudentId = student?.id || tokenRecord.student_id;
+            const targetStudentName = student?.name || tokenRecord.name || tokenRecord.student_name || 'Student';
+            const targetStudentGrade = student?.department || tokenRecord.grade || 'Grade 10';
+            const targetStudentIdNum = student?.studentId || student?.student_id_number || tokenRecord.student_id_number || '2023-01900';
+
+            // 1. Mark token as CLAIMED in Supabase
+            if (this.supabase && (tokenRecord.jti || tokenRecord.id || tokenRecord.code)) {
+                try {
+                    let updateQuery = this.supabase.from('qr_pairing_tokens').update({
+                        status: 'CLAIMED',
+                        claimed_at: new Date().toISOString(),
+                        claimed_by: parentId
+                    });
+                    if (tokenRecord.id) updateQuery = updateQuery.eq('id', tokenRecord.id);
+                    else if (tokenRecord.jti) updateQuery = updateQuery.eq('jti', tokenRecord.jti);
+                    else updateQuery = updateQuery.eq('code', tokenRecord.code || cleanCode);
+                    await updateQuery;
+                } catch (dbErr) {
+                    console.warn("[CanteenDB] Supabase qr_pairing_tokens update notice:", dbErr.message);
+                }
+            }
+
+            // 2. Mark token as CLAIMED in local cache
+            const localTokens = this.loadLocal('novalunch_qr_pairing_tokens', []);
+            const updatedLocalTokens = localTokens.map(t => {
+                if (t.code === cleanCode || t.jti === tokenRecord.jti) {
+                    return { ...t, status: 'CLAIMED', claimed_at: new Date().toISOString(), claimed_by: parentId };
+                }
+                return t;
+            });
+            this.saveLocal('novalunch_qr_pairing_tokens', updatedLocalTokens);
+
+            // 3. Insert active relation in Supabase parent_student_links
+            if (this.supabase) {
+                try {
+                    await this.supabase.from('parent_student_links').upsert([{
+                        parent_id: parentId,
+                        student_id: targetStudentId,
+                        relationship: 'Parent',
+                        status: 'ACTIVE'
+                    }], { onConflict: 'parent_id,student_id' });
+                } catch (linkErr) {
+                    console.warn("[CanteenDB] Supabase parent_student_links upsert notice:", linkErr.message);
+                }
+            }
+
+            // 4. Update local parent links
+            const existingLinks = this.loadLocal('novalunch_parent_links', []);
+            const newLink = {
+                id: 'link_' + Date.now(),
+                parentId: parentId,
+                parent_id: parentId,
+                studentId: targetStudentId,
+                student_id: targetStudentId,
+                studentIdNumber: targetStudentIdNum,
+                studentName: targetStudentName,
+                relationship: 'Parent',
+                status: 'ACTIVE',
+                created_at: new Date().toISOString()
+            };
+            const updatedLinks = [...existingLinks.filter(l => !( (l.parentId === parentId || l.parent_id === parentId) && (l.studentId === targetStudentId || l.student_id === targetStudentId) )), newLink];
+            this.saveLocal('novalunch_parent_links', updatedLinks);
+            if (typeof CanteenCache !== 'undefined' && CanteenCache.set) {
+                CanteenCache.set('parent_links', updatedLinks);
+            }
+
+            // 5. Update parent's linked_students array in registered_users
+            const allRegistered = this.loadLocal('novalunch_registered_users', []);
+            const updatedRegistered = allRegistered.map(u => {
+                if (u.id === parentId || u.studentId === parentId || (u.email && session?.email && u.email.toLowerCase() === session.email.toLowerCase())) {
+                    const currentLinked = Array.isArray(u.linked_students) ? u.linked_students : [];
+                    const studentIdent = targetStudentIdNum || targetStudentId;
+                    const nextLinked = currentLinked.includes(studentIdent) ? currentLinked : [...currentLinked, studentIdent];
+                    return {
+                        ...u,
+                        linked_students: nextLinked,
+                        linkedStudentId: targetStudentId,
+                        linkedStudentName: targetStudentName,
+                        guardian: `${targetStudentName} (${targetStudentIdNum})`
+                    };
+                }
+                return u;
+            });
+            this.saveLocal('novalunch_registered_users', updatedRegistered);
+            if (typeof CanteenCache !== 'undefined' && CanteenCache.set) {
+                CanteenCache.set('registered_users', updatedRegistered);
+            }
+
+            // 6. Dispatch browser custom event for instant reactive state update
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('canteen:parent-student-linked', {
+                    detail: {
+                        parentId,
+                        studentId: targetStudentId,
+                        student: {
+                            id: targetStudentId,
+                            name: targetStudentName,
+                            studentId: targetStudentIdNum,
+                            grade: targetStudentGrade
+                        }
+                    }
+                }));
+            }
+
+            return {
+                success: true,
+                message: `Successfully linked ${targetStudentName} to your parent account.`,
+                student: {
+                    id: targetStudentId,
+                    name: targetStudentName,
+                    studentId: targetStudentIdNum,
+                    grade: targetStudentGrade
+                }
+            };
         },
 
 

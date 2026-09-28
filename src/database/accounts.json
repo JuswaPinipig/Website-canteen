@@ -9,7 +9,7 @@
       "student_id_number": "2023-01900",
       "rfid_uid": "0009401737",
       "pin_code": "1234",
-      "balance": 200.0,
+      "balance": 165.0,
       "daily_limit": 200.0,
       "pay_later_count": 0,
       "pay_later_balance": 0.0,
@@ -196,6 +196,16 @@
       "role": "student",
       "student_id_number": "SJC-9988",
       "rfid_uid": "000998877665",
+      "balance": 200.0,
+      "daily_limit": 200.0
+    },
+    {
+      "id": "2ea74f3a-ae5c-4bed-81be-f88265168d49",
+      "full_name": "Joshua Keith Canilang",
+      "email": "KeithAguilar@sjc.edu.ph",
+      "role": "student",
+      "student_id_number": "2026-103103",
+      "rfid_uid": null,
       "balance": 200.0,
       "daily_limit": 200.0
     }

@@ -142,6 +142,7 @@ CREATE TABLE IF NOT EXISTS public.products (
     ai_label TEXT,
     description TEXT,
     barcode TEXT,
+    is_archived BOOLEAN DEFAULT FALSE,
     status TEXT DEFAULT 'active',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -154,6 +155,7 @@ ALTER TABLE public.products ADD COLUMN IF NOT EXISTS stock INT NOT NULL DEFAULT 
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS stock_quantity INT NOT NULL DEFAULT 0;
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS available BOOLEAN DEFAULT TRUE;
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS is_available BOOLEAN DEFAULT TRUE;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE;
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS product_type TEXT DEFAULT 'packaged_good';
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS img TEXT;
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS image_url TEXT;
@@ -162,6 +164,7 @@ ALTER TABLE public.products ADD COLUMN IF NOT EXISTS protein TEXT DEFAULT '0g';
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS allergens JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS calories INT DEFAULT 0;
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
+CREATE INDEX IF NOT EXISTS idx_products_archived ON public.products(is_archived);
 
 -- Inventory Batches (FIFO Stock Management)
 CREATE TABLE IF NOT EXISTS public.inventory_batches (

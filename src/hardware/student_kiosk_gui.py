@@ -82,6 +82,7 @@ STATE_STABILITY_COUNTDOWN = 4
 STATE_SETTLEMENT = 5
 STATE_ERROR = 6
 STATE_PREORDER_ANNOUNCEMENT = 7
+STATE_PAYMENT_CONFIRMATION = 8
 
 STATE_NAMES = {
     STATE_IDLE: "IDLE",
@@ -90,7 +91,8 @@ STATE_NAMES = {
     STATE_STABILITY_COUNTDOWN: "COUNTDOWN",
     STATE_SETTLEMENT: "SETTLEMENT",
     STATE_ERROR: "ERROR",
-    STATE_PREORDER_ANNOUNCEMENT: "PREORDER"
+    STATE_PREORDER_ANNOUNCEMENT: "PREORDER",
+    STATE_PAYMENT_CONFIRMATION: "CONFIRMATION"
 }
 
 _GLOBAL_DB_MANAGER = None
@@ -112,21 +114,25 @@ def get_edge_db_path():
 
 # In-Memory Fallback Catalog Database
 POS_CATALOG_DATABASE = {
-    "Buttercream_Biscuits": {"name": "Buttercream Biscuits", "category": "SNACKS & BAKERY", "price": 35.00, "stock": 50, "ai_label": "Buttercream_Biscuits"},
-    "buttercream_biscuits": {"name": "Buttercream Biscuits", "category": "SNACKS & BAKERY", "price": 35.00, "stock": 50, "ai_label": "Buttercream_Biscuits"},
-    "Buttercream Biscuits": {"name": "Buttercream Biscuits", "category": "SNACKS & BAKERY", "price": 35.00, "stock": 50, "ai_label": "Buttercream_Biscuits"},
+    "Buttercream_Biscuits": {"name": "Buttercream Biscuits", "category": "SNACKS & BAKERY", "price": 30.00, "stock": 50, "ai_label": "Buttercream_Biscuits"},
+    "buttercream_biscuits": {"name": "Buttercream Biscuits", "category": "SNACKS & BAKERY", "price": 30.00, "stock": 50, "ai_label": "Buttercream_Biscuits"},
+    "Buttercream Biscuits": {"name": "Buttercream Biscuits", "category": "SNACKS & BAKERY", "price": 30.00, "stock": 50, "ai_label": "Buttercream_Biscuits"},
+    "Buttercream Crackers": {"name": "Buttercream Crackers", "category": "SNACKS & BAKERY", "price": 35.00, "stock": 50, "ai_label": None},
     "Jack_And_Jill_Magic_Chips": {"name": "Jack & Jill Magic Chips", "category": "SNACKS & BAKERY", "price": 25.00, "stock": 50, "ai_label": "Jack_And_Jill_Magic_Chips"},
     "jack_and_jill_magic_chips": {"name": "Jack & Jill Magic Chips", "category": "SNACKS & BAKERY", "price": 25.00, "stock": 50, "ai_label": "Jack_And_Jill_Magic_Chips"},
     "Jack & Jill Magic Chips": {"name": "Jack & Jill Magic Chips", "category": "SNACKS & BAKERY", "price": 25.00, "stock": 50, "ai_label": "Jack_And_Jill_Magic_Chips"},
-    "adobo": {"name": "Pork Adobo Meal", "category": "MEAL", "price": 100.00, "stock": 45},
-    "pork_adobo": {"name": "Pork Adobo Meal", "category": "MEAL", "price": 100.00, "stock": 45},
+    "adobo": {"name": "Pork Adobo Meal", "category": "MEALS & MAINS", "price": 100.00, "stock": 45},
+    "pork_adobo": {"name": "Pork Adobo Meal", "category": "MEALS & MAINS", "price": 100.00, "stock": 45},
     "steamed_rice": {"name": "Steamed Rice", "category": "RICE", "price": 15.00, "stock": 120},
-    "burger": {"name": "Classic Cheeseburger", "category": "MEAL", "price": 75.00, "stock": 50},
-    "fried_chicken": {"name": "Crispy Chicken Bowl", "category": "MEAL", "price": 85.00, "stock": 60},
-    "water_bottle": {"name": "Mineral Water 500ml", "category": "BEVERAGE", "price": 20.00, "stock": 150},
-    "juice_box": {"name": "Iced Fruit Juice 350ml", "category": "BEVERAGE", "price": 30.00, "stock": 80},
-    "sandwich": {"name": "Ham & Cheese Sandwich", "category": "SNACK", "price": 45.00, "stock": 40},
-    "apple": {"name": "Fresh Red Apple", "category": "HEALTHY", "price": 25.00, "stock": 40}
+    "burger": {"name": "Classic Cheeseburger", "category": "MEALS & MAINS", "price": 75.00, "stock": 50},
+    "fried_chicken": {"name": "Crispy Chicken Bowl", "category": "MEALS & MAINS", "price": 85.00, "stock": 60},
+    "water_bottle": {"name": "Mineral Water (500ml)", "category": "BEVERAGES", "price": 20.00, "stock": 150},
+    "juice_box": {"name": "Iced Fruit Juice (350ml)", "category": "BEVERAGES", "price": 30.00, "stock": 80},
+    "sandwich": {"name": "Ham & Cheese Sandwich", "category": "SNACKS & BAKERY", "price": 45.00, "stock": 40},
+    "apple": {"name": "Fresh Red Apple", "category": "SNACKS & BAKERY", "price": 25.00, "stock": 40},
+    "cookie": {"name": "Choco Chip Cookie", "category": "SNACKS & BAKERY", "price": 18.00, "stock": 90},
+    "beef_pares": {"name": "Beef Pares w/ Garlic Rice", "category": "MEALS & MAINS", "price": 90.00, "stock": 25},
+    "spaghetti": {"name": "Spaghetti Bolognese", "category": "MEALS & MAINS", "price": 65.00, "stock": 30}
 }
 
 def lookup_pos_item(raw_label):
@@ -134,22 +140,10 @@ def lookup_pos_item(raw_label):
     Dynamically resolves a detection class name to a POS catalog item.
     1. Queries local edge database (novalunch_edge.db) by ai_label where is_available = 1.
     2. If no record has mapped that ai_label, falls back to checking product name or barcode.
-    3. If still unfound, marks item as requires_cashier_review: true with price 0.00.
+    3. If still unfound or resolved price is 0/null: returns None (discards from cart).
     """
     if not raw_label:
-        return {
-            "id": "unmapped-empty",
-            "name": "Unmapped Item",
-            "category": "UNKNOWN",
-            "price": 0.00,
-            "stock": 0,
-            "barcode": None,
-            "available": True,
-            "is_available": True,
-            "ai_label": None,
-            "requires_cashier_review": True,
-            "status": "active"
-        }
+        return None
 
     s = str(raw_label).strip()
 
@@ -167,54 +161,61 @@ def lookup_pos_item(raw_label):
 
             # Priority 1: Query by ai_label exact or case-insensitive (latest updated takes precedence)
             c.execute("""
-                SELECT id, name, price, category, barcode, is_available, stock, ai_label 
+                SELECT id, name, price, category, barcode, is_available, stock, ai_label, is_archived 
                 FROM products 
-                WHERE (ai_label = ? OR LOWER(ai_label) = LOWER(?)) AND is_available = 1 
+                WHERE (ai_label = ? OR LOWER(ai_label) = LOWER(?)) 
+                  AND (is_archived = 0 OR is_archived IS NULL)
                 ORDER BY updated_at DESC
                 LIMIT 1;
             """, (s, s))
             row = c.fetchone()
             if row:
-                conn.close()
-                return {
-                    "id": str(row[0]),
-                    "name": str(row[1]),
-                    "price": float(row[2]),
-                    "category": str(row[3] or "SNACKS & BAKERY"),
-                    "barcode": str(row[4]) if row[4] else None,
-                    "available": bool(row[5]),
-                    "is_available": bool(row[5]),
-                    "stock": int(row[6]) if row[6] is not None else 50,
-                    "ai_label": str(row[7]) if row[7] else s,
-                    "requires_cashier_review": False,
-                    "status": "active"
-                }
+                price = float(row[2]) if row[2] is not None else 0.0
+                if price > 0.0:
+                    conn.close()
+                    return {
+                        "id": str(row[0]),
+                        "name": str(row[1]),
+                        "price": price,
+                        "category": str(row[3] or "SNACKS & BAKERY"),
+                        "barcode": str(row[4]) if row[4] else None,
+                        "available": bool(row[5]),
+                        "is_available": bool(row[5]),
+                        "stock": int(row[6]) if row[6] is not None else 50,
+                        "ai_label": str(row[7]) if row[7] else s,
+                        "is_archived": bool(row[8]) if len(row) > 8 and row[8] is not None else False,
+                        "requires_cashier_review": False,
+                        "status": "active"
+                    }
 
             # Priority 2: Fallback to checking product name or barcode
             c.execute("""
-                SELECT id, name, price, category, barcode, is_available, stock, ai_label 
+                SELECT id, name, price, category, barcode, is_available, stock, ai_label, is_archived 
                 FROM products 
                 WHERE (name = ? OR barcode = ? OR LOWER(name) = LOWER(?) OR REPLACE(LOWER(name), ' ', '_') = LOWER(?) OR REPLACE(LOWER(name), '_', ' ') = LOWER(?)) 
-                  AND is_available = 1 
+                  AND (is_archived = 0 OR is_archived IS NULL)
                 ORDER BY updated_at DESC
                 LIMIT 1;
             """, (s, s, s, s, s))
             row = c.fetchone()
             if row:
-                conn.close()
-                return {
-                    "id": str(row[0]),
-                    "name": str(row[1]),
-                    "price": float(row[2]),
-                    "category": str(row[3] or "SNACKS & BAKERY"),
-                    "barcode": str(row[4]) if row[4] else None,
-                    "available": bool(row[5]),
-                    "is_available": bool(row[5]),
-                    "stock": int(row[6]) if row[6] is not None else 50,
-                    "ai_label": str(row[7]) if row[7] else None,
-                    "requires_cashier_review": False,
-                    "status": "active"
-                }
+                price = float(row[2]) if row[2] is not None else 0.0
+                if price > 0.0:
+                    conn.close()
+                    return {
+                        "id": str(row[0]),
+                        "name": str(row[1]),
+                        "price": price,
+                        "category": str(row[3] or "SNACKS & BAKERY"),
+                        "barcode": str(row[4]) if row[4] else None,
+                        "available": bool(row[5]),
+                        "is_available": bool(row[5]),
+                        "stock": int(row[6]) if row[6] is not None else 50,
+                        "ai_label": str(row[7]) if row[7] else None,
+                        "is_archived": bool(row[8]) if len(row) > 8 and row[8] is not None else False,
+                        "requires_cashier_review": False,
+                        "status": "active"
+                    }
             conn.close()
         except Exception as e:
             # Graceful error handling - avoid crashing frame loop
@@ -233,50 +234,50 @@ def lookup_pos_item(raw_label):
         if s_snake in POS_CATALOG_DATABASE:
             match = dict(POS_CATALOG_DATABASE[s_snake])
 
-    if match and match.get("available") is not False and match.get("is_available") is not False:
-        return {
-            "id": match.get("id", f"cached-{s}"),
-            "name": match.get("name", s),
-            "category": match.get("category", "ITEM"),
-            "price": float(match.get("price", 35.0)),
-            "stock": int(match.get("stock", 50)),
-            "barcode": match.get("barcode"),
-            "available": True,
-            "is_available": True,
-            "ai_label": match.get("ai_label", s),
-            "requires_cashier_review": False,
-            "status": "active"
-        }
+    if match and match.get("is_archived") is not True and match.get("status") != "archived":
+        price = float(match.get("price", 0.0) or 0.0)
+        if price > 0.0:
+            return {
+                "id": match.get("id", f"cached-{s}"),
+                "name": match.get("name", s),
+                "category": match.get("category", "ITEM"),
+                "price": price,
+                "stock": int(match.get("stock", 50)),
+                "barcode": match.get("barcode"),
+                "available": True,
+                "is_available": True,
+                "is_archived": False,
+                "ai_label": match.get("ai_label", s),
+                "requires_cashier_review": False,
+                "status": "active"
+            }
 
-    # 3. If still unfound: mark as requires_cashier_review: true with price 0.00
-    clean = s.replace("_", " ").title()
-    return {
-        "id": f"unmapped-{s}",
-        "name": f"Unmapped ({clean})",
-        "category": "UNKNOWN",
-        "price": 0.00,
-        "stock": 0,
-        "barcode": None,
-        "available": True,
-        "is_available": True,
-        "ai_label": s,
-        "requires_cashier_review": True,
-        "status": "active"
-    }
+    # 3. Non-menu / unmapped item or zero price: ignore completely
+    return None
 
 def aggregate_detections(detections_list):
     if not detections_list:
         return []
     aggregated = {}
     for it in detections_list:
+        if not it:
+            continue
         # Exclude archived and expired items
-        if it.get("available") is False or it.get("status") in ["archived", "EXPIRED", "expired"]:
+        if it.get("is_archived") is True or it.get("status") in ["archived", "EXPIRED", "expired"]:
+            continue
+        price = float(it.get("price", 0.0) or 0.0)
+        if price <= 0.0:
+            continue
+        if it.get("requires_cashier_review") or it.get("category") == "UNKNOWN" or "unmapped" in str(it.get("id", "")).lower() or "unmapped" in str(it.get("name", "")).lower():
             continue
         name = it.get("name", "Item")
+        item_id = str(it.get("product_id") or it.get("id") or name)
         if name in aggregated:
             aggregated[name]["qty"] += it.get("qty", 1)
         else:
-            aggregated[name] = dict(it)
+            item_dict = dict(it)
+            item_dict["product_id"] = item_id
+            aggregated[name] = item_dict
     return list(aggregated.values())
 
 # ==============================================================================
@@ -360,6 +361,7 @@ class DatabaseManager:
                     category TEXT,
                     barcode TEXT,
                     is_available INTEGER DEFAULT 1,
+                    is_archived INTEGER DEFAULT 0,
                     stock INTEGER DEFAULT 50,
                     ai_label TEXT,
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -368,30 +370,35 @@ class DatabaseManager:
             c.execute("CREATE INDEX IF NOT EXISTS idx_products_ai_label ON products (ai_label);")
             c.execute("CREATE INDEX IF NOT EXISTS idx_products_barcode ON products (barcode);")
             c.execute("CREATE INDEX IF NOT EXISTS idx_products_name ON products (name);")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_products_archived ON products (is_archived);")
 
-            # Check if ai_label column exists (migration support)
+            # Check if columns exist (migration support)
             c.execute("PRAGMA table_info(products);")
             cols = [col[1] for col in c.fetchall()]
             if "ai_label" not in cols:
                 c.execute("ALTER TABLE products ADD COLUMN ai_label TEXT;")
+            if "is_archived" not in cols:
+                c.execute("ALTER TABLE products ADD COLUMN is_archived INTEGER DEFAULT 0;")
 
             # Seed default products if products table is currently empty
             c.execute("SELECT COUNT(*) FROM products;")
             count = c.fetchone()[0]
             if count == 0:
                 default_products = [
-                    ("b1010101-1010-1010-1010-101010101010", "Buttercream Biscuits", 35.00, "SNACKS & BAKERY", "480000000010", 1, 50, "Buttercream_Biscuits"),
-                    ("b1111111-1111-1111-1111-111111111111", "Jack & Jill Magic Chips", 25.00, "SNACKS & BAKERY", "480000000011", 1, 45, "Jack_And_Jill_Magic_Chips"),
-                    ("a1111111-1111-1111-1111-111111111111", "Classic Cheeseburger", 75.00, "MEALS & MAINS", "480000000001", 1, 50, None),
-                    ("a2222222-2222-2222-2222-222222222222", "Crispy Chicken Bowl", 85.00, "MEALS & MAINS", "480000000002", 1, 60, None),
-                    ("a3333333-3333-3333-3333-333333333333", "Ham & Cheese Sandwich", 45.00, "SNACKS & BAKERY", "480000000003", 1, 40, None),
-                    ("a4444444-4444-4444-4444-444444444444", "Mineral Water 500ml", 20.00, "BEVERAGES", "480000000004", 1, 150, None),
-                    ("a5555555-5555-5555-5555-555555555555", "Iced Fruit Juice 350ml", 30.00, "BEVERAGES", "480000000005", 1, 80, None),
-                    ("a6666666-6666-6666-6666-666666666666", "Fresh Red Apple", 25.00, "FRUITS & HEALTHY", "480000000006", 1, 40, None)
+                    ("b1010101-1010-1010-1010-101010101010", "Buttercream Crackers", 35.00, "SNACKS & BAKERY", "480000000010", 1, 0, 50, None),
+                    ("111ac6f3-cca3-479e-86a1-1d1edd28a945", "Buttercream Biscuits", 30.00, "SNACKS & BAKERY", "480000000012", 1, 0, 50, "Buttercream_Biscuits"),
+                    ("b1111111-1111-1111-1111-111111111111", "Jack & Jill Magic Chips", 25.00, "SNACKS & BAKERY", "480000000011", 1, 0, 45, "Jack_And_Jill_Magic_Chips"),
+                    ("a1111111-1111-1111-1111-111111111111", "Classic Cheeseburger", 75.00, "MEALS & MAINS", "480000000001", 1, 0, 50, None),
+                    ("a2222222-2222-2222-2222-222222222222", "Crispy Chicken Bowl", 85.00, "MEALS & MAINS", "480000000002", 1, 0, 60, None),
+                    ("a3333333-3333-3333-3333-333333333333", "Ham & Cheese Sandwich", 45.00, "SNACKS & BAKERY", "480000000003", 1, 0, 40, None),
+                    ("a4444444-4444-4444-4444-444444444444", "Mineral Water (500ml)", 20.00, "BEVERAGES", "480000000004", 1, 0, 150, None),
+                    ("a5555555-5555-5555-5555-555555555555", "Iced Fruit Juice (350ml)", 30.00, "BEVERAGES", "480000000005", 1, 0, 80, None),
+                    ("a6666666-6666-6666-6666-666666666666", "Fresh Red Apple", 25.00, "SNACKS & BAKERY", "480000000006", 1, 0, 40, None),
+                    ("a8888888-8888-8888-8888-888888888888", "Choco Chip Cookie", 18.00, "SNACKS & BAKERY", "480000000008", 1, 0, 90, None)
                 ]
                 c.executemany("""
-                    INSERT INTO products (id, name, price, category, barcode, is_available, stock, ai_label, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    INSERT INTO products (id, name, price, category, barcode, is_available, is_archived, stock, ai_label, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 """, default_products)
                 print(f"[DB MANAGER] 📦 Seeded {len(default_products)} default catalog items with AI detection classes into SQLite.")
 
@@ -408,8 +415,9 @@ class DatabaseManager:
         price = float(prod.get("price") or 0.0)
         cat = str(prod.get("category") or "ITEM").strip()
         barcode = str(prod.get("barcode") or "") if prod.get("barcode") else None
-        avail = 1 if (prod.get("is_available") is not False and prod.get("available") is not False) else 0
-        stock = int(prod.get("stock") or prod.get("stock_quantity") or 50)
+        is_archived = 1 if (prod.get("is_archived") is True or str(prod.get("is_archived")).lower() == "true" or prod.get("status") == "archived") else 0
+        avail = 1 if (prod.get("is_available") is not False and prod.get("available") is not False and is_archived == 0) else 0
+        stock = int(prod.get("stock") if prod.get("stock") is not None else (prod.get("stock_quantity") if prod.get("stock_quantity") is not None else 50))
         ai_label = str(prod.get("ai_label") or prod.get("aiLabel") or "").strip()
         if not ai_label or ai_label.upper() == "NONE":
             ai_label = None
@@ -418,26 +426,27 @@ class DatabaseManager:
             try:
                 conn = sqlite3.connect(self.sqlite_path, timeout=10.0)
                 c = conn.cursor()
-                if ai_label and avail == 1:
+                if ai_label and is_archived == 0:
                     # Prevent duplicate active assignments across products
                     c.execute("""
                         UPDATE products 
                         SET ai_label = NULL, updated_at = CURRENT_TIMESTAMP 
-                        WHERE id != ? AND (ai_label = ? OR LOWER(ai_label) = LOWER(?)) AND is_available = 1
+                        WHERE id != ? AND (ai_label = ? OR LOWER(ai_label) = LOWER(?)) AND (is_archived = 0 OR is_archived IS NULL)
                     """, (prod_id, ai_label, ai_label))
                 c.execute("""
-                    INSERT INTO products (id, name, price, category, barcode, is_available, stock, ai_label, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    INSERT INTO products (id, name, price, category, barcode, is_available, is_archived, stock, ai_label, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                     ON CONFLICT(id) DO UPDATE SET
                         name = excluded.name,
                         price = excluded.price,
                         category = excluded.category,
                         barcode = excluded.barcode,
                         is_available = excluded.is_available,
+                        is_archived = excluded.is_archived,
                         stock = excluded.stock,
                         ai_label = excluded.ai_label,
                         updated_at = CURRENT_TIMESTAMP
-                """, (prod_id, name, price, cat, barcode, avail, stock, ai_label))
+                """, (prod_id, name, price, cat, barcode, avail, is_archived, stock, ai_label))
                 conn.commit()
                 conn.close()
             except Exception as e:
@@ -453,9 +462,10 @@ class DatabaseManager:
             "stock": stock,
             "available": bool(avail),
             "is_available": bool(avail),
+            "is_archived": bool(is_archived),
             "barcode": barcode,
             "ai_label": ai_label,
-            "status": "active" if avail else "archived"
+            "status": "archived" if is_archived else "active"
         }
         POS_CATALOG_DATABASE[name] = entry
         POS_CATALOG_DATABASE[name.lower()] = entry
@@ -529,7 +539,7 @@ class DatabaseManager:
     def sync_remote_catalog(self):
         def _fetch():
             try:
-                url = f"{SUPABASE_URL}/rest/v1/products?select=id,name,category,price,stock,stock_quantity,is_available,available,status,barcode,ai_label"
+                url = f"{SUPABASE_URL}/rest/v1/products?select=id,name,category,price,stock,stock_quantity,is_available,available,status,barcode,ai_label,is_archived&or=(is_archived.is.null,is_archived.eq.false)"
                 req = urllib.request.Request(url, headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {SUPABASE_ANON_KEY}"})
                 with urllib.request.urlopen(req, timeout=4) as resp:
                     if resp.status == 200:
@@ -937,8 +947,12 @@ class CameraThread(threading.Thread):
         cv2.line(canvas, (105, sweep_y), (535, sweep_y), (212, 182, 6), 2)
 
         # Simulated item 1: Buttercream Biscuits (novalunch_yolo.pt class 0)
-        item1 = lookup_pos_item("Buttercream_Biscuits")
-        item2 = lookup_pos_item("Jack_And_Jill_Magic_Chips")
+        item1 = lookup_pos_item("Buttercream_Biscuits") or {
+            "id": "item-01", "name": "Buttercream Biscuits", "price": 30.0, "category": "SNACKS & BAKERY", "stock": 50, "requires_cashier_review": False
+        }
+        item2 = lookup_pos_item("Jack_And_Jill_Magic_Chips") or {
+            "id": "item-02", "name": "Jack & Jill Magic Chips", "price": 25.0, "category": "SNACKS & BAKERY", "stock": 50, "requires_cashier_review": False
+        }
         p1 = float(item1.get("price", 35.0))
         p2 = float(item2.get("price", 25.0))
 
@@ -955,26 +969,28 @@ class CameraThread(threading.Thread):
 
         detections = [
             {
-                "id": "item-01",
+                "id": str(item1.get("id", "item-01")),
+                "product_id": str(item1.get("id", "item-01")),
                 "ai_label": "Buttercream_Biscuits",
                 "name": item1.get("name", "Buttercream Biscuits"),
                 "category": item1.get("category", "SNACKS & BAKERY"),
                 "qty": 1,
                 "price": p1,
                 "stock": int(item1.get("stock", 50)),
-                "requires_cashier_review": item1.get("requires_cashier_review", False),
+                "requires_cashier_review": False,
                 "bbox": [150, 130, 170, 140],
                 "conf": 0.98
             },
             {
-                "id": "item-02",
+                "id": str(item2.get("id", "item-02")),
+                "product_id": str(item2.get("id", "item-02")),
                 "ai_label": "Jack_And_Jill_Magic_Chips",
                 "name": item2.get("name", "Jack & Jill Magic Chips"),
                 "category": item2.get("category", "SNACKS & BAKERY"),
                 "qty": 1,
                 "price": p2,
                 "stock": int(item2.get("stock", 50)),
-                "requires_cashier_review": item2.get("requires_cashier_review", False),
+                "requires_cashier_review": False,
                 "bbox": [360, 150, 120, 210],
                 "conf": 0.96
             }
@@ -1009,19 +1025,28 @@ class CameraThread(threading.Thread):
                                             bw = max(20, x2 - x1)
                                             bh = max(20, y2 - y1)
                                             pos_info = lookup_pos_item(cls_name)
-                                            if pos_info.get("available") is False or pos_info.get("status") in ["archived", "EXPIRED", "expired"]:
+                                            if not pos_info:
+                                                continue
+                                            if pos_info.get("is_archived") is True or pos_info.get("status") in ["archived", "EXPIRED", "expired"]:
+                                                continue
+                                            item_price = float(pos_info.get("price") or 0.0)
+                                            if item_price <= 0.0:
+                                                continue
+                                            if pos_info.get("requires_cashier_review") or pos_info.get("category") == "UNKNOWN" or "unmapped" in str(pos_info.get("id", "")).lower() or "unmapped" in str(pos_info.get("name", "")).lower():
                                                 continue
                                             is_near_exp = pos_info.get("status") in ["NEAR_EXPIRY", "near_expiry"] or pos_info.get("expiry_status") == "near_expiry"
+                                            prod_id = str(pos_info.get("id") or f"yolo-obb-{cls_id}")
                                             detections.append({
-                                                "id": f"yolo-obb-{cls_id}-{idx}",
+                                                "id": prod_id,
+                                                "product_id": prod_id,
                                                 "ai_label": cls_name,
                                                 "name": pos_info.get("name", cls_name),
                                                 "category": pos_info.get("category", "SNACKS & BAKERY"),
                                                 "qty": 1,
-                                                "price": float(pos_info.get("price", 0.0)),
+                                                "price": item_price,
                                                 "stock": int(pos_info.get("stock", 50)),
                                                 "is_near_expiry": is_near_exp,
-                                                "requires_cashier_review": pos_info.get("requires_cashier_review", False),
+                                                "requires_cashier_review": False,
                                                 "bbox": [x1, y1, bw, bh],
                                                 "conf": conf
                                             })
@@ -1037,27 +1062,36 @@ class CameraThread(threading.Thread):
                                             bw = max(20, x2 - x1)
                                             bh = max(20, y2 - y1)
                                             pos_info = lookup_pos_item(cls_name)
-                                            if pos_info.get("available") is False or pos_info.get("status") in ["archived", "EXPIRED", "expired"]:
+                                            if not pos_info:
+                                                continue
+                                            if pos_info.get("is_archived") is True or pos_info.get("status") in ["archived", "EXPIRED", "expired"]:
+                                                continue
+                                            item_price = float(pos_info.get("price") or 0.0)
+                                            if item_price <= 0.0:
+                                                continue
+                                            if pos_info.get("requires_cashier_review") or pos_info.get("category") == "UNKNOWN" or "unmapped" in str(pos_info.get("id", "")).lower() or "unmapped" in str(pos_info.get("name", "")).lower():
                                                 continue
                                             is_near_exp = pos_info.get("status") in ["NEAR_EXPIRY", "near_expiry"] or pos_info.get("expiry_status") == "near_expiry"
+                                            prod_id = str(pos_info.get("id") or f"yolo-box-{cls_id}")
                                             detections.append({
-                                                "id": f"yolo-box-{cls_id}-{idx}",
+                                                "id": prod_id,
+                                                "product_id": prod_id,
                                                 "ai_label": cls_name,
                                                 "name": pos_info.get("name", cls_name),
                                                 "category": pos_info.get("category", "ITEM"),
                                                 "qty": 1,
-                                                "price": float(pos_info.get("price", 0.0)),
+                                                "price": item_price,
                                                 "stock": int(pos_info.get("stock", 50)),
                                                 "is_near_expiry": is_near_exp,
-                                                "requires_cashier_review": pos_info.get("requires_cashier_review", False),
+                                                "requires_cashier_review": False,
                                                 "bbox": [x1, y1, bw, bh],
                                                 "conf": conf
                                             })
                             except Exception as e:
                                 print(f"[AI VISION WARN] Detection inference error: {e}")
 
-                        # Optical contour fallback for general food items placed on counter
-                        if not detections:
+                        # Optical contour fallback for general food items placed on counter (ONLY if YOLO model is not loaded)
+                        if not detections and model is None:
                             try:
                                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                                 blurred = cv2.GaussianBlur(gray, (7, 7), 0)
@@ -1072,6 +1106,7 @@ class CameraThread(threading.Thread):
                                     if x > w_f * 0.05 and (x + bw) < w_f * 0.95 and y > h_f * 0.05:
                                         detections.append({
                                             "id": f"contour-{i}",
+                                            "product_id": f"contour-{i}",
                                             "ai_label": "tray_item",
                                             "name": f"Scanned Meal Item #{i+1}",
                                             "category": "MEAL",
@@ -1720,6 +1755,15 @@ class NovaLunchKioskGUI:
         broadcast_kiosk_event("kiosk_update", self.get_live_kiosk_data())
 
     def recalculate_total(self):
+        valid_items = [
+            it for it in self.cart_items 
+            if float(it.get("price", 0.0) or 0.0) > 0.0
+            and not it.get("requires_cashier_review")
+            and it.get("category") != "UNKNOWN"
+            and "unmapped" not in str(it.get("id", "")).lower()
+            and "unmapped" not in str(it.get("name", "")).lower()
+        ]
+        self.cart_items = valid_items
         self.total_amount = sum(item["price"] * item.get("qty", 1) for item in self.cart_items)
         self.notify_pos_update()
 
@@ -1759,35 +1803,28 @@ class NovaLunchKioskGUI:
         elif step == 2:
             # Step 2: AI Scan
             if not self.active_student:
-                accounts = self.db_manager.load_accounts()
-                if accounts:
-                    st = accounts[0]
-                    self.active_student = {
-                        "id": st.get("student_id_number", "SJC-1001"),
-                        "name": st.get("full_name", "Adrian Nonog"),
-                        "email": st.get("email", "student@sjc.edu.ph"),
-                        "rfidUid": st.get("rfid_uid", "0009401737"),
-                        "balance": float(st.get("balance", 250.0)),
-                        "daily_limit": float(st.get("daily_limit", 300.0))
-                    }
-                else:
-                    self.active_student = {
-                        "id": "SJC-1001",
-                        "name": "Adrian Nonog",
-                        "email": "student@sjc.edu.ph",
-                        "rfidUid": "0009401737",
-                        "balance": 250.0,
-                        "daily_limit": 300.0
-                    }
+                self.execute_simulation_step(1)
+            self.cart_manual_override_lock = False
             self.transition_to_state(STATE_SCANNING)
 
         elif step == 3:
-            # Step 3: Calibrate Timer
-            self.transition_to_state(STATE_STABILITY_COUNTDOWN)
+            # Step 3: Payment Confirmation
+            if not self.active_student:
+                self.execute_simulation_step(1)
+            if not self.cart_items:
+                item1 = lookup_pos_item("Buttercream_Biscuits")
+                if item1:
+                    self.cart_items = [dict(item1, qty=1)]
+                    self.recalculate_total()
+            self.cart_manual_override_lock = True
+            self.transition_to_state(STATE_PAYMENT_CONFIRMATION)
 
         elif step == 4:
             # Step 4: Settlement
-            self.transition_to_state(STATE_SETTLEMENT)
+            if self.current_state == STATE_PAYMENT_CONFIRMATION:
+                self.execute_rfid_checkout()
+            else:
+                self.transition_to_state(STATE_SETTLEMENT)
 
     def transition_to_state(self, new_state):
         self.current_state = new_state
@@ -1798,7 +1835,7 @@ class NovaLunchKioskGUI:
             self.active_preorders = []
             self.cart_items = []
             self.total_amount = 0.0
-            self.countdown_remaining = 4.0
+            self.countdown_remaining = 5.0
             self.motion_detected = False
             self.motion_voice_alerted = False
             self.greet_audio_spoken = False
@@ -1839,9 +1876,22 @@ class NovaLunchKioskGUI:
                 self.greet_audio_spoken = True
 
         elif new_state == STATE_SCANNING:
+            self.countdown_remaining = 5.0
+            self.stable_start_time = 0.0
+            self.last_detection_hash = ""
+            self.cart_manual_override_lock = False
             live_items = self.camera_thread.get_latest_detections()
-            if live_items:
-                self.cart_items = aggregate_detections(live_items)
+            agg_items = aggregate_detections(live_items) if live_items else []
+            valid_items = [
+                it for it in agg_items 
+                if float(it.get("price", 0.0) or 0.0) > 0.0
+                and not it.get("requires_cashier_review")
+                and it.get("category") != "UNKNOWN"
+                and "unmapped" not in str(it.get("id", "")).lower()
+                and "unmapped" not in str(it.get("name", "")).lower()
+            ]
+            if valid_items:
+                self.cart_items = valid_items
                 self.recalculate_total()
                 self.status_message = f"AI Detected {len(self.cart_items)} item(s). Calibrating stability..."
             else:
@@ -1870,6 +1920,11 @@ class NovaLunchKioskGUI:
             self.last_tick_sec = 5
             self.motion_voice_alerted = False
             self.status_message = f"🟢 AI Scanning items (5.0s)... Hold tray steady"
+
+        elif new_state == STATE_PAYMENT_CONFIRMATION:
+            self.cart_manual_override_lock = True
+            cnt = sum(i.get("qty", 1) for i in self.cart_items)
+            self.status_message = f"🟢 Scanned {cnt} item(s) (₱{self.total_amount:.2f}) — Ready for Payment Confirmation"
 
         elif new_state == STATE_SETTLEMENT:
             self.status_message = "Payment have been confirmed please claim your order."
@@ -1981,8 +2036,8 @@ class NovaLunchKioskGUI:
                 return  # Hardware debounce
             self.rfid_anti_passback_cache[clean] = now
 
-            # Tap-2 Settlement: If scanning or in countdown and tapped RFID matches active student, settle immediately
-            if self.current_state in [STATE_SCANNING, STATE_STABILITY_COUNTDOWN] and self.active_student:
+            # Tap-2 Settlement: If scanning, countdown, or payment confirmation and tapped RFID matches active student, settle immediately
+            if self.current_state in [STATE_SCANNING, STATE_STABILITY_COUNTDOWN, STATE_PAYMENT_CONFIRMATION] and self.active_student:
                 active_uid = str(self.active_student.get("rfidUid") or self.active_student.get("rfid_uid") or "").strip()
                 active_id = str(self.active_student.get("id") or self.active_student.get("student_id_number") or "").strip()
 
@@ -2039,9 +2094,13 @@ class NovaLunchKioskGUI:
         elif self.current_state == STATE_GREET:
             self.transition_to_state(STATE_SCANNING)
         elif self.current_state == STATE_SCANNING:
-            self.transition_to_state(STATE_STABILITY_COUNTDOWN)
+            if len(self.cart_items) > 0 and self.total_amount > 0:
+                self.transition_to_state(STATE_STABILITY_COUNTDOWN)
         elif self.current_state == STATE_STABILITY_COUNTDOWN:
-            self.transition_to_state(STATE_SCANNING)
+            self.cart_manual_override_lock = True
+            self.transition_to_state(STATE_PAYMENT_CONFIRMATION)
+        elif self.current_state == STATE_PAYMENT_CONFIRMATION:
+            self.execute_rfid_checkout()
         elif self.current_state == STATE_SETTLEMENT:
             self.transition_to_state(STATE_IDLE)
 
@@ -2193,6 +2252,8 @@ class NovaLunchKioskGUI:
 
         if self.current_state == STATE_STABILITY_COUNTDOWN:
             self.render_countdown_gauge(video_area)
+        elif self.current_state == STATE_PAYMENT_CONFIRMATION:
+            self.render_payment_confirmation_banner(video_area)
         elif self.current_state == STATE_SETTLEMENT:
             self.render_settlement_banner(video_area)
 
@@ -2224,6 +2285,15 @@ class NovaLunchKioskGUI:
         num_surf = self.font_timer_large.render(str(max(1, int(math.ceil(self.countdown_remaining)))), True, arc_color)
         self.screen.blit(num_surf, (cx - num_surf.get_width() // 2, cy - num_surf.get_height() // 2))
 
+    def render_payment_confirmation_banner(self, video_area):
+        banner = pygame.Rect(video_area.centerx - 230, video_area.centery - 40, 460, 80)
+        pygame.draw.rect(self.screen, COLOR_EMERALD_BG, banner, border_radius=16)
+        pygame.draw.rect(self.screen, COLOR_EMERALD, banner, width=2, border_radius=16)
+        t1 = self.font_large.render("✓ TRAY SCANNED & LOCKED", True, COLOR_EMERALD)
+        t2 = self.font_subtitle_bold.render("Tap Student RFID Card to Confirm Payment", True, COLOR_TEXT_MAIN)
+        self.screen.blit(t1, (banner.centerx - t1.get_width() // 2, banner.y + 12))
+        self.screen.blit(t2, (banner.centerx - t2.get_width() // 2, banner.y + 48))
+
     def render_settlement_banner(self, video_area):
         banner = pygame.Rect(video_area.centerx - 220, video_area.centery - 40, 440, 80)
         pygame.draw.rect(self.screen, COLOR_EMERALD_BG, banner, border_radius=16)
@@ -2238,7 +2308,7 @@ class NovaLunchKioskGUI:
         # Step 1: Tap ID
         if self.active_student is not None or self.current_state in [
             STATE_GREET, STATE_PREORDER_ANNOUNCEMENT, STATE_SCANNING,
-            STATE_STABILITY_COUNTDOWN, STATE_SETTLEMENT
+            STATE_STABILITY_COUNTDOWN, STATE_PAYMENT_CONFIRMATION, STATE_SETTLEMENT
         ]:
             s1_state = "DONE"
             bal = self.active_student.get("balance", 0.0) if self.active_student else 0.0
@@ -2251,8 +2321,8 @@ class NovaLunchKioskGUI:
             s1_sub = "Tap Card"
 
         # Step 2: AI Scan (5s)
-        if self.current_state == STATE_SETTLEMENT or (
-            len(self.cart_items) > 0 and self.current_state == STATE_SCANNING
+        if self.current_state in [STATE_PAYMENT_CONFIRMATION, STATE_SETTLEMENT] or (
+            len(self.cart_items) > 0 and self.cart_manual_override_lock
         ):
             s2_state = "DONE"
             cnt = sum(i.get("qty", 1) for i in self.cart_items)
@@ -2271,12 +2341,15 @@ class NovaLunchKioskGUI:
             s2_state = "PENDING"
             s2_sub = "Waiting"
 
-        # Step 3: Cashier Pay
+        # Step 3: Cashier Pay / Confirmation
         if self.current_state == STATE_SETTLEMENT:
             s3_state = "DONE"
             s3_sub = f"Paid ₱{self.total_amount:.2f}"
-        elif len(self.cart_items) > 0 and self.current_state != STATE_IDLE:
+        elif self.current_state == STATE_PAYMENT_CONFIRMATION:
             s3_state = "ACTIVE"
+            s3_sub = f"Pay ₱{self.total_amount:.2f}"
+        elif len(self.cart_items) > 0 and self.current_state != STATE_IDLE:
+            s3_state = "PENDING"
             s3_sub = f"Total: ₱{self.total_amount:.2f}"
         else:
             s3_state = "PENDING"
@@ -2363,6 +2436,14 @@ class NovaLunchKioskGUI:
         pygame.draw.line(self.screen, COLOR_CARD_BORDER, (775, 188), (1235, 188), 1)
 
         standby_detections = aggregate_detections(self.camera_thread.get_latest_detections()) if self.current_state == STATE_IDLE else []
+        valid_cart = [
+            it for it in self.cart_items 
+            if float(it.get("price", 0.0) or 0.0) > 0.0
+            and not it.get("requires_cashier_review")
+            and it.get("category") != "UNKNOWN"
+            and "unmapped" not in str(it.get("id", "")).lower()
+            and "unmapped" not in str(it.get("name", "")).lower()
+        ]
         if self.current_state == STATE_IDLE and standby_detections:
             for idx, item in enumerate(standby_detections[:5]):
                 row_y = 200 + (idx * 44)
@@ -2381,13 +2462,13 @@ class NovaLunchKioskGUI:
 
             auth_hint = self.font_subtitle_bold.render("🟢 Food Detected • Tap Student RFID to Authenticate & Pay", True, COLOR_EMERALD)
             self.screen.blit(auth_hint, (750 + (510 - auth_hint.get_width()) // 2, 435))
-        elif not self.cart_items:
+        elif not valid_cart:
             empty = self.font_body.render("Standby Mode: Tap Student RFID Card", True, COLOR_TEXT_MUTED)
             self.screen.blit(empty, (750 + (510 - empty.get_width()) // 2, 280))
             hint = self.font_subtitle.render("Place food items on counter after card is tapped.", True, COLOR_TEXT_MUTED)
             self.screen.blit(hint, (750 + (510 - hint.get_width()) // 2, 308))
         else:
-            for idx, item in enumerate(self.cart_items[:6]):
+            for idx, item in enumerate(valid_cart[:6]):
                 row_y = 200 + (idx * 44)
                 if idx % 2 == 0:
                     pygame.draw.rect(self.screen, COLOR_CARD_ALT, (775, row_y - 2, 460, 38), border_radius=6)
@@ -2423,6 +2504,8 @@ class NovaLunchKioskGUI:
             bg = COLOR_AMBER_BG if self.motion_detected else COLOR_ROSE_VIBRANT
             txt = "⚠️ Motion Detected — Keep Hands Off" if self.motion_detected else f"⏳ AI Scanning ({self.countdown_remaining:.1f}s remaining)"
             fg = COLOR_MAROON_HEADER if self.motion_detected else COLOR_WHITE
+        elif self.current_state == STATE_PAYMENT_CONFIRMATION:
+            bg, txt, fg = COLOR_EMERALD, "✓ Cart Locked — Tap RFID Card to Confirm", COLOR_WHITE
         elif len(self.cart_items) > 0 and self.current_state != STATE_SETTLEMENT:
             bg, txt, fg = COLOR_EMERALD, "✓ Scanned Items Ready — Confirm at Cashier POS", COLOR_WHITE
         elif self.current_state == STATE_SETTLEMENT:
@@ -2656,14 +2739,17 @@ class NovaLunchKioskGUI:
 
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     pos = event.pos
-                    if hasattr(self, 'pay_later_btn_rect') and self.pay_later_btn_rect.collidepoint(pos) and self.current_state == STATE_SETTLEMENT:
+                    if hasattr(self, 'pay_later_btn_rect') and self.pay_later_btn_rect.collidepoint(pos) and self.current_state in [STATE_PAYMENT_CONFIRMATION, STATE_SCANNING, STATE_STABILITY_COUNTDOWN, STATE_SETTLEMENT]:
                         self.execute_pay_later_checkout()
                     elif self.btn_step1.collidepoint(pos):
                         self.execute_simulation_step(1)
                     elif self.btn_step2.collidepoint(pos):
                         self.execute_simulation_step(2)
                     elif self.btn_step3.collidepoint(pos):
-                        self.execute_simulation_step(3)
+                        if self.current_state == STATE_PAYMENT_CONFIRMATION:
+                            self.execute_rfid_checkout()
+                        else:
+                            self.execute_simulation_step(3)
                     elif self.btn_step4.collidepoint(pos):
                         self.execute_simulation_step(4)
 
@@ -2683,40 +2769,109 @@ class NovaLunchKioskGUI:
                     self.transition_to_state(STATE_IDLE)
                 elif not self.cart_manual_override_lock:
                     live_items = self.camera_thread.get_latest_detections()
-                    if live_items:
-                        agg_items = aggregate_detections(live_items)
-                        curr_hash = "-".join(sorted([f"{item['name']}:{item.get('qty', 1)}" for item in agg_items]))
+                    agg_items = aggregate_detections(live_items) if live_items else []
+                    valid_items = [
+                        it for it in agg_items 
+                        if float(it.get("price", 0.0) or 0.0) > 0.0
+                        and not it.get("requires_cashier_review")
+                        and it.get("category") != "UNKNOWN"
+                        and "unmapped" not in str(it.get("id", "")).lower()
+                        and "unmapped" not in str(it.get("name", "")).lower()
+                    ]
+                    total_price = sum(it["price"] * it.get("qty", 1) for it in valid_items)
+
+                    if len(valid_items) > 0 and total_price > 0.0:
+                        # Stability hash based strictly on Item_ID:Quantity (no bbox coordinates or raw confidence scores)
+                        curr_hash = "-".join(sorted([
+                            f"{str(item.get('product_id') or item.get('id') or item.get('name'))}:{item.get('qty', 1)}"
+                            for item in valid_items
+                        ]))
                         if curr_hash == self.last_detection_hash:
                             if self.stable_start_time == 0.0:
                                 self.stable_start_time = now
                             elif now - self.stable_start_time >= 1.2:
-                                self.cart_items = agg_items
-                                self.recalculate_total()
+                                self.cart_items = valid_items
+                                self.total_amount = total_price
+                                self.notify_pos_update()
                                 self.transition_to_state(STATE_STABILITY_COUNTDOWN)
                         else:
                             self.last_detection_hash = curr_hash
                             self.stable_start_time = now
-                            self.cart_items = agg_items
-                            self.recalculate_total()
+                            self.cart_items = valid_items
+                            self.total_amount = total_price
+                            self.notify_pos_update()
+                    else:
+                        # 0 valid menu items on tray: stay in steady STATE_SCANNING without initiating or looping countdown timer
+                        self.last_detection_hash = ""
+                        self.stable_start_time = 0.0
+                        if self.cart_items:
+                            self.cart_items = []
+                            self.total_amount = 0.0
+                            self.notify_pos_update()
+                        if self.current_state == STATE_SCANNING:
+                            self.status_message = "Waiting for tray... Place food on scanning platform."
 
             elif self.current_state == STATE_STABILITY_COUNTDOWN:
-                if self.motion_detected:
+                live_items = self.camera_thread.get_latest_detections()
+                agg_items = aggregate_detections(live_items) if live_items else []
+                valid_items = [
+                    it for it in agg_items 
+                    if float(it.get("price", 0.0) or 0.0) > 0.0
+                    and not it.get("requires_cashier_review")
+                    and it.get("category") != "UNKNOWN"
+                    and "unmapped" not in str(it.get("id", "")).lower()
+                    and "unmapped" not in str(it.get("name", "")).lower()
+                ]
+                total_price = sum(it["price"] * it.get("qty", 1) for it in valid_items)
+
+                # Only trigger and tick the stability countdown if len(valid_cart_items) > 0 AND total price > 0
+                if len(valid_items) == 0 or total_price <= 0.0:
+                    # 0 valid menu items on tray: keep the kiosk in steady STATE_SCANNING without initiating or looping countdown timer
+                    self.cart_items = []
+                    self.total_amount = 0.0
+                    self.last_detection_hash = ""
+                    self.stable_start_time = 0.0
                     self.countdown_remaining = 5.0
+                    self.motion_detected = False
+                    self.transition_to_state(STATE_SCANNING)
                 else:
-                    self.motion_voice_alerted = False
-                    self.countdown_remaining -= dt
-                    curr_sec = int(math.ceil(self.countdown_remaining))
-                    if curr_sec < self.last_tick_sec and curr_sec >= 1:
-                        self.last_tick_sec = curr_sec
-                    if self.countdown_remaining <= 0.0:
-                        # 5-second scan finished — hold cart items ready for Cashier confirmation (do NOT auto-deduct)
-                        cnt = len(self.cart_items)
-                        self.status_message = f"🟢 Scanned {cnt} item(s) (₱{self.total_amount:.2f}) — Sent to Cashier POS"
-                        self.current_state = STATE_SCANNING
-                        if self.cart_items:
-                            item_names = [f"{it.get('qty', 1)} {it['name']}" for it in self.cart_items]
-                            speak_text(f"Detected: {', '.join(item_names)}. Total is {int(self.total_amount)} pesos.")
+                    # Frame stability hash based strictly on Item_ID:Quantity
+                    curr_hash = "-".join(sorted([
+                        f"{str(item.get('product_id') or item.get('id') or item.get('name'))}:{item.get('qty', 1)}"
+                        for item in valid_items
+                    ]))
+                    if curr_hash != self.last_detection_hash:
+                        # Real item change on tray: update cart and reset countdown
+                        self.last_detection_hash = curr_hash
+                        self.cart_items = valid_items
+                        self.total_amount = total_price
+                        self.countdown_remaining = 5.0
+                        self.last_tick_sec = 5
                         self.notify_pos_update()
+
+                    if self.motion_detected:
+                        self.countdown_remaining = 5.0
+                    else:
+                        self.motion_voice_alerted = False
+                        self.countdown_remaining -= dt
+                        curr_sec = int(math.ceil(self.countdown_remaining))
+                        if curr_sec < self.last_tick_sec and curr_sec >= 1:
+                            self.last_tick_sec = curr_sec
+                        if self.countdown_remaining <= 0.0:
+                            # Countdown finished — lock cart and transition cleanly to payment confirmation (Step 3) without bouncing back to scanning
+                            self.cart_manual_override_lock = True
+                            cnt = sum(i.get("qty", 1) for i in self.cart_items)
+                            self.status_message = f"🟢 Scanned {cnt} item(s) (₱{self.total_amount:.2f}) — Ready for Payment Confirmation"
+                            if self.cart_items:
+                                item_names = [f"{it.get('qty', 1)} {it['name']}" for it in self.cart_items]
+                                speak_text(f"Detected: {', '.join(item_names)}. Total is {int(self.total_amount)} pesos. Please confirm payment.")
+                            self.transition_to_state(STATE_PAYMENT_CONFIRMATION)
+
+            elif self.current_state == STATE_PAYMENT_CONFIRMATION:
+                # Order summary is locked in Step 3 (Payment Confirmation)
+                # Session timeout after 30 seconds of inactivity
+                if now - self.state_timer >= 30.0:
+                    self.transition_to_state(STATE_IDLE)
 
             elif self.current_state == STATE_SETTLEMENT and (now - self.state_timer >= 3.0):
                 # 3-second thank-you screen then return to idle (clears cart for next customer)
