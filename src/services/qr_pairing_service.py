@@ -173,7 +173,10 @@ def lookup_token_by_code(code: str) -> Optional[Tuple[str, str]]:
     """Lookup active token by 6-character fallback code. Returns (jti, token_raw) or None."""
     if not code:
         return None
-    clean_code = str(code).strip().upper().replace('-', '').replace(' ', '')
+    raw = str(code).strip()
+    if raw.upper().startswith("NL:"):
+        raw = raw[3:].strip()
+    clean_code = raw.upper().replace('-', '').replace(' ', '')
     now = int(time.time())
     with sqlite3.connect(DB_PATH) as conn:
         c = conn.cursor()

@@ -2063,12 +2063,37 @@
         // -------------------------------------------------------------------------
         // INSTANT QR PAIRING (STUDENT-PARENT LINKING)
         // -------------------------------------------------------------------------
-        async generatePairingToken(studentSession = null) {
-            const session = studentSession || this.loadLocal('novalunch_user_session', null) || this.loadLocal('novalunch_current_user', null);
-            const studentId = session?.id || session?.userId || 'c653fe97-2934-4fae-a8f6-18ebb4754886';
-            const studentName = session?.name || session?.full_name || 'Student User';
-            const studentGrade = session?.grade || session?.department || 'Grade 10 - St. Ignatius';
-            const studentIdNum = session?.studentId || session?.student_id_number || '2023-01900';
+        async generatePairingToken(studentArg = null, studentNameArg = null) {
+            let studentId = null;
+            let studentName = null;
+            let studentGrade = null;
+            let studentIdNum = null;
+
+            if (typeof studentArg === 'string') {
+                studentId = studentArg;
+                studentName = studentNameArg || 'Student User';
+            } else if (studentArg && typeof studentArg === 'object') {
+                studentId = studentArg.id || studentArg.userId;
+                studentName = studentArg.name || studentArg.full_name || studentNameArg;
+                studentGrade = studentArg.grade || studentArg.department;
+                studentIdNum = studentArg.studentId || studentArg.student_id_number;
+            }
+
+            if (!studentId) {
+                const session = this.loadLocal('novalunch_user_session', null) || this.loadLocal('novalunch_current_user', null);
+                studentId = session?.id || session?.userId;
+                if (!studentName) studentName = session?.name || session?.full_name;
+                if (!studentGrade) studentGrade = session?.grade || session?.department;
+                if (!studentIdNum) studentIdNum = session?.studentId || session?.student_id_number;
+            }
+
+            if (!studentId) {
+                throw new Error("No active student ID provided to generate pairing token.");
+            }
+
+            if (!studentName) studentName = 'Student User';
+            if (!studentGrade) studentGrade = 'Grade 10 - St. Ignatius';
+            if (!studentIdNum) studentIdNum = 'SJC-STUDENT';
 
             // Generate clean 6-digit uppercase alphanumeric pairing code (excluding confusing chars 0, O, 1, I)
             const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -2149,7 +2174,10 @@
                 throw new Error("Invalid pairing code or QR token. Please provide a valid code.");
             }
 
-            const rawInput = pairingToken.trim();
+            let rawInput = pairingToken.trim();
+            if (rawInput.startsWith('NL:')) {
+                rawInput = rawInput.slice(3).trim();
+            }
             const isJwt = rawInput.includes('.');
             const cleanCode = isJwt ? rawInput : rawInput.replace(/\s+/g, '').toUpperCase().trim();
 

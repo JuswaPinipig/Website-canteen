@@ -891,9 +891,15 @@ class CameraThread(threading.Thread):
         self._init_camera()
 
     def _init_camera(self):
+        is_windows = sys.platform.startswith('win')
         for idx in [0, 1, 2]:
             try:
-                c = cv2.VideoCapture(idx)
+                # Windows 11 compatibility: Use cv2.CAP_DSHOW (DirectShow) to avoid MSMF camera initialization timeouts and crashes
+                if is_windows and hasattr(cv2, 'CAP_DSHOW'):
+                    c = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
+                else:
+                    c = cv2.VideoCapture(idx)
+
                 if c and c.isOpened():
                     c.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
                     c.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
@@ -901,10 +907,12 @@ class CameraThread(threading.Thread):
                     if ret and f is not None:
                         self.cap = c
                         self.simulation_enabled = False
-                        print(f"[CAMERA] 🟢 Hardware stream initialized on index {idx}.")
+                        backend_str = " (DirectShow / CAP_DSHOW)" if is_windows else ""
+                        print(f"[CAMERA] 🟢 Hardware stream initialized on index {idx}{backend_str}.")
                         return
                     c.release()
-            except Exception:
+            except Exception as cam_err:
+                print(f"[CAMERA] ⚠️ Probe failed on index {idx}: {cam_err}")
                 pass
         self.cap = None
         self.simulation_enabled = True

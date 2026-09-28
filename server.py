@@ -43,37 +43,36 @@ def launch_target_script(script_name: str):
     (sys.executable), dynamically resolving paths and setting cwd to the script's directory.
     """
     try:
-        script_path = (Path(__file__).resolve().parent / script_name).resolve()
+        target_script = (Path(__file__).resolve().parent / script_name).resolve()
 
-        if not script_path.exists() or not script_path.is_file():
-            raise FileNotFoundError(f"Target script not found: {script_path}")
+        if not target_script.exists() or not target_script.is_file():
+            raise FileNotFoundError(f"Target script not found: {target_script}")
 
         popen_kwargs = {
-            "cwd": str(script_path.parent)
+            "cwd": str(target_script.parent)
         }
 
-        # Redirect output to log file for diagnostics while maintaining non-blocking spawn
-        log_path = Path(__file__).resolve().parent / "novalunch_kiosk.log"
-        try:
-            log_file = open(str(log_path), "a", encoding="utf-8")
-            log_file.write(f"\n--- Launching {script_path.name} at {time.ctime()} ---\n")
-            log_file.flush()
-            popen_kwargs["stdout"] = log_file
-            popen_kwargs["stderr"] = log_file
-        except Exception as log_err:
-            print(f"[WARN] Failed to open kiosk log file: {log_err}", file=sys.stderr)
-
-        # Cross-platform window and process detachment
+        # Cross-platform window and process detachment: On Windows, allocate a new console window
+        # so any camera or dependency errors display directly instead of terminating silently.
         if sys.platform == "win32":
-            popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+            popen_kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
         else:
             popen_kwargs["start_new_session"] = True
+            log_path = Path(__file__).resolve().parent / "novalunch_kiosk.log"
+            try:
+                log_file = open(str(log_path), "a", encoding="utf-8")
+                log_file.write(f"\n--- Launching {target_script.name} at {time.ctime()} ---\n")
+                log_file.flush()
+                popen_kwargs["stdout"] = log_file
+                popen_kwargs["stderr"] = log_file
+            except Exception as log_err:
+                print(f"[WARN] Failed to open kiosk log file: {log_err}", file=sys.stderr)
 
         proc = subprocess.Popen(
-            [sys.executable, str(script_path)],
+            [sys.executable, str(target_script)],
             **popen_kwargs
         )
-        return True, f"{script_path.name} launched successfully.", proc
+        return True, f"{target_script.name} launched successfully.", proc
     except Exception as exc:
         print(f"[ERROR] Failed to launch {script_name}: {exc}", file=sys.stderr)
         return False, f"Failed to launch {script_name}: {exc}", None
@@ -199,12 +198,49 @@ class NovaLunchPortalHandler(SimpleHTTPRequestHandler):
 
         headers_dict = {k.lower(): v for k, v in self.headers.items()}
 
-        if path in ["/api/launch_kiosk", "/api/kiosk/launch"]:
-            success, msg = launch_kiosk_gui()
-            self._send_cors(200 if success else 500)
-            self.end_headers()
-            self.wfile.write(json.dumps({"success": success, "message": msg}).encode('utf-8'))
-            return
+        if path in ["/api/kiosk/launch", "/api/launch_kiosk"]:
+            try:
+                target_script = (Path(__file__).resolve().parent / "src" / "hardware" / "student_kiosk_gui.py").resolve()
+                if not target_script.exists() or not target_script.is_file():
+                    self._send_cors(404)
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": f"Script not found at {target_script}"}).encode('utf-8'))
+                    return
+
+                # If already running on port 8085, return status launched
+                if is_port_in_use(8085):
+                    self._send_cors(200)
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"status": "launched", "message": "Kiosk is already running on port 8085."}).encode('utf-8'))
+                    return
+
+                popen_kwargs = {"cwd": str(target_script.parent)}
+                # On Windows, allocate a new console window to show camera/dependency errors in real-time
+                if sys.platform == "win32":
+                    popen_kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
+                else:
+                    popen_kwargs["start_new_session"] = True
+                    log_path = Path(__file__).resolve().parent / "novalunch_kiosk.log"
+                    try:
+                        log_file = open(str(log_path), "a", encoding="utf-8")
+                        log_file.write(f"\n--- Launching {target_script.name} via /api/kiosk/launch at {time.ctime()} ---\n")
+                        log_file.flush()
+                        popen_kwargs["stdout"] = log_file
+                        popen_kwargs["stderr"] = log_file
+                    except Exception:
+                        pass
+
+                global kiosk_process
+                kiosk_process = subprocess.Popen([sys.executable, str(target_script)], **popen_kwargs)
+                self._send_cors(200)
+                self.end_headers()
+                self.wfile.write(json.dumps({"status": "launched"}).encode('utf-8'))
+                return
+            except Exception as e:
+                self._send_cors(500)
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+                return
 
         elif path == "/api/students/pairing-token":
             status_code, response_data = handle_create_pairing_token(headers_dict, body_data)

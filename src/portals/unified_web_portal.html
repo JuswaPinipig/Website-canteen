@@ -10878,8 +10878,24 @@
         function TopHeaderNav({ activeRole, currentUser, notifications = [], onMarkNotifRead, onMarkAllNotifRead, onDeleteNotif, onClearReadNotifs, onActionClick, onRespondLinkRequest, onOpenCommandPalette, onOpenMobileSidebar }) {
             const [notifOpen, setNotifOpen] = useState(false);
             const roleNotifs = notifications.filter(n => {
-                if (!n.role || n.role === 'ALL') return true;
-                return String(n.role).toUpperCase() === String(activeRole || '').toUpperCase();
+                const targetRole = String(n.target_role || n.role || '').toLowerCase();
+                const aRole = String(activeRole || '').toLowerCase();
+                const notifUserId = n.user_id || n.userId || n.student_id || n.studentId;
+
+                if (aRole === 'student' && currentUser) {
+                    if (notifUserId) {
+                        return notifUserId === currentUser.id || notifUserId === currentUser.studentId;
+                    }
+                    const notifStudentName = String(n.studentName || n.student || '').toLowerCase();
+                    const curName = (currentUser.name || currentUser.full_name || '').toLowerCase();
+                    if (notifStudentName && curName && notifStudentName !== curName) {
+                        return false;
+                    }
+                    return targetRole === 'student' || targetRole === 'all' || !targetRole;
+                }
+
+                if (!n.role || n.role === 'ALL' || targetRole === 'all') return true;
+                return targetRole === aRole;
             });
             const unreadCount = roleNotifs.filter(n => !n.is_read && !n.read).length;
 
@@ -10976,13 +10992,13 @@
             const manualInputRef = useRef(null);
 
             // Process scanned QR payload or pasted code
-            const handleProcessToken = async (rawInput) => {
-                const raw = (rawInput || '').trim();
-                if (!raw || isProcessingRef.current) return;
-
-                // Strip all spaces and force uppercase for codes, or keep raw if JWT
-                const isJwt = raw.includes('.');
-                const cleanInput = isJwt ? raw : raw.replace(/\s+/g, '').toUpperCase().trim();
+            const handleVerifyCode = async (code) => {
+                let raw = (code || '').trim();
+                if (raw.startsWith('NL:') || raw.startsWith('nl:')) {
+                    raw = raw.slice(3).trim();
+                }
+                const cleanCode = raw.replace(/[^A-Za-z0-9]/g, '').toUpperCase().trim();
+                if (!cleanCode || isProcessingRef.current) return;
 
                 isProcessingRef.current = true;
                 setIsSubmitting(true);
@@ -10990,7 +11006,7 @@
                 setSuccessMsg('Verifying code & linking student account...');
 
                 try {
-                    const result = await window.CanteenDB.linkByQr(cleanInput);
+                    const result = await window.CanteenDB.linkByQr(cleanCode);
                     if (result && result.success) {
                         const studentName = result.student?.name || 'Student';
                         const studentGrade = result.student?.grade || 'Grade 10';
@@ -11030,6 +11046,8 @@
                     setIsSubmitting(false);
                 }
             };
+
+            const handleProcessToken = handleVerifyCode;
 
             const stopScanner = async () => {
                 if (scannerInstanceRef.current) {
@@ -11076,7 +11094,12 @@
                                 (decodedText) => {
                                     if (!isMounted) return;
                                     stopScanner();
-                                    handleProcessToken(decodedText);
+                                    let raw = (decodedText || '').trim();
+                                    if (raw.startsWith('NL:') || raw.startsWith('nl:')) {
+                                        raw = raw.slice(3).trim();
+                                    }
+                                    const cleanCode = raw.replace(/[^A-Za-z0-9]/g, '').toUpperCase().trim();
+                                    handleVerifyCode(cleanCode);
                                 },
                                 () => { /* frame tick */ }
                             ).then(() => {
@@ -11127,8 +11150,11 @@
                 if (e && e.preventDefault) e.preventDefault();
                 setErrorMsg('');
                 setSuccessMsg('');
-                const rawInput = studentIdInput || '';
-                const cleanCode = rawInput.replace(/\s+/g, '').toUpperCase().trim();
+                let rawInput = studentIdInput || '';
+                if (rawInput.startsWith('NL:') || rawInput.startsWith('nl:')) {
+                    rawInput = rawInput.slice(3).trim();
+                }
+                const cleanCode = rawInput.replace(/[^A-Za-z0-9]/g, '').toUpperCase().trim();
 
                 if (!cleanCode) {
                     return setErrorMsg('Please enter the 6-character code.');
@@ -11139,16 +11165,7 @@
                     return setErrorMsg('Code must be exactly 6 alphanumeric characters (e.g. X32KQC).');
                 }
 
-                setIsSubmitting(true);
-                try {
-                    await handleProcessToken(cleanCode);
-                } catch (err) {
-                    const rawMsg = err?.message || String(err || '');
-                    const isPatternErr = rawMsg.includes("expected pattern") || rawMsg.includes("pattern");
-                    setErrorMsg(isPatternErr ? 'Invalid code format.' : (rawMsg || 'Invalid or expired code.'));
-                } finally {
-                    setIsSubmitting(false);
-                }
+                await handleVerifyCode(cleanCode);
             };
 
             return (
@@ -11324,7 +11341,9 @@
                 setIsLoading(true);
                 setErrorMsg('');
                 try {
-                    const res = await window.CanteenDB.generatePairingToken(currentStudent);
+                    const studentId = currentStudent?.id || currentStudent?.userId;
+                    const studentName = currentStudent?.name || currentStudent?.full_name || 'Student';
+                    const res = await window.CanteenDB.generatePairingToken(studentId, studentName);
                     if (res && res.success) {
                         setTokenData(res);
                         const expSecs = Math.max(0, Math.floor(res.expiresAt - (Date.now() / 1000)));
@@ -11362,14 +11381,16 @@
                 return () => clearInterval(timer);
             }, [isOpen, tokenData]);
 
-            // Render responsive QR Code using QRCode.js
+            // Render responsive QR Code using QRCode.js - ONLY encode NL:${clean6CharCode}
             useEffect(() => {
-                if (tokenData?.pairingToken && qrCanvasRef.current) {
+                if (tokenData && qrCanvasRef.current) {
+                    const code = (tokenData.pairingCode || tokenData.payload?.code || tokenData.code || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase().trim();
+                    const qrText = code ? `NL:${code}` : 'NL:X32KQC';
                     if (typeof window.QRCode !== 'undefined') {
                         try {
                             qrCanvasRef.current.innerHTML = "";
                             new window.QRCode(qrCanvasRef.current, {
-                                text: tokenData.pairingToken,
+                                text: qrText,
                                 width: 200,
                                 height: 200,
                                 colorDark: "#7B1E22",
@@ -11394,7 +11415,9 @@
                 return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
             };
 
-            const pairingCode = tokenData?.pairingCode || tokenData?.payload?.code || 'X32KQC';
+            const pairingCode = tokenData?.pairingCode || tokenData?.payload?.code || tokenData?.code || 'X32KQC';
+            const clean6CharCode = String(pairingCode).replace(/[^A-Za-z0-9]/g, '').toUpperCase().trim();
+            const qrPayload = `NL:${clean6CharCode}`;
 
             const handleCopyCode = () => {
                 if (pairingCode) {
@@ -11414,8 +11437,8 @@
 
             const studentName = currentStudent?.name || currentStudent?.full_name || tokenData?.student?.name || 'Student';
             const studentGrade = currentStudent?.grade || tokenData?.student?.grade || 'Grade 10 - St. Ignatius';
-            const qrFallbackUrl = tokenData?.pairingToken 
-                ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(tokenData.pairingToken)}`
+            const qrFallbackUrl = clean6CharCode 
+                ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrPayload)}`
                 : null;
 
             return (
@@ -12627,7 +12650,33 @@
             const [isProfileSheetOpen, setIsProfileSheetOpen] = useState(false);
             const [isPairingQrModalOpen, setIsPairingQrModalOpen] = useState(false);
             const [nearExpiryWarningItem, setNearExpiryWarningItem] = useState(null);
-            const studentNotifs = (notifications || []).filter(n => !n.role || n.role === 'ALL' || n.role === 'STUDENT');
+
+            // Step 2: Isolated Notifications - filter strictly for global student notices or personal alerts
+            const studentNotifs = useMemo(() => {
+                const curId = currentStudent?.id;
+                const curStudId = currentStudent?.studentId || currentStudent?.student_id_number;
+                const curName = (currentStudent?.name || currentStudent?.full_name || '').toLowerCase();
+
+                return (notifications || []).filter(n => {
+                    const targetRole = String(n.target_role || n.role || '').toLowerCase();
+                    const notifUserId = n.user_id || n.userId || n.student_id || n.studentId;
+
+                    // If notification has a specific user ID, strictly require it to match current student
+                    if (notifUserId) {
+                        return notifUserId === curId || notifUserId === curStudId;
+                    }
+
+                    // Suppress top-up or order receipts belonging to other accounts
+                    const notifStudentName = String(n.studentName || n.student || '').toLowerCase();
+                    if (notifStudentName && curName && notifStudentName !== curName) {
+                        return false;
+                    }
+
+                    // Global notices for students
+                    return targetRole === 'student' || targetRole === 'all' || !targetRole;
+                });
+            }, [notifications, currentStudent]);
+
             const unreadNotifCount = studentNotifs.filter(n => !n.is_read && !n.read).length;
 
             const hasLinkedParent = checkStudentHasLinkedParent(currentStudent, parentStudentLinks, registeredUsers);
@@ -12642,6 +12691,52 @@
             const [copiedAccount, setCopiedAccount] = useState(false);
             const [isSubmittingTopup, setIsSubmittingTopup] = useState(false);
 
+            // Step 2: Student Privacy Isolation - Query wallet_transactions strictly for the current student
+            const [studentTransactions, setStudentTransactions] = useState([]);
+
+            useEffect(() => {
+                const sId = currentStudent?.id;
+                if (!sId) return;
+
+                let isMounted = true;
+                const fetchTransactions = async () => {
+                    // 1. Remote Supabase: query strictly filtered by student ID
+                    try {
+                        const client = window.supabaseClient || (window.CanteenDB && window.CanteenDB.getClient ? window.CanteenDB.getClient() : null) || window.supabase;
+                        if (client) {
+                            const { data, error } = await client
+                                .from('wallet_transactions')
+                                .select('*')
+                                .eq('user_id', sId)
+                                .order('created_at', { ascending: false });
+                            if (!error && Array.isArray(data) && isMounted) {
+                                setStudentTransactions(data);
+                                return;
+                            }
+                        }
+                    } catch (err) {
+                        console.warn("[StudentView] Remote wallet_transactions query failed:", err);
+                    }
+
+                    // 2. Local storage fallback: filtered strictly by student ID
+                    try {
+                        const stored = (window.CanteenDB && window.CanteenDB.loadLocal)
+                            ? (window.CanteenDB.loadLocal('novalunch_wallet_transactions', []) || window.CanteenDB.loadLocal('novalunch_transactions', []))
+                            : JSON.parse(localStorage.getItem('novalunch_wallet_transactions') || localStorage.getItem('novalunch_transactions') || '[]');
+                        const allTransactions = Array.isArray(stored) ? stored : [];
+                        const filtered = allTransactions.filter(t => t.user_id === sId || t.student_id === sId);
+                        if (isMounted) {
+                            setStudentTransactions(filtered);
+                        }
+                    } catch (err) {
+                        console.warn("[StudentView] Local wallet_transactions filter error:", err);
+                    }
+                };
+
+                fetchTransactions();
+                return () => { isMounted = false; };
+            }, [currentStudent?.id]);
+
             const safeBalance = (typeof studentBalance === 'number' && !isNaN(studentBalance)) ? studentBalance : (typeof currentStudent?.balance === 'number' ? currentStudent.balance : 0);
             const safeLimit = (typeof dailyLimit === 'number' && !isNaN(dailyLimit)) ? dailyLimit : (typeof currentStudent?.dailyCap === 'number' ? currentStudent.dailyCap : 200);
 
@@ -12652,7 +12747,7 @@
             
             // Dynamic Calculation of Pay Later Liability & Usage from active orders
             const rawPayLaterOrders = (recentOrders || []).filter(o => {
-                const isMyOrder = o.user_id === currentStudent?.id || o.studentId === studentIdNum || o.student === studentName || (o.student && currentStudent?.name && o.student.toLowerCase() === currentStudent.name.toLowerCase());
+                const isMyOrder = o.user_id === currentStudent?.id || o.studentId === studentIdNum || (o.student && currentStudent?.name && o.student.toLowerCase() === currentStudent.name.toLowerCase());
                 const method = String(o.paymentMethod || o.payment_method || o.method || '').toUpperCase();
                 const status = String(o.status || '').toUpperCase();
                 return isMyOrder && (method.includes('PAY_LATER') || method.includes('CREDIT') || method.includes('DEBT') || status === 'PAY_LATER') && !o.isVoid && !o.isSettled && status !== 'PAID';
@@ -12665,7 +12760,7 @@
             // Dynamic Calculation of Today's Spending for Cumulative Limit Guardrail
             const todayStr = new Date().toDateString();
             const studentOrdersToday = (recentOrders || []).filter(o => {
-                const isMyOrder = o.user_id === currentStudent?.id || o.studentId === studentIdNum || o.student === studentName || (o.student && currentStudent?.name && o.student.toLowerCase() === currentStudent.name.toLowerCase());
+                const isMyOrder = o.user_id === currentStudent?.id || o.studentId === studentIdNum || (o.student && currentStudent?.name && o.student.toLowerCase() === currentStudent.name.toLowerCase());
                 const rawDate = o.created_at || o.timestamp;
                 const parsedDate = rawDate ? new Date(rawDate) : new Date();
                 const isToday = !isNaN(parsedDate.getTime()) && parsedDate.toDateString() === todayStr;
@@ -12684,9 +12779,24 @@
                 });
             };
 
-            // Dynamic Past Purchase Receipts Filtered for Logged-In Student
-            const myOrdersList = (recentOrders || []).filter(o => o.user_id === currentStudent?.id || o.studentId === studentIdNum || o.student === studentName || (o.student && currentStudent?.name && o.student.toLowerCase() === currentStudent.name.toLowerCase()));
-            const pastPurchases = myOrdersList.length > 0 ? myOrdersList.map((o, idx) => {
+            // Dynamic Past Purchase Receipts Filtered strictly for Logged-In Student
+            const myOrdersList = (recentOrders || []).filter(o => {
+                const curId = String(currentStudent?.id || '').toLowerCase();
+                const curNum = String(studentIdNum || '').toLowerCase();
+                const curName = String(studentName || '').toLowerCase();
+
+                const oUserId = String(o.user_id || o.student_id || '').toLowerCase();
+                const oStudId = String(o.studentId || o.student_id_number || '').toLowerCase();
+                const oStudName = String(o.student || '').toLowerCase();
+
+                if (oUserId && (oUserId === curId || oUserId === curNum)) return true;
+                if (oStudId && (oStudId === curNum || oStudId === curId)) return true;
+                if (oStudName && curName && oStudName === curName) return true;
+
+                return false;
+            });
+
+            const pastPurchases = myOrdersList.map((o, idx) => {
                 const rawDate = o.created_at || o.timestamp;
                 const parsedDate = rawDate ? new Date(rawDate) : new Date();
                 const dateStr = !isNaN(parsedDate.getTime())
@@ -12708,18 +12818,36 @@
                     isSettled: Boolean(o.isSettled || o.is_settled),
                     cashier: o.cashier || o.order_source || 'Register #01'
                 };
-            }) : (currentStudent?.email === 'student@gmail.com' || currentStudent?.studentId === '2023-01900') ? [
-                { id: 'ORD-2026-901', date: 'Today, 12:15 PM', items: 'Classic Cheeseburger, Mineral Water', total: 95.00, method: 'RFID Tap', status: 'Completed', cashier: 'Register #01' },
-                { id: 'ORD-2026-872', date: 'Yesterday, 12:05 PM', items: 'Beef Pares w/ Rice, Iced Fruit Juice', total: 120.00, method: 'RFID Tap', status: 'Completed', cashier: 'Register #01' },
-            ] : [];
+            });
 
-            // Filter reload activity exclusively for the logged-in student
+            // Filter reload activity exclusively for the logged-in student (never leak other students' records)
             const myReloadLogs = React.useMemo(() => {
                 const curId = String(currentStudent?.id || '').toLowerCase();
                 const curNum = String(studentIdNum || '').toLowerCase();
                 const curName = String(studentName || '').toLowerCase();
 
-                return (reloadLogs || []).filter(log => {
+                // Format transactions from queried studentTransactions
+                const queriedLogs = (studentTransactions || []).map(t => {
+                    const rawDate = t.created_at || t.timestamp;
+                    const parsedDate = rawDate ? new Date(rawDate) : new Date();
+                    const dateStr = !isNaN(parsedDate.getTime())
+                        ? parsedDate.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                        : 'Recent';
+                    return {
+                        id: t.id || `TXN-${t.reference_number || Math.random().toString(36).substring(2, 8)}`,
+                        studentId: t.user_id,
+                        student: studentName,
+                        amount: parseFloat(t.amount || 0),
+                        date: dateStr,
+                        refNo: t.reference_number || t.refNo || t.id,
+                        status: t.status === 'COMPLETED' || t.status === 'APPROVED' ? 'Approved' : (t.status === 'PENDING' ? 'Pending' : (t.status || 'Approved')),
+                        type: t.transaction_type || t.type || 'RELOAD',
+                        notes: t.description || 'Wallet Transaction'
+                    };
+                });
+
+                // Filter prop-based reloadLogs strictly by student ID - NO hardcoded fallbacks to other accounts
+                const filteredPropLogs = (reloadLogs || []).filter(log => {
                     const lStudId = String(log.studentId || log.student_id || log.user_id || '').toLowerCase();
                     const lStudNum = String(log.studentIdNumber || log.student_id_number || '').toLowerCase();
                     const lName = String(log.studentName || log.student || '').toLowerCase();
@@ -12727,17 +12855,20 @@
                     // Direct match on student identifiers
                     if (lStudId && (lStudId === curId || lStudId === curNum)) return true;
                     if (lStudNum && (lStudNum === curNum || lStudNum === curId)) return true;
-                    if (lName && curName && (lName === curName || curName.includes(lName) || lName.includes(curName))) return true;
-
-                    // If untagged demo seed, only show if active student is Joshua Lupisan
-                    if (!lStudId && !lStudNum && !lName) {
-                        const isJoshua = curId === 'c653fe97-2934-4fae-a8f6-18ebb4754886' || curNum === '2023-01900' || curName.includes('joshua') || currentStudent?.email === 'student@gmail.com';
-                        return isJoshua;
-                    }
+                    if (lName && curName && (lName === curName)) return true;
 
                     return false;
                 });
-            }, [reloadLogs, currentStudent, studentIdNum, studentName]);
+
+                const merged = [...queriedLogs, ...filteredPropLogs];
+                const seen = new Set();
+                return merged.filter(item => {
+                    const key = String(item.refNo || item.ref || item.id);
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                });
+            }, [reloadLogs, studentTransactions, currentStudent, studentIdNum, studentName]);
 
             // Pagination state for Student Past Purchases / Receipts (Apple HIG)
             const [studentOrdersPage, setStudentOrdersPage] = useState(1);
@@ -12825,7 +12956,7 @@
                         onUploadReceipt={onUploadReceipt}
                         onClaimClick={onClaimClick}
                         onRespondLinkRequest={onRespondLinkRequest}
-                        notifications={notifications}
+                        notifications={studentNotifs}
                         unreadNotifCount={unreadNotifCount}
                         notifOpen={notifOpen}
                         setNotifOpen={setNotifOpen}
@@ -12967,7 +13098,7 @@
                                             )}
                                         </button>
                                         <NotificationCenterPopover
-                                            notifications={notifications}
+                                            notifications={studentNotifs}
                                             onMarkRead={onMarkNotifRead}
                                             onMarkAllRead={onMarkAllNotifRead}
                                             onDeleteNotif={onDeleteNotif}
@@ -19643,6 +19774,12 @@
             }, [posCart, selectedStudent, kioskStatus.online, syncCartToKioskDirect]);
 
             const handleLaunchOrSyncKiosk = async () => {
+                // Prevent browser Mixed Content blocking: modern browsers prohibit HTTPS -> http://localhost connections
+                if (window.location.protocol === 'https:') {
+                    showToast("Mixed Content Blocked: On HTTPS, browsers block connections to local hardware. Please open the Cashier Portal from http://localhost:8080 (or run 'python server.py' locally).", "danger");
+                    return;
+                }
+
                 setIsLaunchingKiosk(true);
                 try {
                     // 1. If kiosk is already online, re-sync current cart immediately
@@ -19668,25 +19805,31 @@
                     // 2. Kiosk is offline -> trigger launch via local bridge server
                     showToast("Launching NovaLunch Student Kiosk GUI (:8085)...", "info");
 
-                    const tryLaunch = async (url) => {
-                        try {
-                            const res = await fetch(url, { method: 'POST', signal: AbortSignal.timeout(6000) });
-                            const data = await res.json().catch(() => ({}));
-                            return { ok: res.ok, status: res.status, data };
-                        } catch (postErr) {
-                            try {
-                                const res = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(6000) });
-                                const data = await res.json().catch(() => ({}));
-                                return { ok: res.ok, status: res.status, data };
-                            } catch (getErr) {
-                                return null;
-                            }
-                        }
-                    };
+                    try {
+                        const launchEndpoint = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+                            ? '/api/kiosk/launch'
+                            : 'http://localhost:8080/api/kiosk/launch';
 
-                    const launchResp = await tryLaunch('http://localhost:8080/api/launch_kiosk') || await tryLaunch('/api/launch_kiosk');
-                    if (launchResp && launchResp.data && launchResp.data.success === false) {
-                        showToast(`Kiosk launch error: ${launchResp.data.message || 'Script launch failed'}`, "danger");
+                        const res = await fetch(launchEndpoint, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            signal: AbortSignal.timeout(6000)
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (res.ok && (data.status === 'launched' || data.success)) {
+                            showToast("Student Kiosk launched successfully!", "success");
+                        } else {
+                            showToast(`Failed to launch kiosk: ${data.error || data.message || 'Server error'}. Please ensure server.py is running locally.`, "danger");
+                            setIsLaunchingKiosk(false);
+                            return;
+                        }
+                    } catch (netErr) {
+                        console.warn("[Cashier] Kiosk launch endpoint error:", netErr);
+                        if (window.location.protocol === 'https:') {
+                            showToast("Mixed Content Blocked: Please open http://localhost:8080 (not HTTPS) to connect with local hardware.", "danger");
+                        } else {
+                            showToast("Cannot connect to local bridge server. Please ensure server.py is running locally on port 8080.", "danger");
+                        }
                         setIsLaunchingKiosk(false);
                         return;
                     }
@@ -23540,7 +23683,8 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                     calories: parseInt(editProdCalories) || 0,
                     protein: editProdProtein.trim() || '0g',
                     allergens: editProdAllergens,
-                    img: editProdImg.trim() || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80"
+                    img: editProdImg.trim() || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80",
+                    image: editProdImg.trim() || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80"
                 });
                 setEditProductModalOpen(false);
             };
@@ -23604,7 +23748,8 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                     calories: parseInt(prodCalories) || 0,
                     protein: prodProtein.trim() || '0g',
                     allergens: prodAllergens,
-                    img: prodImg.trim() || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80"
+                    img: prodImg.trim() || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80",
+                    image: prodImg.trim() || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80"
                 });
                 setAddProductModalOpen(false);
                 setProdName(''); setProdPrice(''); setProdImg(''); setProdCalories('0'); setProdProtein('0g'); setProdAllergens([]); setProdAiLabel(''); setAddProductError('');
@@ -27402,15 +27547,82 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                     </div>
                                 </div>
 
-                                <div>
-                                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Product Image URL</label>
-                                    <input
-                                        type="text"
-                                        value={editProdImg}
-                                        onChange={(e) => setEditProdImg(e.target.value)}
-                                        placeholder="https://images.unsplash.com/..."
-                                        className="w-full bg-white hover:bg-slate-50/50 focus:bg-white border border-slate-200/80 rounded-xl px-3.5 py-2 text-xs font-mono text-slate-700 transition-all outline-hidden focus:ring-2 focus:ring-[#7B1E22]/15 shadow-2xs truncate"
-                                    />
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <label className="block text-[11px] font-semibold text-slate-500">Product Image</label>
+                                        <span className="text-[10px] text-slate-400 font-medium">Max 2MB (PNG, JPG, WebP)</span>
+                                    </div>
+
+                                    {editProdImg ? (
+                                        <div className="flex items-center gap-3 p-2.5 bg-white border border-slate-200/80 rounded-xl shadow-2xs">
+                                            <div className="w-12 h-12 rounded-lg overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
+                                                <img
+                                                    src={editProdImg}
+                                                    alt="Preview"
+                                                    onError={(e) => {
+                                                        e.target.onerror = null;
+                                                        e.target.src = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80";
+                                                    }}
+                                                    className="w-full h-full object-cover"
+                                                />
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <div className="text-[11px] font-semibold text-slate-800 truncate">
+                                                    {editProdImg.startsWith('data:') ? 'Custom Uploaded Image' : 'Image URL Loaded'}
+                                                </div>
+                                                <div className="text-[10px] text-slate-400 truncate font-mono">
+                                                    {editProdImg.startsWith('data:') ? `Data URI (${Math.round(editProdImg.length * 0.75 / 1024)} KB)` : editProdImg}
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setEditProdImg('')}
+                                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                                title="Remove image"
+                                            >
+                                                <Icon.Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
+                                    ) : null}
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        <label className="flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-50 hover:bg-slate-100/80 border border-dashed border-slate-300 rounded-xl cursor-pointer text-xs font-medium text-slate-700 transition-all hover:border-[#7B1E22]/50">
+                                            <Icon.Upload className="w-3.5 h-3.5 text-slate-500" />
+                                            <span>Upload Image</span>
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                className="hidden"
+                                                onChange={(e) => {
+                                                    const file = e.target.files && e.target.files[0];
+                                                    if (!file) return;
+                                                    if (file.size > 2 * 1024 * 1024) {
+                                                        if (typeof showToast === 'function') {
+                                                            showToast('Image file exceeds 2MB limit.', 'warning');
+                                                        }
+                                                        setEditProductError('Image file must be under 2MB.');
+                                                        e.target.value = '';
+                                                        return;
+                                                    }
+                                                    setEditProductError('');
+                                                    const reader = new FileReader();
+                                                    reader.onload = (uploadEvent) => {
+                                                        setEditProdImg(uploadEvent.target.result);
+                                                    };
+                                                    reader.readAsDataURL(file);
+                                                }}
+                                            />
+                                        </label>
+                                        <div className="relative">
+                                            <input
+                                                type="text"
+                                                value={editProdImg}
+                                                onChange={(e) => setEditProdImg(e.target.value)}
+                                                placeholder="Or paste image URL..."
+                                                className="w-full bg-white hover:bg-slate-50/50 focus:bg-white border border-slate-200/80 rounded-xl pl-3 pr-2 py-2 text-xs font-mono text-slate-700 transition-all outline-hidden focus:ring-2 focus:ring-[#7B1E22]/15 shadow-2xs truncate"
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
 
                                 <div className="flex items-center justify-between p-3.5 bg-white rounded-xl border border-slate-200/80 shadow-2xs">
@@ -28355,18 +28567,85 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                 </div>
                             </div>
 
-                            <div>
-                                <label className="block text-xs font-medium text-slate-600 mb-1.5">
-                                    <span>Image URL</span>
-                                    <span className="text-slate-400 font-normal ml-1">(Optional)</span>
-                                </label>
-                                <input
-                                    type="text"
-                                    placeholder="https://images.unsplash.com/..."
-                                    value={prodImg}
-                                    onChange={(e) => setProdImg(e.target.value)}
-                                    className="w-full bg-slate-50/70 border border-slate-200/80 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 font-mono placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-[#7B1E22]/15 focus:border-[#7B1E22]/40 transition-all outline-none"
-                                />
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <label className="block text-xs font-medium text-slate-600">
+                                        <span>Product Image</span>
+                                        <span className="text-slate-400 font-normal ml-1">(Optional)</span>
+                                    </label>
+                                    <span className="text-[10px] text-slate-400 font-medium">Max 2MB</span>
+                                </div>
+
+                                {prodImg ? (
+                                    <div className="flex items-center gap-3 p-2.5 bg-slate-50/80 border border-slate-200/80 rounded-xl shadow-2xs">
+                                        <div className="w-12 h-12 rounded-lg overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
+                                            <img
+                                                src={prodImg}
+                                                alt="Preview"
+                                                onError={(e) => {
+                                                    e.target.onerror = null;
+                                                    e.target.src = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80";
+                                                }}
+                                                className="w-full h-full object-cover"
+                                            />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="text-[11px] font-semibold text-slate-800 truncate">
+                                                {prodImg.startsWith('data:') ? 'Custom Uploaded Image' : 'Image URL Loaded'}
+                                            </div>
+                                            <div className="text-[10px] text-slate-400 truncate font-mono">
+                                                {prodImg.startsWith('data:') ? `Data URI (${Math.round(prodImg.length * 0.75 / 1024)} KB)` : prodImg}
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setProdImg('')}
+                                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                            title="Remove image"
+                                        >
+                                            <Icon.Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+                                ) : null}
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    <label className="flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-50 hover:bg-slate-100/80 border border-dashed border-slate-300 rounded-xl cursor-pointer text-xs font-medium text-slate-700 transition-all hover:border-[#7B1E22]/50">
+                                        <Icon.Upload className="w-3.5 h-3.5 text-slate-500" />
+                                        <span>Upload File</span>
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            className="hidden"
+                                            onChange={(e) => {
+                                                const file = e.target.files && e.target.files[0];
+                                                if (!file) return;
+                                                if (file.size > 2 * 1024 * 1024) {
+                                                    if (typeof showToast === 'function') {
+                                                        showToast('Image file exceeds 2MB limit.', 'warning');
+                                                    }
+                                                    setAddProductError('Image file must be under 2MB.');
+                                                    e.target.value = '';
+                                                    return;
+                                                }
+                                                setAddProductError('');
+                                                const reader = new FileReader();
+                                                reader.onload = (uploadEvent) => {
+                                                    setProdImg(uploadEvent.target.result);
+                                                };
+                                                reader.readAsDataURL(file);
+                                            }}
+                                        />
+                                    </label>
+                                    <div>
+                                        <input
+                                            type="text"
+                                            placeholder="Or paste URL..."
+                                            value={prodImg}
+                                            onChange={(e) => setProdImg(e.target.value)}
+                                            className="w-full bg-slate-50/70 border border-slate-200/80 rounded-xl px-3.5 py-2 text-xs text-slate-900 font-mono placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-[#7B1E22]/15 focus:border-[#7B1E22]/40 transition-all outline-none"
+                                        />
+                                    </div>
+                                </div>
                             </div>
 
                             <div className="flex items-center gap-2.5 pt-3 border-t border-slate-100">
