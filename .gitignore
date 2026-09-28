@@ -11,3 +11,10 @@ Website-canteen/
 *.db-wal
 src/database/*.db*
 database/*.db*
+
+# Logs
+*.log
+
+# Large PyTorch / YOLO models exceeding GitHub's 100MB limit
+src/assets/models/novalunch_yolo-2.pt
+novalunch_yolo-2.pt

@@ -16,7 +16,7 @@ import urllib.parse
 import subprocess
 import threading
 from pathlib import Path
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import HTTPServer, ThreadingHTTPServer, SimpleHTTPRequestHandler
 
 # Import Instant QR Pairing Service
 try:
@@ -43,10 +43,22 @@ def launch_target_script(script_name: str):
     (sys.executable), dynamically resolving paths and setting cwd to the script's directory.
     """
     try:
-        target_script = (Path(__file__).resolve().parent / script_name).resolve()
+        base_dir = Path(__file__).resolve().parent
+        candidate_paths = [
+            base_dir / "src" / "hardware" / "student_kiosk_gui.py",
+            base_dir / "student_kiosk_gui.py",
+            Path.cwd() / "src" / "hardware" / "student_kiosk_gui.py",
+            (base_dir / script_name).resolve()
+        ]
+        target_script = None
+        for candidate in candidate_paths:
+            candidate_resolved = candidate.resolve()
+            if candidate_resolved.exists() and candidate_resolved.is_file():
+                target_script = candidate_resolved
+                break
 
-        if not target_script.exists() or not target_script.is_file():
-            raise FileNotFoundError(f"Target script not found: {target_script}")
+        if not target_script:
+            raise FileNotFoundError(f"Kiosk script not found at {[str(p) for p in candidate_paths]}")
 
         popen_kwargs = {
             "cwd": str(target_script.parent)
@@ -58,7 +70,7 @@ def launch_target_script(script_name: str):
             popen_kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
         else:
             popen_kwargs["start_new_session"] = True
-            log_path = Path(__file__).resolve().parent / "novalunch_kiosk.log"
+            log_path = base_dir / "novalunch_kiosk.log"
             try:
                 log_file = open(str(log_path), "a", encoding="utf-8")
                 log_file.write(f"\n--- Launching {target_script.name} at {time.ctime()} ---\n")
@@ -95,7 +107,7 @@ class NovaLunchPortalHandler(SimpleHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PATCH")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Student-Id, X-Parent-Id, X-User-Id, X-User-Role, X-Session-Token")
+        self.send_header("Access-Control-Allow-Headers", "*")
         self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
         self.send_header("Pragma", "no-cache")
         self.send_header("Expires", "0")
@@ -108,7 +120,12 @@ class NovaLunchPortalHandler(SimpleHTTPRequestHandler):
         super().end_headers()
 
     def do_OPTIONS(self):
-        self._send_cors(200)
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "*")
+        self.send_header("Access-Control-Max-Age", "86400")
+        self.send_header("Content-Length", "0")
         self.end_headers()
 
     def translate_path(self, path):
@@ -200,11 +217,24 @@ class NovaLunchPortalHandler(SimpleHTTPRequestHandler):
 
         if path in ["/api/kiosk/launch", "/api/launch_kiosk"]:
             try:
-                target_script = (Path(__file__).resolve().parent / "src" / "hardware" / "student_kiosk_gui.py").resolve()
-                if not target_script.exists() or not target_script.is_file():
+                base_dir = Path(__file__).resolve().parent
+                candidate_paths = [
+                    base_dir / "src" / "hardware" / "student_kiosk_gui.py",
+                    base_dir / "student_kiosk_gui.py",
+                    Path.cwd() / "src" / "hardware" / "student_kiosk_gui.py"
+                ]
+                target_script = None
+                for candidate in candidate_paths:
+                    candidate_resolved = candidate.resolve()
+                    if candidate_resolved.exists() and candidate_resolved.is_file():
+                        target_script = candidate_resolved
+                        break
+
+                if not target_script:
+                    searched_paths = [str(p) for p in candidate_paths]
                     self._send_cors(404)
                     self.end_headers()
-                    self.wfile.write(json.dumps({"error": f"Script not found at {target_script}"}).encode('utf-8'))
+                    self.wfile.write(json.dumps({"error": f"Kiosk script not found at {searched_paths}"}).encode('utf-8'))
                     return
 
                 # If already running on port 8085, return status launched
@@ -220,7 +250,7 @@ class NovaLunchPortalHandler(SimpleHTTPRequestHandler):
                     popen_kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
                 else:
                     popen_kwargs["start_new_session"] = True
-                    log_path = Path(__file__).resolve().parent / "novalunch_kiosk.log"
+                    log_path = base_dir / "novalunch_kiosk.log"
                     try:
                         log_file = open(str(log_path), "a", encoding="utf-8")
                         log_file.write(f"\n--- Launching {target_script.name} via /api/kiosk/launch at {time.ctime()} ---\n")
@@ -236,10 +266,10 @@ class NovaLunchPortalHandler(SimpleHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps({"status": "launched"}).encode('utf-8'))
                 return
-            except Exception as e:
+            except Exception as err:
                 self._send_cors(500)
                 self.end_headers()
-                self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+                self.wfile.write(json.dumps({"error": str(err)}).encode('utf-8'))
                 return
 
         elif path == "/api/students/pairing-token":
@@ -261,7 +291,7 @@ class NovaLunchPortalHandler(SimpleHTTPRequestHandler):
         self.wfile.write(json.dumps({"error": "Not Found"}).encode('utf-8'))
 
 def run_server():
-    server = HTTPServer(("0.0.0.0", PORT), NovaLunchPortalHandler)
+    server = ThreadingHTTPServer(("0.0.0.0", PORT), NovaLunchPortalHandler)
     print("=" * 65)
     print("  🍱 NOVALUNCH UNIFIED WEB & KIOSK BRIDGE SERVER ACTIVE")
     print(f"  🌐 Web Portal:    http://localhost:{PORT}")

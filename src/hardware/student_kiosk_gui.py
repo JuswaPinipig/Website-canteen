@@ -24,6 +24,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import numpy as np
 import cv2
 import pygame
+import argparse
 
 # Dynamic filesystem anchor resolution for cross-platform robustness
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -796,9 +797,10 @@ class OfflineSyncWorker(threading.Thread):
                                 print(f"[EDGE SYNC] ⚠️ Order items push failed: {items_ex}")
 
                             # Cloud Wallet Deduction for offline RFID orders
+                            wallet_deducted = False
                             if user_uuid and pm == 'rfid':
                                 try:
-                                    rpc_url = f"{SUPABASE_URL}/rest/v1/rpc/deduct_wallet_balance"
+                                    rpc_url = f"{SUPABASE_URL}/rest/v1/rpc/fn_deduct_wallet_balance"
                                     rpc_req = urllib.request.Request(
                                         rpc_url,
                                         data=json.dumps({"p_user_id": user_uuid, "p_amount": float(total_amt)}).encode('utf-8'),
@@ -806,11 +808,13 @@ class OfflineSyncWorker(threading.Thread):
                                         method="POST"
                                     )
                                     with urllib.request.urlopen(rpc_req, timeout=4) as rpc_resp:
-                                        pass
+                                        if rpc_resp.status in (200, 201, 204):
+                                            wallet_deducted = True
                                 except Exception as rpc_err:
                                     print(f"[EDGE SYNC] Wallet deduction notice: {rpc_err}")
 
-                            if items_saved:
+                            wallet_sync_ok = (pm != 'rfid' or wallet_deducted or not user_uuid)
+                            if items_saved and wallet_sync_ok:
                                 c.execute("UPDATE pending_transactions SET sync_status = 'SYNCED' WHERE transaction_id = ?", (tx_id,))
                                 conn.commit()
                                 print(f"[EDGE SYNC] ☁️ Replayed offline transaction to cloud: {tx_id}")
@@ -849,13 +853,21 @@ def get_yolo_model(pt_path="src/assets/models/novalunch_yolo.pt"):
         return None
     YOLO_ATTEMPTED = True
 
+    env_path = os.environ.get("YOLO_MODEL_PATH")
     candidates = [
+        env_path,
         pt_path,
+        str((SRC_DIR / "assets" / "models" / "novalunch_yolo-2.pt").resolve()),
         str((SRC_DIR / "assets" / "models" / "novalunch_yolo.pt").resolve()),
+        str((PROJECT_ROOT / "src" / "assets" / "models" / "novalunch_yolo-2.pt").resolve()),
         str((PROJECT_ROOT / "src" / "assets" / "models" / "novalunch_yolo.pt").resolve()),
+        str((PROJECT_ROOT / "assets" / "models" / "novalunch_yolo-2.pt").resolve()),
         str((PROJECT_ROOT / "assets" / "models" / "novalunch_yolo.pt").resolve()),
+        str((SCRIPT_DIR / "novalunch_yolo-2.pt").resolve()),
         str((SCRIPT_DIR / "novalunch_yolo.pt").resolve()),
+        os.path.join(os.getcwd(), "src", "assets", "models", "novalunch_yolo-2.pt"),
         os.path.join(os.getcwd(), "src", "assets", "models", "novalunch_yolo.pt"),
+        "novalunch_yolo-2.pt",
         "novalunch_yolo.pt"
     ]
     resolved_path = None
@@ -876,47 +888,193 @@ def get_yolo_model(pt_path="src/assets/models/novalunch_yolo.pt"):
     return YOLO_MODEL
 
 class CameraThread(threading.Thread):
-    def __init__(self):
+    def __init__(self, cam_index=None):
         super().__init__()
         self.daemon = True
         self.cap = None
         self.current_frame = None
         self.frame_size = (640, 480)
         self.latest_detections = []
-        self.ai_engine_name = "YOLOv8 Engine"
+        self.ai_engine_name = "YOLO11 Vision"
         self.fps_display = 60
         self.lock = threading.Lock()
         self.running = True
         self.manual_enabled = True
-        self._init_camera()
+        self.class_names = {}
+        model = get_yolo_model()
+        if model is not None:
+            self.class_names = getattr(model, 'names', {})
+        self.menu_catalog_by_ai_label = {}
 
-    def _init_camera(self):
-        is_windows = sys.platform.startswith('win')
-        for idx in [0, 1, 2]:
+        # External camera selection via explicit argument or KIOSK_CAM_INDEX env var (default 0)
+        if cam_index is not None:
+            self.cam_index = int(cam_index)
+        else:
+            self.cam_index = int(os.environ.get("KIOSK_CAM_INDEX", 0))
+
+        self.refresh_menu_catalog_cache()
+        self._init_camera(self.cam_index)
+
+    def refresh_menu_catalog_cache(self):
+        """
+        Builds the active menu catalog whitelist mapped by ai_label and normalized names.
+        """
+        catalog = {}
+        # 1. From POS_CATALOG_DATABASE
+        for k, item in POS_CATALOG_DATABASE.items():
+            if not item or item.get("is_archived") is True or item.get("status") in ["archived", "EXPIRED", "expired"]:
+                continue
+            price = float(item.get("price") or 0.0)
+            if price <= 0.0:
+                continue
+            lbl = item.get("ai_label") or item.get("name") or k
+            for key_variant in [lbl, str(lbl).lower(), str(lbl).replace("_", " "), str(lbl).replace(" ", "_")]:
+                catalog[key_variant] = item
+
+        # 2. From SQLite products
+        db_path = get_edge_db_path()
+        if db_path and os.path.exists(db_path):
             try:
-                # Windows 11 compatibility: Use cv2.CAP_DSHOW (DirectShow) to avoid MSMF camera initialization timeouts and crashes
-                if is_windows and hasattr(cv2, 'CAP_DSHOW'):
-                    c = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
-                else:
-                    c = cv2.VideoCapture(idx)
-
-                if c and c.isOpened():
-                    c.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-                    c.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-                    ret, f = c.read()
-                    if ret and f is not None:
-                        self.cap = c
-                        self.simulation_enabled = False
-                        backend_str = " (DirectShow / CAP_DSHOW)" if is_windows else ""
-                        print(f"[CAMERA] 🟢 Hardware stream initialized on index {idx}{backend_str}.")
-                        return
-                    c.release()
-            except Exception as cam_err:
-                print(f"[CAMERA] ⚠️ Probe failed on index {idx}: {cam_err}")
+                conn = sqlite3.connect(db_path, timeout=3.0)
+                c = conn.cursor()
+                c.execute("""
+                    SELECT id, name, price, category, barcode, is_available, stock, ai_label, is_archived 
+                    FROM products 
+                    WHERE (is_archived = 0 OR is_archived IS NULL)
+                      AND (is_available = 1 OR is_available IS NULL);
+                """)
+                for row in c.fetchall():
+                    price = float(row[2]) if row[2] is not None else 0.0
+                    if price <= 0.0:
+                        continue
+                    pname = str(row[1])
+                    ai_lbl = str(row[7]) if row[7] else pname
+                    prod = {
+                        "id": str(row[0]),
+                        "name": pname,
+                        "price": price,
+                        "category": str(row[3] or "SNACKS & BAKERY"),
+                        "barcode": str(row[4]) if row[4] else None,
+                        "available": bool(row[5]),
+                        "is_available": bool(row[5]),
+                        "stock": int(row[6]) if row[6] is not None else 50,
+                        "ai_label": ai_lbl,
+                        "is_archived": False,
+                        "requires_cashier_review": False,
+                        "status": "active"
+                    }
+                    for v in [ai_lbl, ai_lbl.lower(), ai_lbl.replace("_", " "), ai_lbl.replace(" ", "_"),
+                              pname, pname.lower(), pname.replace("_", " "), pname.replace(" ", "_")]:
+                        catalog[v] = prod
+                conn.close()
+            except Exception:
                 pass
+
+        # 3. For any class name in self.class_names, if lookup_pos_item finds a valid product, map it
+        if hasattr(self, 'class_names') and self.class_names:
+            for cls_id, cname in self.class_names.items():
+                if cname not in catalog:
+                    found = lookup_pos_item(cname)
+                    if found and float(found.get("price") or 0.0) > 0.0:
+                        catalog[cname] = found
+                        catalog[cname.lower()] = found
+
+        with self.lock:
+            self.menu_catalog_by_ai_label = catalog
+
+    def _open_capture(self, index):
+        is_windows = sys.platform.startswith('win')
+        try:
+            # On Windows, keep DirectShow backend support to prevent timeouts and crashes
+            if is_windows and hasattr(cv2, 'CAP_DSHOW'):
+                c = cv2.VideoCapture(index, cv2.CAP_DSHOW)
+            else:
+                c = cv2.VideoCapture(index)
+
+            if c and c.isOpened():
+                c.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                c.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                ret, f = c.read()
+                if ret and f is not None:
+                    return c
+                c.release()
+        except Exception as cam_err:
+            print(f"[CAMERA] ⚠️ Probe failed on index {index}: {cam_err}")
+        return None
+
+    def _init_camera(self, target_index=None):
+        if target_index is not None:
+            self.cam_index = int(target_index)
+        else:
+            self.cam_index = int(os.environ.get("KIOSK_CAM_INDEX", getattr(self, 'cam_index', 0)))
+
+        is_windows = sys.platform.startswith('win')
+        backend_str = " (DirectShow / CAP_DSHOW)" if is_windows else ""
+
+        # Probe specified target index first
+        c = self._open_capture(self.cam_index)
+        if c:
+            self.cap = c
+            self.simulation_enabled = False
+            print(f"[CAMERA] 🟢 Hardware stream initialized on index {self.cam_index}{backend_str}.")
+            return
+
+        # Fallback probe if target index fails
+        for alt_idx in [0, 1, 2]:
+            if alt_idx == self.cam_index:
+                continue
+            c = self._open_capture(alt_idx)
+            if c:
+                self.cap = c
+                self.cam_index = alt_idx
+                self.simulation_enabled = False
+                print(f"[CAMERA] 🟢 Hardware stream initialized on fallback index {alt_idx}{backend_str}.")
+                return
+
         self.cap = None
         self.simulation_enabled = True
         print("[CAMERA] 🟢 Hardware camera not detected. Running with Synthetic AI Simulation.")
+
+    def switch_camera(self, new_index=None):
+        """
+        Switches camera capture device between indices (e.g., 0 and 1).
+        Supports runtime switching via the 'C' hotkey.
+        """
+        with self.lock:
+            current_idx = getattr(self, 'cam_index', 0)
+            if new_index is None:
+                # Toggle between 0 and 1
+                target_idx = 1 if current_idx == 0 else 0
+            else:
+                target_idx = int(new_index)
+
+            print(f"[CAMERA] 🔄 Requesting camera switch from index {current_idx} to {target_idx}...")
+            if self.cap:
+                try:
+                    self.cap.release()
+                except Exception:
+                    pass
+                self.cap = None
+
+            c = self._open_capture(target_idx)
+            if c:
+                self.cap = c
+                self.cam_index = target_idx
+                self.simulation_enabled = False
+                print(f"[CAMERA] 🟢 Successfully switched to camera index {target_idx}.")
+                return True, target_idx
+            else:
+                print(f"[CAMERA] ⚠️ Camera index {target_idx} could not be opened. Reverting to index {current_idx}...")
+                fallback_c = self._open_capture(current_idx)
+                if fallback_c:
+                    self.cap = fallback_c
+                    self.cam_index = current_idx
+                    self.simulation_enabled = False
+                    return False, current_idx
+                else:
+                    self.cam_index = target_idx
+                    self.simulation_enabled = True
+                    return False, target_idx
 
     def toggle_manual(self):
         with self.lock:
@@ -1017,42 +1175,50 @@ class CameraThread(threading.Thread):
                         detections = []
                         model = get_yolo_model()
                         if model is not None:
-                            self.ai_engine_name = "YOLO11-OBB Vision"
+                            self.ai_engine_name = "YOLO11 Vision"
+                            if not self.class_names:
+                                self.class_names = getattr(model, 'names', {})
+                                self.refresh_menu_catalog_cache()
                             try:
-                                results = model(frame, imgsz=640, conf=0.20, verbose=False)
+                                # High confidence threshold (0.75) and NMS IoU (0.45) to eliminate background false positives
+                                results = model(frame, imgsz=640, conf=0.75, iou=0.45, verbose=False)
                                 for r in results:
-                                    # 1. Check for OBB (Oriented Bounding Box) predictions (novalunch_yolo.pt is yolo11n-obb)
+                                    # 1. Check for OBB (Oriented Bounding Box) predictions
                                     obb_data = getattr(r, 'obb', None)
                                     if obb_data is not None and len(obb_data) > 0:
                                         for idx in range(len(obb_data)):
                                             cls_id = int(obb_data.cls[idx])
-                                            cls_name = model.names.get(cls_id, f"Class {cls_id}")
+                                            class_name = self.class_names.get(cls_id)
+                                            mapped_product = self.menu_catalog_by_ai_label.get(class_name)
+
+                                            # STRICT FILTER: Discard any object not explicitly mapped to an active canteen menu item
+                                            if not mapped_product:
+                                                continue
+
+                                            item_price = float(mapped_product.get("price") or 0.0)
+                                            if item_price <= 0.0:
+                                                continue
+                                            if mapped_product.get("is_archived") is True or mapped_product.get("status") in ["archived", "EXPIRED", "expired"]:
+                                                continue
+                                            if mapped_product.get("requires_cashier_review") or mapped_product.get("category") == "UNKNOWN" or "unmapped" in str(mapped_product.get("id", "")).lower() or "unmapped" in str(mapped_product.get("name", "")).lower():
+                                                continue
+
                                             conf = float(obb_data.conf[idx])
                                             coords = obb_data.xyxy[idx].tolist() if hasattr(obb_data.xyxy[idx], 'tolist') else list(obb_data.xyxy[idx])
                                             x1, y1, x2, y2 = map(int, coords)
                                             bw = max(20, x2 - x1)
                                             bh = max(20, y2 - y1)
-                                            pos_info = lookup_pos_item(cls_name)
-                                            if not pos_info:
-                                                continue
-                                            if pos_info.get("is_archived") is True or pos_info.get("status") in ["archived", "EXPIRED", "expired"]:
-                                                continue
-                                            item_price = float(pos_info.get("price") or 0.0)
-                                            if item_price <= 0.0:
-                                                continue
-                                            if pos_info.get("requires_cashier_review") or pos_info.get("category") == "UNKNOWN" or "unmapped" in str(pos_info.get("id", "")).lower() or "unmapped" in str(pos_info.get("name", "")).lower():
-                                                continue
-                                            is_near_exp = pos_info.get("status") in ["NEAR_EXPIRY", "near_expiry"] or pos_info.get("expiry_status") == "near_expiry"
-                                            prod_id = str(pos_info.get("id") or f"yolo-obb-{cls_id}")
+                                            is_near_exp = mapped_product.get("status") in ["NEAR_EXPIRY", "near_expiry"] or mapped_product.get("expiry_status") == "near_expiry"
+                                            prod_id = str(mapped_product.get("id") or f"yolo-obb-{cls_id}")
                                             detections.append({
                                                 "id": prod_id,
                                                 "product_id": prod_id,
-                                                "ai_label": cls_name,
-                                                "name": pos_info.get("name", cls_name),
-                                                "category": pos_info.get("category", "SNACKS & BAKERY"),
+                                                "ai_label": class_name,
+                                                "name": mapped_product.get("name", class_name),
+                                                "category": mapped_product.get("category", "SNACKS & BAKERY"),
                                                 "qty": 1,
                                                 "price": item_price,
-                                                "stock": int(pos_info.get("stock", 50)),
+                                                "stock": int(mapped_product.get("stock", 50)),
                                                 "is_near_expiry": is_near_exp,
                                                 "requires_cashier_review": False,
                                                 "bbox": [x1, y1, bw, bh],
@@ -1063,33 +1229,37 @@ class CameraThread(threading.Thread):
                                     elif getattr(r, 'boxes', None) is not None and len(r.boxes) > 0:
                                         for idx, box in enumerate(r.boxes):
                                             cls_id = int(box.cls[0])
-                                            cls_name = model.names.get(cls_id, f"Class {cls_id}")
+                                            class_name = self.class_names.get(cls_id)
+                                            mapped_product = self.menu_catalog_by_ai_label.get(class_name)
+
+                                            # STRICT FILTER: Discard any object not explicitly mapped to an active canteen menu item
+                                            if not mapped_product:
+                                                continue
+
+                                            item_price = float(mapped_product.get("price") or 0.0)
+                                            if item_price <= 0.0:
+                                                continue
+                                            if mapped_product.get("is_archived") is True or mapped_product.get("status") in ["archived", "EXPIRED", "expired"]:
+                                                continue
+                                            if mapped_product.get("requires_cashier_review") or mapped_product.get("category") == "UNKNOWN" or "unmapped" in str(mapped_product.get("id", "")).lower() or "unmapped" in str(mapped_product.get("name", "")).lower():
+                                                continue
+
                                             conf = float(box.conf[0])
                                             coords = box.xyxy[0].tolist() if hasattr(box.xyxy[0], 'tolist') else list(box.xyxy[0])
                                             x1, y1, x2, y2 = map(int, coords)
                                             bw = max(20, x2 - x1)
                                             bh = max(20, y2 - y1)
-                                            pos_info = lookup_pos_item(cls_name)
-                                            if not pos_info:
-                                                continue
-                                            if pos_info.get("is_archived") is True or pos_info.get("status") in ["archived", "EXPIRED", "expired"]:
-                                                continue
-                                            item_price = float(pos_info.get("price") or 0.0)
-                                            if item_price <= 0.0:
-                                                continue
-                                            if pos_info.get("requires_cashier_review") or pos_info.get("category") == "UNKNOWN" or "unmapped" in str(pos_info.get("id", "")).lower() or "unmapped" in str(pos_info.get("name", "")).lower():
-                                                continue
-                                            is_near_exp = pos_info.get("status") in ["NEAR_EXPIRY", "near_expiry"] or pos_info.get("expiry_status") == "near_expiry"
-                                            prod_id = str(pos_info.get("id") or f"yolo-box-{cls_id}")
+                                            is_near_exp = mapped_product.get("status") in ["NEAR_EXPIRY", "near_expiry"] or mapped_product.get("expiry_status") == "near_expiry"
+                                            prod_id = str(mapped_product.get("id") or f"yolo-box-{cls_id}")
                                             detections.append({
                                                 "id": prod_id,
                                                 "product_id": prod_id,
-                                                "ai_label": cls_name,
-                                                "name": pos_info.get("name", cls_name),
-                                                "category": pos_info.get("category", "ITEM"),
+                                                "ai_label": class_name,
+                                                "name": mapped_product.get("name", class_name),
+                                                "category": mapped_product.get("category", "ITEM"),
                                                 "qty": 1,
                                                 "price": item_price,
-                                                "stock": int(pos_info.get("stock", 50)),
+                                                "stock": int(mapped_product.get("stock", 50)),
                                                 "is_near_expiry": is_near_exp,
                                                 "requires_cashier_review": False,
                                                 "bbox": [x1, y1, bw, bh],
@@ -1098,37 +1268,8 @@ class CameraThread(threading.Thread):
                             except Exception as e:
                                 print(f"[AI VISION WARN] Detection inference error: {e}")
 
-                        # Optical contour fallback for general food items placed on counter (ONLY if YOLO model is not loaded)
-                        if not detections and model is None:
-                            try:
-                                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                                blurred = cv2.GaussianBlur(gray, (7, 7), 0)
-                                _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-                                contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                                min_area = (w_f * h_f) * 0.02
-                                max_area = (w_f * h_f) * 0.65
-                                valid = [c for c in contours if min_area < cv2.contourArea(c) < max_area]
-                                for i, c in enumerate(valid[:2]):
-                                    x, y, bw, bh = cv2.boundingRect(c)
-                                    # Ensure item is reasonably within counter scanning zone
-                                    if x > w_f * 0.05 and (x + bw) < w_f * 0.95 and y > h_f * 0.05:
-                                        detections.append({
-                                            "id": f"contour-{i}",
-                                            "product_id": f"contour-{i}",
-                                            "ai_label": "tray_item",
-                                            "name": f"Scanned Meal Item #{i+1}",
-                                            "category": "MEAL",
-                                            "qty": 1,
-                                            "price": 35.00,
-                                            "stock": 50,
-                                            "is_near_expiry": False,
-                                            "bbox": [x, y, bw, bh],
-                                            "conf": 0.82
-                                        })
-                                if detections and model is None:
-                                    self.ai_engine_name = "Native Vision"
-                            except Exception:
-                                pass
+                        # NO fallback to optical contours or dummy placeholder items.
+                        # If no valid canteen items are detected, detections stays strictly empty [].
 
                         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                         self.null_frame_count = 0
@@ -1175,6 +1316,16 @@ class CameraThread(threading.Thread):
 
         if draw_boxes:
             for item in detections:
+                if not item or not item.get("name"):
+                    continue
+                # Whitelist guard: ensure item has valid price > 0 and is not unknown/unmapped
+                if float(item.get("price", 0.0) or 0.0) <= 0.0:
+                    continue
+                if item.get("requires_cashier_review") or item.get("category") == "UNKNOWN":
+                    continue
+                if "unmapped" in str(item.get("id", "")).lower() or "unmapped" in str(item.get("name", "")).lower():
+                    continue
+
                 bx, by, bw, bh = item.get("bbox", [100, 100, 150, 150])
                 cv2.rectangle(bgr, (bx, by), (bx + bw, by + bh), (0, 215, 255), 2)
                 lbl = f"{item['name']} (₱{item['price']:.2f})"
@@ -1637,7 +1788,7 @@ def start_kiosk_api_server(port=HTTP_PORT):
 # NOVALUNCH STUDENT-FACING DISPLAY (CFD) MONITOR APPLICATION
 # ==============================================================================
 class NovaLunchKioskGUI:
-    def __init__(self):
+    def __init__(self, cam_index=None):
         global _GLOBAL_KIOSK_REF
         _GLOBAL_KIOSK_REF = self
 
@@ -1707,6 +1858,7 @@ class NovaLunchKioskGUI:
         self.motion_voice_alerted = False
         self.greet_audio_spoken = False
         self.stable_start_time = 0.0
+        self.stability_started_at = 0.0
         self.last_detection_hash = ""
 
         # Hardware Buffer
@@ -1716,7 +1868,7 @@ class NovaLunchKioskGUI:
         self.last_rfid_tap_timestamp = 0
 
         # Subsystems
-        self.camera_thread = CameraThread()
+        self.camera_thread = CameraThread(cam_index=cam_index)
         self.camera_thread.start()
         self.sounds = create_synthesized_sounds()
 
@@ -1729,6 +1881,14 @@ class NovaLunchKioskGUI:
         self.btn_step2 = pygame.Rect(260, 578, 205, 46)
         self.btn_step3 = pygame.Rect(475, 578, 205, 46)
         self.btn_step4 = pygame.Rect(475, 578, 205, 46)
+
+    @property
+    def class_names(self):
+        return getattr(self.camera_thread, 'class_names', {})
+
+    @property
+    def menu_catalog_by_ai_label(self):
+        return getattr(self.camera_thread, 'menu_catalog_by_ai_label', {})
 
     def get_live_kiosk_data(self):
         """Returns JSON-serializable snapshot of live kiosk state for Cashier POS."""
@@ -1924,6 +2084,7 @@ class NovaLunchKioskGUI:
                 print(f"[TRAY SNAPSHOT WARN]: {e}")
 
         elif new_state == STATE_STABILITY_COUNTDOWN:
+            self.stability_started_at = time.time()
             self.countdown_remaining = 5.0
             self.last_tick_sec = 5
             self.motion_voice_alerted = False
@@ -1997,6 +2158,11 @@ class NovaLunchKioskGUI:
 
     def execute_rfid_checkout(self):
         """Hardened 2-Tap RFID Settlement: Deducts balance, records transaction, and settles order."""
+        if not self.cart_items or self.total_amount <= 0.0:
+            self.status_message = "⚠️ EMPTY TRAY — Place meal items on platform before tapping card."
+            self.notify_pos_update()
+            return
+
         if not self.active_student:
             return
 
@@ -2044,8 +2210,8 @@ class NovaLunchKioskGUI:
                 return  # Hardware debounce
             self.rfid_anti_passback_cache[clean] = now
 
-            # Tap-2 Settlement: If scanning, countdown, or payment confirmation and tapped RFID matches active student, settle immediately
-            if self.current_state in [STATE_SCANNING, STATE_STABILITY_COUNTDOWN, STATE_PAYMENT_CONFIRMATION] and self.active_student:
+            # Tap-2 Settlement: Only allow settlement when payment confirmation state and tapped RFID matches active student
+            if self.current_state == STATE_PAYMENT_CONFIRMATION and self.active_student:
                 active_uid = str(self.active_student.get("rfidUid") or self.active_student.get("rfid_uid") or "").strip()
                 active_id = str(self.active_student.get("id") or self.active_student.get("student_id_number") or "").strip()
 
@@ -2206,6 +2372,15 @@ class NovaLunchKioskGUI:
                     is_active_session = (self.current_state != STATE_IDLE and self.active_student is not None)
 
                     for item in detections:
+                        if not item or not item.get("name"):
+                            continue
+                        if float(item.get("price", 0.0) or 0.0) <= 0.0:
+                            continue
+                        if item.get("requires_cashier_review") or item.get("category") == "UNKNOWN":
+                            continue
+                        if "unmapped" in str(item.get("id", "")).lower() or "unmapped" in str(item.get("name", "")).lower():
+                            continue
+
                         bx, by, bw, bh = item.get("bbox", [100, 100, 150, 150])
                         rx = max(34, min(34 + 682 - 40, 34 + int(bx * scale_x)))
                         ry = max(150, min(150 + 410 - 30, 150 + int(by * scale_y)))
@@ -2676,7 +2851,7 @@ class NovaLunchKioskGUI:
 
         msg = self.font_footer.render(f"STATUS: {self.status_message} | REAL-TIME POS SERVER: ACTIVE (PORT {HTTP_PORT})", True, COLOR_WHITE)
         self.screen.blit(msg, (24, 690))
-        shortcuts = self.font_subtitle_bold.render("[SHORTCUTS: 1-4 | P: PAY LATER | W: SWAP AI | SPACE | R: RESET]", True, COLOR_GOLD_LIGHT)
+        shortcuts = self.font_subtitle_bold.render("[SHORTCUTS: 1-4 | C: CAM 0/1 | P: PAY LATER | W: SWAP AI | SPACE | R: RESET]", True, COLOR_GOLD_LIGHT)
         self.screen.blit(shortcuts, (SCREEN_WIDTH - shortcuts.get_width() - 24, 690))
 
     # ==========================================================================
@@ -2733,7 +2908,11 @@ class NovaLunchKioskGUI:
                     elif event.key in [pygame.K_4, pygame.K_KP4]:
                         self.execute_simulation_step(4)
                     elif event.key == pygame.K_c:
-                        self.camera_thread.toggle_manual()
+                        success, active_cam = self.camera_thread.switch_camera()
+                        if success:
+                            self.status_message = f"📷 Camera Switched to Index {active_cam}"
+                        else:
+                            self.status_message = f"⚠️ Camera {active_cam} Not Found (Active: Index {getattr(self.camera_thread, 'cam_index', 0)})"
                     elif event.key == pygame.K_d:
                         sim_state = self.camera_thread.toggle_simulation()
                         self.status_message = f"Demo Synthetic AI Simulation: {'ENABLED' if sim_state else 'DISABLED'}"
@@ -2763,6 +2942,12 @@ class NovaLunchKioskGUI:
 
             # Auto-transitions & Live Scanned Food Summary Sync
             now = time.time()
+            if self.current_state in [STATE_GREET, STATE_SCANNING, STATE_STABILITY_COUNTDOWN, STATE_PAYMENT_CONFIRMATION]:
+                session_ttl = 45.0 if self.cart_items else 20.0
+                if now - self.state_timer >= session_ttl:
+                    print(f"[KIOSK] Inactivity timeout expired ({session_ttl}s). Resetting to IDLE.")
+                    self.transition_to_state(STATE_IDLE)
+
             if self.current_state == STATE_IDLE:
                 # Standby Mode: Do NOT scan food items or update cart until student taps card
                 if self.cart_items and not self.cart_manual_override_lock:
@@ -2773,9 +2958,7 @@ class NovaLunchKioskGUI:
                 self.transition_to_state(STATE_IDLE)
 
             elif self.current_state in [STATE_GREET, STATE_SCANNING]:
-                if now - self.state_timer >= 20.0:
-                    self.transition_to_state(STATE_IDLE)
-                elif not self.cart_manual_override_lock:
+                if not self.cart_manual_override_lock:
                     live_items = self.camera_thread.get_latest_detections()
                     agg_items = aggregate_detections(live_items) if live_items else []
                     valid_items = [
@@ -2820,66 +3003,75 @@ class NovaLunchKioskGUI:
                             self.status_message = "Waiting for tray... Place food on scanning platform."
 
             elif self.current_state == STATE_STABILITY_COUNTDOWN:
-                live_items = self.camera_thread.get_latest_detections()
-                agg_items = aggregate_detections(live_items) if live_items else []
-                valid_items = [
-                    it for it in agg_items 
-                    if float(it.get("price", 0.0) or 0.0) > 0.0
-                    and not it.get("requires_cashier_review")
-                    and it.get("category") != "UNKNOWN"
-                    and "unmapped" not in str(it.get("id", "")).lower()
-                    and "unmapped" not in str(it.get("name", "")).lower()
-                ]
-                total_price = sum(it["price"] * it.get("qty", 1) for it in valid_items)
-
-                # Only trigger and tick the stability countdown if len(valid_cart_items) > 0 AND total price > 0
-                if len(valid_items) == 0 or total_price <= 0.0:
-                    # 0 valid menu items on tray: keep the kiosk in steady STATE_SCANNING without initiating or looping countdown timer
-                    self.cart_items = []
-                    self.total_amount = 0.0
-                    self.last_detection_hash = ""
-                    self.stable_start_time = 0.0
-                    self.countdown_remaining = 5.0
-                    self.motion_detected = False
-                    self.transition_to_state(STATE_SCANNING)
+                if time.time() - getattr(self, 'stability_started_at', now) >= 10.0:
+                    # 10s Stability countdown ceiling reached: lock cart and transition to payment confirmation
+                    self.countdown_remaining = 0.0
+                    self.cart_manual_override_lock = True
+                    cnt = sum(i.get("qty", 1) for i in self.cart_items)
+                    self.status_message = f"🟢 Scanned {cnt} item(s) (₱{self.total_amount:.2f}) — Ready for Payment Confirmation"
+                    if self.cart_items:
+                        item_names = [f"{it.get('qty', 1)} {it['name']}" for it in self.cart_items]
+                        speak_text(f"Detected: {', '.join(item_names)}. Total is {int(self.total_amount)} pesos. Please confirm payment.")
+                    self.transition_to_state(STATE_PAYMENT_CONFIRMATION)
                 else:
-                    # Frame stability hash based strictly on Item_ID:Quantity
-                    curr_hash = "-".join(sorted([
-                        f"{str(item.get('product_id') or item.get('id') or item.get('name'))}:{item.get('qty', 1)}"
-                        for item in valid_items
-                    ]))
-                    if curr_hash != self.last_detection_hash:
-                        # Real item change on tray: update cart and reset countdown
-                        self.last_detection_hash = curr_hash
-                        self.cart_items = valid_items
-                        self.total_amount = total_price
-                        self.countdown_remaining = 5.0
-                        self.last_tick_sec = 5
-                        self.notify_pos_update()
+                    live_items = self.camera_thread.get_latest_detections()
+                    agg_items = aggregate_detections(live_items) if live_items else []
+                    valid_items = [
+                        it for it in agg_items 
+                        if float(it.get("price", 0.0) or 0.0) > 0.0
+                        and not it.get("requires_cashier_review")
+                        and it.get("category") != "UNKNOWN"
+                        and "unmapped" not in str(it.get("id", "")).lower()
+                        and "unmapped" not in str(it.get("name", "")).lower()
+                    ]
+                    total_price = sum(it["price"] * it.get("qty", 1) for it in valid_items)
 
-                    if self.motion_detected:
+                    # Only trigger and tick the stability countdown if len(valid_cart_items) > 0 AND total price > 0
+                    if len(valid_items) == 0 or total_price <= 0.0:
+                        # 0 valid menu items on tray: keep the kiosk in steady STATE_SCANNING without initiating or looping countdown timer
+                        self.cart_items = []
+                        self.total_amount = 0.0
+                        self.last_detection_hash = ""
+                        self.stable_start_time = 0.0
                         self.countdown_remaining = 5.0
+                        self.motion_detected = False
+                        self.transition_to_state(STATE_SCANNING)
                     else:
-                        self.motion_voice_alerted = False
-                        self.countdown_remaining -= dt
-                        curr_sec = int(math.ceil(self.countdown_remaining))
-                        if curr_sec < self.last_tick_sec and curr_sec >= 1:
-                            self.last_tick_sec = curr_sec
-                        if self.countdown_remaining <= 0.0:
-                            # Countdown finished — lock cart and transition cleanly to payment confirmation (Step 3) without bouncing back to scanning
-                            self.cart_manual_override_lock = True
-                            cnt = sum(i.get("qty", 1) for i in self.cart_items)
-                            self.status_message = f"🟢 Scanned {cnt} item(s) (₱{self.total_amount:.2f}) — Ready for Payment Confirmation"
-                            if self.cart_items:
-                                item_names = [f"{it.get('qty', 1)} {it['name']}" for it in self.cart_items]
-                                speak_text(f"Detected: {', '.join(item_names)}. Total is {int(self.total_amount)} pesos. Please confirm payment.")
-                            self.transition_to_state(STATE_PAYMENT_CONFIRMATION)
+                        # Frame stability hash based strictly on Item_ID:Quantity
+                        curr_hash = "-".join(sorted([
+                            f"{str(item.get('product_id') or item.get('id') or item.get('name'))}:{item.get('qty', 1)}"
+                            for item in valid_items
+                        ]))
+                        if curr_hash != self.last_detection_hash:
+                            # Real item change on tray: update cart and reset countdown
+                            self.last_detection_hash = curr_hash
+                            self.cart_items = valid_items
+                            self.total_amount = total_price
+                            self.countdown_remaining = 5.0
+                            self.last_tick_sec = 5
+                            self.notify_pos_update()
+
+                        if self.motion_detected:
+                            self.countdown_remaining = 5.0
+                        else:
+                            self.motion_voice_alerted = False
+                            self.countdown_remaining -= dt
+                            curr_sec = int(math.ceil(self.countdown_remaining))
+                            if curr_sec < self.last_tick_sec and curr_sec >= 1:
+                                self.last_tick_sec = curr_sec
+                            if self.countdown_remaining <= 0.0:
+                                # Countdown finished — lock cart and transition cleanly to payment confirmation (Step 3) without bouncing back to scanning
+                                self.cart_manual_override_lock = True
+                                cnt = sum(i.get("qty", 1) for i in self.cart_items)
+                                self.status_message = f"🟢 Scanned {cnt} item(s) (₱{self.total_amount:.2f}) — Ready for Payment Confirmation"
+                                if self.cart_items:
+                                    item_names = [f"{it.get('qty', 1)} {it['name']}" for it in self.cart_items]
+                                    speak_text(f"Detected: {', '.join(item_names)}. Total is {int(self.total_amount)} pesos. Please confirm payment.")
+                                self.transition_to_state(STATE_PAYMENT_CONFIRMATION)
 
             elif self.current_state == STATE_PAYMENT_CONFIRMATION:
                 # Order summary is locked in Step 3 (Payment Confirmation)
-                # Session timeout after 30 seconds of inactivity
-                if now - self.state_timer >= 30.0:
-                    self.transition_to_state(STATE_IDLE)
+                pass
 
             elif self.current_state == STATE_SETTLEMENT and (now - self.state_timer >= 3.0):
                 # 3-second thank-you screen then return to idle (clears cart for next customer)
@@ -2903,5 +3095,10 @@ class NovaLunchKioskGUI:
         sys.exit(0)
 
 if __name__ == "__main__":
-    app = NovaLunchKioskGUI()
+    parser = argparse.ArgumentParser(description="NovaLunch Student Kiosk CFD Monitor")
+    parser.add_argument("--cam-index", "--camera", "-c", type=int, default=None,
+                        help="Camera device index (default: KIOSK_CAM_INDEX env or 0)")
+    args, unknown = parser.parse_known_args()
+
+    app = NovaLunchKioskGUI(cam_index=args.cam_index)
     app.run()

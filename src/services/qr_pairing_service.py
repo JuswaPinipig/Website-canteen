@@ -281,15 +281,16 @@ def fetch_profile_by_id_or_email(identifier: str) -> Optional[Dict[str, Any]]:
                     for u in acc_data.get(cat, []):
                         if (u.get("email") == clean_id or 
                             u.get("secondary_email") == clean_id or 
-                            u.get("student_id_number") == clean_id):
-                            mock_id = "c653fe97-2934-4fae-a8f6-18ebb4754886" if u.get("role") == "student" else "02e0f6ca-ae0c-432e-8745-02b53adcd2f4"
+                            u.get("student_id_number") == clean_id or
+                            u.get("id") == clean_id):
+                            matched_id = u.get("id") or u.get("uuid") or u.get("student_id") or clean_id
                             return {
-                                "id": mock_id,
-                                "full_name": u.get("full_name"),
+                                "id": matched_id,
+                                "full_name": u.get("full_name") or "User",
                                 "email": u.get("email"),
                                 "role": u.get("role", "student"),
                                 "student_id_number": u.get("student_id_number", "2023-01900"),
-                                "grade": "Grade 10 - St. Ignatius"
+                                "grade": u.get("grade", "Grade 10 - St. Ignatius")
                             }
         except Exception:
             pass
@@ -412,10 +413,17 @@ def handle_create_pairing_token(headers: Dict[str, str], body_data: Dict[str, An
     # Resolve student profile
     profile = fetch_profile_by_id_or_email(identifier)
     if not profile:
-        # Fallback to Joshua Lupisan if mock/demo student session
-        if "student" in identifier.lower() or "joshua" in identifier.lower():
-            profile = KNOWN_MOCK_USERS["c653fe97-2934-4fae-a8f6-18ebb4754886"]
-            profile["id"] = "c653fe97-2934-4fae-a8f6-18ebb4754886"
+        body_student_id = body_data.get("studentId") or body_data.get("id") or (identifier if identifier and len(identifier) > 5 else None)
+        body_name = body_data.get("studentName") or body_data.get("name")
+        if body_student_id and identifier != "student@gmail.com":
+            profile = {
+                "id": str(body_student_id),
+                "full_name": body_name or "Student",
+                "email": f"{body_student_id}@sjc.edu.ph",
+                "role": "student",
+                "student_id_number": str(body_student_id),
+                "grade": "Grade 10 - St. Ignatius"
+            }
         else:
             return 404, {
                 "success": False,

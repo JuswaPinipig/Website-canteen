@@ -2063,37 +2063,41 @@
         // -------------------------------------------------------------------------
         // INSTANT QR PAIRING (STUDENT-PARENT LINKING)
         // -------------------------------------------------------------------------
-        async generatePairingToken(studentArg = null, studentNameArg = null) {
-            let studentId = null;
-            let studentName = null;
-            let studentGrade = null;
-            let studentIdNum = null;
+        async generatePairingToken(studentId, studentName) {
+            let targetId = null;
+            let targetName = null;
 
-            if (typeof studentArg === 'string') {
-                studentId = studentArg;
-                studentName = studentNameArg || 'Student User';
-            } else if (studentArg && typeof studentArg === 'object') {
-                studentId = studentArg.id || studentArg.userId;
-                studentName = studentArg.name || studentArg.full_name || studentNameArg;
-                studentGrade = studentArg.grade || studentArg.department;
-                studentIdNum = studentArg.studentId || studentArg.student_id_number;
+            if (typeof studentId === 'string' && studentId.trim()) {
+                targetId = studentId.trim();
+                targetName = (typeof studentName === 'string' && studentName.trim()) ? studentName.trim() : null;
+            } else if (studentId && typeof studentId === 'object') {
+                targetId = studentId.id || studentId.uuid || studentId.userId;
+                targetName = studentId.name || studentId.full_name || studentName;
             }
 
-            if (!studentId) {
-                const session = this.loadLocal('novalunch_user_session', null) || this.loadLocal('novalunch_current_user', null);
-                studentId = session?.id || session?.userId;
-                if (!studentName) studentName = session?.name || session?.full_name;
-                if (!studentGrade) studentGrade = session?.grade || session?.department;
-                if (!studentIdNum) studentIdNum = session?.studentId || session?.student_id_number;
+            if (!targetId) {
+                throw new Error("Cannot generate pairing token: studentId is required.");
             }
 
-            if (!studentId) {
-                throw new Error("No active student ID provided to generate pairing token.");
+            if (!targetName && typeof studentName === 'string' && studentName.trim()) {
+                targetName = studentName.trim();
             }
 
-            if (!studentName) studentName = 'Student User';
-            if (!studentGrade) studentGrade = 'Grade 10 - St. Ignatius';
-            if (!studentIdNum) studentIdNum = 'SJC-STUDENT';
+            // Look up student details from registered users if name, grade or studentIdNum are missing
+            let studentGrade = typeof studentId === 'object' ? (studentId.grade || studentId.department) : null;
+            let studentIdNum = typeof studentId === 'object' ? (studentId.studentId || studentId.student_id_number) : null;
+
+            const allUsers = this.loadLocal('novalunch_registered_users', []);
+            const foundUser = allUsers.find(u => u.id === targetId || u.studentId === targetId || u.uuid === targetId);
+            if (foundUser) {
+                if (!targetName) targetName = foundUser.name || foundUser.full_name;
+                if (!studentGrade) studentGrade = foundUser.department || foundUser.grade;
+                if (!studentIdNum) studentIdNum = foundUser.studentId || foundUser.student_id_number;
+            }
+
+            if (!targetName) targetName = 'Student';
+            if (!studentGrade) studentGrade = 'Grade 10';
+            if (!studentIdNum) studentIdNum = targetId;
 
             // Generate clean 6-digit uppercase alphanumeric pairing code (excluding confusing chars 0, O, 1, I)
             const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -2106,13 +2110,14 @@
             const exp = nowTs + 600;
             const jti = 'pair-' + Math.random().toString(36).substring(2, 10);
             const mockPayload = {
-                studentId,
+                studentId: targetId,
+                sub: targetId,
                 studentIdNumber: studentIdNum,
                 timestamp: nowTs,
                 type: 'parent_link',
                 exp,
                 jti,
-                name: studentName,
+                name: targetName,
                 grade: studentGrade,
                 code: pairingCode
             };
@@ -2125,8 +2130,10 @@
                 code: pairingCode,
                 pairing_code: pairingCode,
                 token_hash: jti,
-                student_id: studentId,
-                student_name: studentName,
+                student_id: targetId,
+                studentId: targetId,
+                student_name: targetName,
+                studentName: targetName,
                 student_id_number: studentIdNum,
                 grade: studentGrade,
                 status: 'ISSUED',
@@ -2135,9 +2142,15 @@
                 token_raw: token
             };
 
-            const localTokens = this.loadLocal('novalunch_qr_pairing_tokens', []);
-            const updatedLocalTokens = [tokenRecord, ...localTokens.filter(t => t.code !== pairingCode).slice(0, 50)];
-            this.saveLocal('novalunch_qr_pairing_tokens', updatedLocalTokens);
+            // Save the token into shared local cache key novalunch_pairing_tokens
+            const existingTokens = this.loadLocal('novalunch_pairing_tokens', []);
+            existingTokens.push(tokenRecord);
+            this.saveLocal('novalunch_pairing_tokens', existingTokens);
+
+            // Also keep novalunch_qr_pairing_tokens in sync
+            const localQrTokens = this.loadLocal('novalunch_qr_pairing_tokens', []);
+            const updatedLocalQrTokens = [tokenRecord, ...localQrTokens.filter(t => t.code !== pairingCode).slice(0, 50)];
+            this.saveLocal('novalunch_qr_pairing_tokens', updatedLocalQrTokens);
 
             // 2. Direct Supabase insert if cloud client connected
             if (this.supabase) {
@@ -2146,7 +2159,7 @@
                         jti,
                         code: pairingCode,
                         pairing_code: pairingCode,
-                        student_id: studentId,
+                        student_id: targetId,
                         status: 'ISSUED',
                         created_at: new Date(nowTs * 1000).toISOString(),
                         expires_at: new Date(exp * 1000).toISOString(),
@@ -2165,24 +2178,39 @@
                 expiresAt: exp,
                 expiresIn: 600,
                 payload: mockPayload,
-                student: { id: studentId, name: studentName, grade: studentGrade, studentId: studentIdNum }
+                student: { id: targetId, name: targetName, grade: studentGrade, studentId: studentIdNum }
             };
         },
 
-        async linkByQr(pairingToken, parentSession = null) {
-            if (!pairingToken || typeof pairingToken !== 'string') {
+        async linkByQr(arg1, arg2) {
+            let parentUserId = null;
+            let qrOrCode = null;
+
+            if (arg2 !== undefined && arg2 !== null) {
+                if (typeof arg2 === 'object') {
+                    qrOrCode = arg1;
+                    parentUserId = arg2?.id || arg2?.userId;
+                } else {
+                    parentUserId = arg1;
+                    qrOrCode = arg2;
+                }
+            } else {
+                qrOrCode = arg1;
+            }
+
+            if (!qrOrCode || typeof qrOrCode !== 'string') {
                 throw new Error("Invalid pairing code or QR token. Please provide a valid code.");
             }
 
-            let rawInput = pairingToken.trim();
-            if (rawInput.startsWith('NL:')) {
+            let rawInput = qrOrCode.trim();
+            if (rawInput.startsWith('NL:') || rawInput.startsWith('nl:')) {
                 rawInput = rawInput.slice(3).trim();
             }
             const isJwt = rawInput.includes('.');
-            const cleanCode = isJwt ? rawInput : rawInput.replace(/\s+/g, '').toUpperCase().trim();
+            const cleanCode = isJwt ? rawInput : rawInput.replace(/[^A-Za-z0-9]/g, '').toUpperCase().trim();
 
-            const session = parentSession || this.loadLocal('novalunch_user_session', null) || this.loadLocal('novalunch_current_parent', null);
-            const parentId = session?.id || session?.userId || '02e0f6ca-ae0c-432e-8745-02b53adcd2f4';
+            const session = this.loadLocal('novalunch_user_session', null) || this.loadLocal('novalunch_current_parent', null);
+            const parentId = parentUserId || session?.id || session?.userId || '02e0f6ca-ae0c-432e-8745-02b53adcd2f4';
 
             const nowTs = Math.floor(Date.now() / 1000);
             let tokenRecord = null;
@@ -2203,8 +2231,7 @@
                 }
             }
 
-            // Step 1: Direct Supabase verification query against qr_pairing_tokens table
-            // Query where status = 'ISSUED' and expires_at > now()
+            // 1. Search Supabase table qr_pairing_tokens where code = cleanCode
             if (this.supabase) {
                 try {
                     let query = this.supabase
@@ -2220,7 +2247,6 @@
 
                     const { data: dbTokens, error: tokenErr } = await query;
                     if (!tokenErr && Array.isArray(dbTokens) && dbTokens.length > 0) {
-                        // Match non-expired token
                         tokenRecord = dbTokens.find(t => {
                             if (!t.expires_at) return true;
                             const expTime = typeof t.expires_at === 'number' ? t.expires_at : (new Date(t.expires_at).getTime() / 1000);
@@ -2232,10 +2258,13 @@
                 }
             }
 
-            // Step 2: Fallback to local storage tokens if Supabase was offline or table missing
+            // 2. If not found in Supabase, search local storage novalunch_pairing_tokens where code = cleanCode
             if (!tokenRecord) {
-                const localTokens = this.loadLocal('novalunch_qr_pairing_tokens', []);
-                tokenRecord = localTokens.find(t => {
+                const localPairingTokens = this.loadLocal('novalunch_pairing_tokens', []);
+                const localQrTokens = this.loadLocal('novalunch_qr_pairing_tokens', []);
+                const allLocalTokens = [...localPairingTokens, ...localQrTokens];
+
+                tokenRecord = allLocalTokens.find(t => {
                     const matchesCode = t.code === cleanCode || t.pairing_code === cleanCode || t.jti === cleanCode || (isJwt && t.token_raw === cleanCode);
                     const isIssued = t.status === 'ISSUED';
                     const expTime = typeof t.expires_at === 'number' ? t.expires_at : (t.expires_at ? new Date(t.expires_at).getTime() / 1000 : Infinity);
@@ -2243,63 +2272,52 @@
                 });
             }
 
-            // Step 3: Fallback to parsed JWT payload if valid signed offline token
-            if (!tokenRecord && jwtPayload && jwtPayload.studentId) {
+            // 3. If decoding a JWT, extract payload.studentId or payload.sub
+            if (!tokenRecord && jwtPayload && (jwtPayload.studentId || jwtPayload.sub)) {
                 if (jwtPayload.exp && jwtPayload.exp < nowTs) {
                     throw new Error("This pairing token has expired. Please ask student to generate a new QR code.");
                 }
+                const jwtStudentId = jwtPayload.studentId || jwtPayload.sub;
                 tokenRecord = {
-                    student_id: jwtPayload.studentId,
-                    name: jwtPayload.name,
-                    grade: jwtPayload.grade,
-                    student_id_number: jwtPayload.studentIdNumber,
+                    student_id: jwtStudentId,
+                    studentId: jwtStudentId,
+                    name: jwtPayload.name || 'Student',
+                    grade: jwtPayload.grade || 'Student',
+                    student_id_number: jwtPayload.studentIdNumber || jwtPayload.studentId,
                     jti: jwtPayload.jti,
                     code: jwtPayload.code || cleanCode,
                     status: 'ISSUED'
                 };
             }
 
-            // Step 4: Fallback for test/demo 6-digit codes
-            if (!tokenRecord && (cleanCode === 'X32KQC' || cleanCode.length === 6)) {
-                const allRegistered = this.loadLocal('novalunch_registered_users', []);
-                const foundStudent = allRegistered.find(u => (u.role || '').toLowerCase() === 'student');
-                if (foundStudent) {
-                    tokenRecord = {
-                        student_id: foundStudent.id,
-                        name: foundStudent.name,
-                        grade: foundStudent.department || 'Grade 11 - STEM A',
-                        student_id_number: foundStudent.studentId || foundStudent.student_id_number,
-                        code: cleanCode,
-                        status: 'ISSUED'
-                    };
-                }
+            // FAIL CLOSED: If no valid record or student ID matches cleanCode, throw explicit error
+            const resolvedStudentId = tokenRecord?.student_id || tokenRecord?.studentId;
+            if (!tokenRecord || !resolvedStudentId) {
+                throw new Error(`Pairing code "${cleanCode}" was not found. Please ensure the student screen is active.`);
             }
 
-            if (!tokenRecord) {
-                throw new Error("Invalid or expired 6-character code. Please ask student to generate a new QR code.");
-            }
-
-            // Resolve student info
+            // Resolve student info strictly using the token's student_id
             const allUsers = this.loadLocal('novalunch_registered_users', []);
-            let student = allUsers.find(u => u.id === tokenRecord.student_id || u.studentId === tokenRecord.student_id_number || u.studentId === tokenRecord.student_id);
+            let student = allUsers.find(u => u.id === resolvedStudentId || u.studentId === resolvedStudentId);
             if (!student && this.supabase) {
                 try {
-                    const { data: prof } = await this.supabase.from('profiles').select('*').eq('id', tokenRecord.student_id).maybeSingle();
+                    const { data: prof } = await this.supabase.from('profiles').select('*').eq('id', resolvedStudentId).maybeSingle();
                     if (prof) {
                         student = {
                             id: prof.id,
                             name: prof.full_name || prof.name,
                             studentId: prof.student_id_number || prof.studentId,
-                            grade: prof.department || 'Grade 10'
+                            grade: prof.department || 'Grade 10',
+                            department: prof.department || 'Grade 10'
                         };
                     }
                 } catch (e) {}
             }
 
-            const targetStudentId = student?.id || tokenRecord.student_id;
-            const targetStudentName = student?.name || tokenRecord.name || tokenRecord.student_name || 'Student';
-            const targetStudentGrade = student?.department || tokenRecord.grade || 'Grade 10';
-            const targetStudentIdNum = student?.studentId || student?.student_id_number || tokenRecord.student_id_number || '2023-01900';
+            const targetStudentId = resolvedStudentId;
+            const targetStudentName = student?.name || student?.full_name || tokenRecord.name || tokenRecord.student_name || 'Student';
+            const targetStudentGrade = student?.department || student?.grade || tokenRecord.grade || 'Grade 10';
+            const targetStudentIdNum = student?.studentId || student?.student_id_number || tokenRecord.student_id_number || targetStudentId;
 
             // 1. Mark token as CLAIMED in Supabase
             if (this.supabase && (tokenRecord.jti || tokenRecord.id || tokenRecord.code)) {
@@ -2318,15 +2336,15 @@
                 }
             }
 
-            // 2. Mark token as CLAIMED in local cache
-            const localTokens = this.loadLocal('novalunch_qr_pairing_tokens', []);
-            const updatedLocalTokens = localTokens.map(t => {
-                if (t.code === cleanCode || t.jti === tokenRecord.jti) {
+            // 2. Mark token as CLAIMED in local caches
+            const markTokensClaimed = (tokens) => (tokens || []).map(t => {
+                if (t.code === cleanCode || t.pairing_code === cleanCode || (tokenRecord.jti && t.jti === tokenRecord.jti)) {
                     return { ...t, status: 'CLAIMED', claimed_at: new Date().toISOString(), claimed_by: parentId };
                 }
                 return t;
             });
-            this.saveLocal('novalunch_qr_pairing_tokens', updatedLocalTokens);
+            this.saveLocal('novalunch_pairing_tokens', markTokensClaimed(this.loadLocal('novalunch_pairing_tokens', [])));
+            this.saveLocal('novalunch_qr_pairing_tokens', markTokensClaimed(this.loadLocal('novalunch_qr_pairing_tokens', [])));
 
             // 3. Insert active relation in Supabase parent_student_links
             if (this.supabase) {
@@ -2342,7 +2360,7 @@
                 }
             }
 
-            // 4. Update local parent links
+            // 4. Update local parent links (novalunch_parent_links)
             const existingLinks = this.loadLocal('novalunch_parent_links', []);
             const newLink = {
                 id: 'link_' + Date.now(),
@@ -2356,13 +2374,28 @@
                 status: 'ACTIVE',
                 created_at: new Date().toISOString()
             };
-            const updatedLinks = [...existingLinks.filter(l => !( (l.parentId === parentId || l.parent_id === parentId) && (l.studentId === targetStudentId || l.student_id === targetStudentId) )), newLink];
+            const updatedLinks = [...existingLinks.filter(l => !((l.parentId === parentId || l.parent_id === parentId) && (l.studentId === targetStudentId || l.student_id === targetStudentId))), newLink];
             this.saveLocal('novalunch_parent_links', updatedLinks);
             if (typeof CanteenCache !== 'undefined' && CanteenCache.set) {
                 CanteenCache.set('parent_links', updatedLinks);
             }
 
-            // 5. Update parent's linked_students array in registered_users
+            // 5. Update novalunch_parent_linked_students list
+            const studentItem = {
+                id: targetStudentId,
+                name: targetStudentName,
+                studentId: targetStudentIdNum,
+                department: targetStudentGrade,
+                grade: targetStudentGrade,
+                balance: student?.balance ?? 0,
+                dailyCap: student?.dailyCap ?? 200,
+                status: 'active'
+            };
+            const savedLinkedStudents = this.loadLocal('novalunch_parent_linked_students', []);
+            const updatedLinkedStudents = [...savedLinkedStudents.filter(s => s.id !== targetStudentId && s.studentId !== targetStudentIdNum), studentItem];
+            this.saveLocal('novalunch_parent_linked_students', updatedLinkedStudents);
+
+            // 6. Update parent's linked_students array in registered_users
             const allRegistered = this.loadLocal('novalunch_registered_users', []);
             const updatedRegistered = allRegistered.map(u => {
                 if (u.id === parentId || u.studentId === parentId || (u.email && session?.email && u.email.toLowerCase() === session.email.toLowerCase())) {
@@ -2384,18 +2417,13 @@
                 CanteenCache.set('registered_users', updatedRegistered);
             }
 
-            // 6. Dispatch browser custom event for instant reactive state update
+            // 7. Dispatch browser custom event for instant reactive state update
             if (typeof window !== 'undefined') {
                 window.dispatchEvent(new CustomEvent('canteen:parent-student-linked', {
                     detail: {
                         parentId,
                         studentId: targetStudentId,
-                        student: {
-                            id: targetStudentId,
-                            name: targetStudentName,
-                            studentId: targetStudentIdNum,
-                            grade: targetStudentGrade
-                        }
+                        student: studentItem
                     }
                 }));
             }
@@ -2403,12 +2431,7 @@
             return {
                 success: true,
                 message: `Successfully linked ${targetStudentName} to your parent account.`,
-                student: {
-                    id: targetStudentId,
-                    name: targetStudentName,
-                    studentId: targetStudentIdNum,
-                    grade: targetStudentGrade
-                }
+                student: studentItem
             };
         },
 
@@ -2772,6 +2795,9 @@
             const cleanRef = String(payload.ref_no || payload.reference_number || payload.refNo || '').trim();
             if (!cleanRef) {
                 throw new Error("GCash Reference Number is required.");
+            }
+            if (!/^\d{13}$/.test(cleanRef)) {
+                throw new Error("GCash Reference Number must be exactly 13 digits.");
             }
             const cleanReceipt = payload.receipt_img || payload.screenshot_url || payload.receiptImg || null;
             if (!cleanReceipt) {
