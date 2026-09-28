@@ -18,6 +18,7 @@ import subprocess
 import threading
 import urllib.request
 import urllib.parse
+from collections import deque
 from pathlib import Path
 from socketserver import ThreadingMixIn
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -580,6 +581,23 @@ class DatabaseManager:
                     "pay_later_balance": float(s.get("pay_later_balance", 0.0))
                 }
         return None
+
+    def fetch_student_by_rfid(self, raw_uid):
+        """Step 5 Fallback Guard: Returns matched student dict or None. Never returns mock default."""
+        return self.find_student_by_rfid(raw_uid)
+
+    def deduct_product_stock(self, product_id, qty=1):
+        """Step 2 Inventory Deduction: Decrements stock in SQLite products table."""
+        if not product_id:
+            return
+        with self._lock:
+            try:
+                conn = sqlite3.connect(self.sqlite_path, timeout=5.0)
+                conn.execute("UPDATE products SET stock = MAX(0, stock - ?) WHERE id = ? OR name = ?", (int(qty), str(product_id), str(product_id)))
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                print(f"[DB WARN] deduct_product_stock error: {e}")
 
     def get_active_preorders(self, student_id, student_name=None):
         try:
@@ -1659,19 +1677,21 @@ class KioskHTTPRequestHandler(BaseHTTPRequestHandler):
                         st_payload = req_data.get("student")
                         if st_payload and isinstance(st_payload, dict):
                             _GLOBAL_KIOSK_REF.active_student = {
-                                "id": st_payload.get("studentId") or st_payload.get("id", "SJC-1001"),
+                                "id": st_payload.get("studentId") or st_payload.get("id", ""),
                                 "name": st_payload.get("name", "Student"),
-                                "email": st_payload.get("email", "student@sjc.edu.ph"),
-                                "rfidUid": st_payload.get("rfidUid") or st_payload.get("rfid_uid", "0009401737"),
-                                "balance": float(st_payload.get("balance", 250.0)),
-                                "daily_limit": float(st_payload.get("daily_limit", 300.0))
+                                "email": st_payload.get("email", ""),
+                                "rfidUid": st_payload.get("rfidUid") or st_payload.get("rfid_uid", ""),
+                                "balance": float(st_payload.get("balance", 0.0)),
+                                "daily_limit": float(st_payload.get("daily_limit", 200.0))
                             }
+                        else:
+                            _GLOBAL_KIOSK_REF.active_student = None
                         if new_cart:
                             if _GLOBAL_KIOSK_REF.current_state in [STATE_IDLE, STATE_GREET]:
                                 _GLOBAL_KIOSK_REF.current_state = STATE_SCANNING
-                            _GLOBAL_KIOSK_REF.status_message = f"🟢 Live POS Cart Synced: {len(new_cart)} item(s) (₱{_GLOBAL_KIOSK_REF.total_amount:.2f})"
+                            _GLOBAL_KIOSK_REF.status_message = f"Live POS Cart Synced: {len(new_cart)} item(s) (₱{_GLOBAL_KIOSK_REF.total_amount:.2f})"
                         else:
-                            _GLOBAL_KIOSK_REF.status_message = "Welcome to NovaLunch! Tap Student RFID Card to begin."
+                            _GLOBAL_KIOSK_REF.status_message = "Tap Student RFID Card on Reader to Begin"
                         _GLOBAL_KIOSK_REF.notify_pos_update()
                     elif action in ["confirm_payment", "complete_checkout"]:
                         _GLOBAL_KIOSK_REF.cart_manual_override_lock = False
@@ -1847,7 +1867,9 @@ class NovaLunchKioskGUI:
         self.cart_items = []
         self.total_amount = 0.0
         self.state_timer = 0.0
-        self.status_message = "Welcome to NovaLunch! Tap Student RFID Card to begin."
+        self.scan_start_time = 0.0
+        self.detection_history = deque(maxlen=30)
+        self.status_message = "Tap Student RFID Card on Reader to Begin"
         self.latest_tray_image = ""
         self.cart_manual_override_lock = False
 
@@ -1899,19 +1921,19 @@ class NovaLunchKioskGUI:
             detections = self.camera_thread.get_latest_detections()
             ai_engine, fps, _ = self.camera_thread.get_ai_status()
 
-        is_active_session = self.current_state != STATE_IDLE and self.active_student is not None
+        is_active_session = self.current_state not in [STATE_IDLE, STATE_SETTLEMENT, STATE_ERROR] and self.active_student is not None
         return {
             "status": "SUCCESS",
             "kiosk_state": STATE_NAMES.get(self.current_state, "UNKNOWN"),
             "current_state_id": self.current_state,
             "student": self.active_student if is_active_session else None,
-            "cart": list(self.cart_items) if is_active_session else aggregate_detections(detections),
-            "detections": detections,
+            "cart": list(self.cart_items) if is_active_session else [],
+            "detections": detections if is_active_session else [],
             "ai_engine": ai_engine,
             "camera_online": True,
             "fps": fps,
-            "total_amount": round(self.total_amount, 2) if is_active_session else sum(i["price"] * i.get("qty", 1) for i in aggregate_detections(detections)),
-            "items_count": sum(i.get("qty", 1) for i in self.cart_items) if is_active_session else sum(i.get("qty", 1) for i in aggregate_detections(detections)),
+            "total_amount": round(self.total_amount, 2) if is_active_session else 0.0,
+            "items_count": sum(i.get("qty", 1) for i in self.cart_items) if is_active_session else 0,
             "countdown_remaining": round(self.countdown_remaining, 1) if is_active_session else 0.0,
             "status_message": self.status_message,
             "preorders_count": len(self.active_preorders) if is_active_session else 0,
@@ -2147,13 +2169,30 @@ class NovaLunchKioskGUI:
         self.db_manager.save_accounts(students)
 
         self.db_manager.record_transaction(tx_id, student_id, self.cart_items, self.total_amount, self.latest_tray_image, payment_method="pay_later")
-        self.status_message = f"🟢 SAFETY NET APPROVED: ₱{self.total_amount:.2f} Charged to Pay Later ({st_name}) [{self.active_student['pay_later_count']}/5]"
+
+        # Step 2: Deduct product stock for each cart item after successful pay-later
+        for item in self.cart_items:
+            prod_id = item.get("product_id") or item.get("id") or item.get("name")
+            qty = int(item.get("qty", 1))
+            if prod_id:
+                self.db_manager.deduct_product_stock(prod_id, qty)
+
+        pay_later_count = self.active_student['pay_later_count']
+        self.status_message = f"SAFETY NET APPROVED: P{self.total_amount:.2f} Charged to Pay Later ({st_name}) [{pay_later_count}/5]"
         if self.sounds.get("success"):
             try:
                 self.sounds["success"].play()
             except Exception:
                 pass
         speak_text(f"Safety net approved. Charged to pay later. Thank you {st_name.split()[0]}!")
+
+        # Explicitly reset cart and session data before settlement transition
+        self.cart_items = []
+        self.total_amount = 0.0
+        self.active_student = None
+        self.detection_history.clear()
+        self.last_detection_hash = ""
+        self.transition_to_state(STATE_SETTLEMENT)
         self.notify_pos_update()
 
     def execute_rfid_checkout(self):
@@ -2190,7 +2229,14 @@ class NovaLunchKioskGUI:
             self.latest_tray_image, payment_method="rfid"
         )
 
-        self.status_message = f"🟢 PAYMENT CONFIRMED: ₱{amt:.2f} Deducted ({st_name}). New Balance: ₱{rem_bal:.2f}"
+        # Step 2: Deduct product stock for each cart item after successful payment
+        for item in self.cart_items:
+            prod_id = item.get("product_id") or item.get("id") or item.get("name")
+            qty = int(item.get("qty", 1))
+            if prod_id:
+                self.db_manager.deduct_product_stock(prod_id, qty)
+
+        self.status_message = f"PAYMENT CONFIRMED: P{amt:.2f} Deducted ({st_name}). New Balance: P{rem_bal:.2f}"
         if self.sounds.get("success"):
             try:
                 self.sounds["success"].play()
@@ -2198,6 +2244,13 @@ class NovaLunchKioskGUI:
                 pass
 
         speak_text(f"Payment approved for {int(amt)} pesos. Thank you {st_name.split()[0]}!")
+
+        # Explicitly reset cart and session data before settlement transition
+        self.cart_items = []
+        self.total_amount = 0.0
+        self.active_student = None
+        self.detection_history.clear()
+        self.last_detection_hash = ""
         self.transition_to_state(STATE_SETTLEMENT)
         self.notify_pos_update()
 
@@ -2253,7 +2306,8 @@ class NovaLunchKioskGUI:
                 else:
                     self.transition_to_state(STATE_GREET)
             else:
-                self.status_message = f"⚠️ UNRECOGNIZED CARD ({clean}) — VISIT ADMIN"
+                self.status_message = f"UNREGISTERED RFID CARD ({clean}) -- Please visit Admin Office to register your card."
+                speak_text(f"Unregistered card detected. Please visit the admin office to register your R F I D card.")
                 self.transition_to_state(STATE_ERROR)
             return
 
@@ -2958,7 +3012,12 @@ class NovaLunchKioskGUI:
                 self.transition_to_state(STATE_IDLE)
 
             elif self.current_state in [STATE_GREET, STATE_SCANNING]:
-                if not self.cart_manual_override_lock:
+                # 10-second scanner timeout: if STATE_SCANNING with 0 cart items for 10+ seconds, reset to IDLE
+                if self.current_state == STATE_SCANNING and len(self.cart_items) == 0 and (now - self.state_timer >= 10.0):
+                    print("[KIOSK] 10-second scanner timeout: no items detected. Returning to IDLE.")
+                    speak_text("No items detected. Session timed out. Please tap your card to try again.")
+                    self.transition_to_state(STATE_IDLE)
+                elif not self.cart_manual_override_lock:
                     live_items = self.camera_thread.get_latest_detections()
                     agg_items = aggregate_detections(live_items) if live_items else []
                     valid_items = [

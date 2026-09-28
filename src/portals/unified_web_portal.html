@@ -20703,7 +20703,7 @@
 
             // Auto-fallback if selected payment method is not permitted for current customer account
             useEffect(() => {
-                if (paymentMethod === 'pay_later' && !isStudentAccount) {
+                if (paymentMethod === 'pay_later' && !isStudentAccount && !isStaffOrTeacher) {
                     setPaymentMethod('cash');
                 }
                 if (paymentMethod === 'salary_deduction' && !isStaffOrTeacher) {
@@ -21069,7 +21069,7 @@
             const customerHasLinkedParent = selectedStudent && !isGuestCustomer && isStudentAccount
                 ? checkStudentHasLinkedParent(selectedStudent, parentStudentLinks, registeredUsers)
                 : false;
-            const isPayLaterDisallowed = isPayLater5OrdersExceeded || isPayLaterCeilingExceeded || (isStudentAccount && !customerHasLinkedParent);
+            const isPayLaterDisallowed = isPayLater5OrdersExceeded || isPayLaterCeilingExceeded || (isStudentAccount && !customerHasLinkedParent && !isStaffOrTeacher);
 
             const currentStudentBalance = activeCustomerProfile ? (parseFloat(activeCustomerProfile.balance) || 0) : 0;
             const isRfidShortage = paymentMethod === 'rfid' && netTotal > currentStudentBalance;
@@ -21589,9 +21589,9 @@
                 // Dynamic Pay Later 5x Limit & ₱500 Cumulative Ceiling Confirmation (Apple 2026 Engine)
                 if (paymentMethod === 'pay_later') {
                     if (!selectedStudent || isGuestCustomer) {
-                        return showToast("Pay Later emergency credit requires a registered student account.", "danger");
+                        return showToast("Pay Later emergency credit requires a registered student or staff account.", "danger");
                     }
-                    if (isStudentAccount && !customerHasLinkedParent) {
+                    if (isStudentAccount && !isStaffOrTeacher && !customerHasLinkedParent) {
                         return showToast("Pay Later emergency credit requires an active linked parent or guardian account to guarantee liability.", "danger");
                     }
                     if (activeCustomerProfile && (activeCustomerProfile.payLaterAllowance === false || activeCustomerProfile.pay_later_allowance === false)) {
@@ -22441,8 +22441,8 @@
                                                 <span>Cash</span>
                                             </button>
 
-                                            {/* 3. Pay Later (ONLY student accounts) */}
-                                            {isStudentAccount && (
+                                            {/* 3. Pay Later (student AND staff/faculty accounts) */}
+                                            {(isStudentAccount || isStaffOrTeacher) && (
                                                 <button
                                                     type="button"
                                                     onClick={() => setPaymentMethod('pay_later')}
