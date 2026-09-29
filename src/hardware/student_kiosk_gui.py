@@ -18,6 +18,7 @@ import subprocess
 import threading
 import urllib.request
 import urllib.parse
+import urllib.error
 from collections import deque
 from pathlib import Path
 from socketserver import ThreadingMixIn
@@ -114,28 +115,14 @@ def get_edge_db_path():
             return str(Path(c).resolve())
     return str((SRC_DIR / "database" / "novalunch_edge.db").resolve())
 
-# In-Memory Fallback Catalog Database
-POS_CATALOG_DATABASE = {
-    "Buttercream_Biscuits": {"name": "Buttercream Biscuits", "category": "SNACKS & BAKERY", "price": 30.00, "stock": 50, "ai_label": "Buttercream_Biscuits"},
-    "buttercream_biscuits": {"name": "Buttercream Biscuits", "category": "SNACKS & BAKERY", "price": 30.00, "stock": 50, "ai_label": "Buttercream_Biscuits"},
-    "Buttercream Biscuits": {"name": "Buttercream Biscuits", "category": "SNACKS & BAKERY", "price": 30.00, "stock": 50, "ai_label": "Buttercream_Biscuits"},
-    "Buttercream Crackers": {"name": "Buttercream Crackers", "category": "SNACKS & BAKERY", "price": 35.00, "stock": 50, "ai_label": None},
-    "Jack_And_Jill_Magic_Chips": {"name": "Jack & Jill Magic Chips", "category": "SNACKS & BAKERY", "price": 25.00, "stock": 50, "ai_label": "Jack_And_Jill_Magic_Chips"},
-    "jack_and_jill_magic_chips": {"name": "Jack & Jill Magic Chips", "category": "SNACKS & BAKERY", "price": 25.00, "stock": 50, "ai_label": "Jack_And_Jill_Magic_Chips"},
-    "Jack & Jill Magic Chips": {"name": "Jack & Jill Magic Chips", "category": "SNACKS & BAKERY", "price": 25.00, "stock": 50, "ai_label": "Jack_And_Jill_Magic_Chips"},
-    "adobo": {"name": "Pork Adobo Meal", "category": "MEALS & MAINS", "price": 100.00, "stock": 45},
-    "pork_adobo": {"name": "Pork Adobo Meal", "category": "MEALS & MAINS", "price": 100.00, "stock": 45},
-    "steamed_rice": {"name": "Steamed Rice", "category": "RICE", "price": 15.00, "stock": 120},
-    "burger": {"name": "Classic Cheeseburger", "category": "MEALS & MAINS", "price": 75.00, "stock": 50},
-    "fried_chicken": {"name": "Crispy Chicken Bowl", "category": "MEALS & MAINS", "price": 85.00, "stock": 60},
-    "water_bottle": {"name": "Mineral Water (500ml)", "category": "BEVERAGES", "price": 20.00, "stock": 150},
-    "juice_box": {"name": "Iced Fruit Juice (350ml)", "category": "BEVERAGES", "price": 30.00, "stock": 80},
-    "sandwich": {"name": "Ham & Cheese Sandwich", "category": "SNACKS & BAKERY", "price": 45.00, "stock": 40},
-    "apple": {"name": "Fresh Red Apple", "category": "SNACKS & BAKERY", "price": 25.00, "stock": 40},
-    "cookie": {"name": "Choco Chip Cookie", "category": "SNACKS & BAKERY", "price": 18.00, "stock": 90},
-    "beef_pares": {"name": "Beef Pares w/ Garlic Rice", "category": "MEALS & MAINS", "price": 90.00, "stock": 25},
-    "spaghetti": {"name": "Spaghetti Bolognese", "category": "MEALS & MAINS", "price": 65.00, "stock": 30}
-}
+# In-Memory Catalog Cache (STRICTLY RUNTIME-POPULATED — NO MOCK/PLACEHOLDER ITEMS)
+# This dict starts EMPTY and is populated only by DatabaseManager.upsert_product()
+# from the SQLite edge DB (sync_remote_catalog) and the Supabase cloud catalog.
+# There are deliberately NO hardcoded demo/mock products here: any detection that
+# cannot be resolved to a real, price>0, non-archived catalog record is DISCARDED
+# (lookup_pos_item returns None) and never enters the cart. This is what prevents
+# phantom/ghost cart items from ever appearing on the CFD or the Cashier POS.
+POS_CATALOG_DATABASE = {}
 
 def lookup_pos_item(raw_label):
     """
@@ -382,13 +369,33 @@ class DatabaseManager:
             if "is_archived" not in cols:
                 c.execute("ALTER TABLE products ADD COLUMN is_archived INTEGER DEFAULT 0;")
 
-            # Seed default products if products table is currently empty
+            # Students table: local edge cache for RFID → profile resolution
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS students (
+                    rfid_uid TEXT PRIMARY KEY,
+                    student_id_number TEXT,
+                    full_name TEXT,
+                    email TEXT,
+                    role TEXT DEFAULT 'student',
+                    uuid TEXT,
+                    balance REAL DEFAULT 0.0,
+                    daily_limit REAL DEFAULT 200.0,
+                    pay_later_count INTEGER DEFAULT 0,
+                    pay_later_balance REAL DEFAULT 0.0,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            c.execute("CREATE INDEX IF NOT EXISTS idx_students_rfid ON students (rfid_uid);")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_students_student_id ON students (student_id_number);")
+
+            # Seed default products if products table is currently empty.
+            # NOTE: These are real, sellable menu products only — NO demo/mock rows.
+            # Products are synced live from Supabase via sync_remote_catalog().
             c.execute("SELECT COUNT(*) FROM products;")
             count = c.fetchone()[0]
             if count == 0:
                 default_products = [
                     ("b1010101-1010-1010-1010-101010101010", "Buttercream Crackers", 35.00, "SNACKS & BAKERY", "480000000010", 1, 0, 50, None),
-                    ("111ac6f3-cca3-479e-86a1-1d1edd28a945", "Buttercream Biscuits", 30.00, "SNACKS & BAKERY", "480000000012", 1, 0, 50, "Buttercream_Biscuits"),
                     ("b1111111-1111-1111-1111-111111111111", "Jack & Jill Magic Chips", 25.00, "SNACKS & BAKERY", "480000000011", 1, 0, 45, "Jack_And_Jill_Magic_Chips"),
                     ("a1111111-1111-1111-1111-111111111111", "Classic Cheeseburger", 75.00, "MEALS & MAINS", "480000000001", 1, 0, 50, None),
                     ("a2222222-2222-2222-2222-222222222222", "Crispy Chicken Bowl", 85.00, "MEALS & MAINS", "480000000002", 1, 0, 60, None),
@@ -402,7 +409,7 @@ class DatabaseManager:
                     INSERT INTO products (id, name, price, category, barcode, is_available, is_archived, stock, ai_label, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 """, default_products)
-                print(f"[DB MANAGER] 📦 Seeded {len(default_products)} default catalog items with AI detection classes into SQLite.")
+                print(f"[DB MANAGER] Seeded {len(default_products)} default catalog items into SQLite.")
 
             conn.commit()
             conn.close()
@@ -543,15 +550,25 @@ class DatabaseManager:
     def sync_remote_catalog(self):
         def _fetch():
             try:
-                url = f"{SUPABASE_URL}/rest/v1/products?select=id,name,category,price,stock,stock_quantity,is_available,available,status,barcode,ai_label,is_archived&or=(is_archived.is.null,is_archived.eq.false)"
+                # NOTE: the cloud `products` table has no `is_archived` column
+                # (archival lives in `status`). Selecting it makes PostgREST reject
+                # the whole query, which silently starved the kiosk of its real
+                # AI-mapped catalog and pushed detections onto mock fallbacks.
+                url = (
+                    f"{SUPABASE_URL}/rest/v1/products"
+                    f"?select=id,name,category,price,stock,stock_quantity,is_available,available,status,barcode,ai_label"
+                    f"&status=neq.archived"
+                )
                 req = urllib.request.Request(url, headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {SUPABASE_ANON_KEY}"})
-                with urllib.request.urlopen(req, timeout=4) as resp:
+                with urllib.request.urlopen(req, timeout=6) as resp:
                     if resp.status == 200:
                         products = json.loads(resp.read().decode('utf-8'))
                         if products and isinstance(products, list):
                             for p in products:
                                 self.upsert_product(p)
                             print(f"[DB MANAGER] ☁️ Synced & cached {len(products)} products from Supabase cloud catalog.")
+            except urllib.error.HTTPError as e:
+                print(f"[DB NOTICE] Remote catalog sync rejected (HTTP {e.code}): {e.reason}")
             except Exception as e:
                 print(f"[DB NOTICE] Remote catalog sync deferred: {e}")
         threading.Thread(target=_fetch, daemon=True).start()
@@ -584,9 +601,221 @@ class DatabaseManager:
                 }
         return None
 
+    def upsert_student(self, profile):
+        """Cache a Supabase-resolved student profile into the local SQLite students table."""
+        if not profile or not isinstance(profile, dict):
+            return
+        rfid = str(profile.get("rfid_uid") or profile.get("rfidUid") or "").strip()
+        if not rfid:
+            return
+        sid = str(profile.get("student_id_number") or profile.get("studentId") or "").strip()
+        name = str(profile.get("full_name") or profile.get("name") or "Student").strip()
+        email = str(profile.get("email") or "").strip()
+        uuid = str(profile.get("id") or profile.get("uuid") or "").strip()
+        # Resolve wallet balance from nested wallets array (Supabase join) or flat field
+        wallets = profile.get("wallets")
+        if isinstance(wallets, list) and wallets:
+            w = wallets[0]
+            balance = float(w.get("balance") or profile.get("balance") or 0.0)
+            daily_limit = float(w.get("daily_limit") or profile.get("daily_limit") or 200.0)
+        else:
+            balance = float(profile.get("balance") or profile.get("wallet_balance") or 0.0)
+            daily_limit = float(profile.get("daily_limit") or profile.get("dailyCap") or 200.0)
+        pay_later_count = int(profile.get("pay_later_count") or 0)
+        pay_later_balance = float(profile.get("pay_later_balance") or profile.get("credit_liability") or 0.0)
+        with self._lock:
+            try:
+                conn = sqlite3.connect(self.sqlite_path, timeout=10.0)
+                c = conn.cursor()
+                c.execute("""
+                    INSERT INTO students (rfid_uid, student_id_number, full_name, email, uuid, balance, daily_limit, pay_later_count, pay_later_balance, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(rfid_uid) DO UPDATE SET
+                        student_id_number = excluded.student_id_number,
+                        full_name = excluded.full_name,
+                        email = excluded.email,
+                        uuid = excluded.uuid,
+                        balance = excluded.balance,
+                        daily_limit = excluded.daily_limit,
+                        pay_later_count = excluded.pay_later_count,
+                        pay_later_balance = excluded.pay_later_balance,
+                        updated_at = CURRENT_TIMESTAMP
+                """, (rfid, sid, name, email, uuid, balance, daily_limit, pay_later_count, pay_later_balance))
+                conn.commit()
+                conn.close()
+                print(f"[DB MANAGER] Student RFID cached to SQLite: {rfid} -> {name} ({sid})")
+            except Exception as e:
+                print(f"[DB WARN] upsert_student error: {e}")
+
+    def update_student_balance_sqlite(self, rfid_uid, student_id, new_balance):
+        """Updates wallet balance in both the SQLite students table and the accounts JSON cache."""
+        rfid = str(rfid_uid or "").strip()
+        sid = str(student_id or "").strip()
+        new_balance = max(0.0, float(new_balance))
+        with self._lock:
+            try:
+                conn = sqlite3.connect(self.sqlite_path, timeout=10.0)
+                c = conn.cursor()
+                if rfid:
+                    c.execute("UPDATE students SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE rfid_uid = ?", (new_balance, rfid))
+                if sid:
+                    c.execute("UPDATE students SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE student_id_number = ?", (new_balance, sid))
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                print(f"[DB WARN] update_student_balance_sqlite error: {e}")
+        # Also update the accounts JSON cache
+        students = self.load_accounts()
+        for s in students:
+            if (rfid and s.get("rfid_uid") == rfid) or (sid and s.get("student_id_number") == sid):
+                s["balance"] = new_balance
+                break
+        self.save_accounts(students)
+
     def fetch_student_by_rfid(self, raw_uid):
-        """Step 5 Fallback Guard: Returns matched student dict or None. Never returns mock default."""
-        return self.find_student_by_rfid(raw_uid)
+        """
+        Hardened RFID resolution — fail-closed with Supabase cloud fallback.
+        1. Query local SQLite students table.
+        2. If not found locally, query Supabase cloud profiles.
+           - On cloud hit: UPSERT into SQLite, return profile.
+        3. If not found in cloud: return None (FAIL CLOSED — no mock/default user).
+        """
+        if not raw_uid:
+            return None
+        q = str(raw_uid).strip()
+        q_clean = q.upper().replace("-", "")
+        q_nozero = q_clean.lstrip("0")
+
+        # ── Step 1: Query local SQLite students table ──────────────────────────
+        try:
+            conn = sqlite3.connect(self.sqlite_path, timeout=5.0)
+            c = conn.cursor()
+            c.execute("""
+                SELECT rfid_uid, student_id_number, full_name, email, uuid, balance, daily_limit, pay_later_count, pay_later_balance
+                FROM students
+                WHERE rfid_uid = ? OR rfid_uid = ? OR rfid_uid = ?
+                LIMIT 1
+            """, (q, q_clean, q_nozero if q_nozero else q))
+            row = c.fetchone()
+            conn.close()
+            if row:
+                return {
+                    "id": row[1] or row[0],
+                    "name": row[2],
+                    "email": row[3],
+                    "rfidUid": row[0],
+                    "uuid": row[4],
+                    "balance": float(row[5] or 0.0),
+                    "wallet_balance": float(row[5] or 0.0),
+                    "daily_limit": float(row[6] or 200.0),
+                    "pay_later_count": int(row[7] or 0),
+                    "pay_later_balance": float(row[8] or 0.0)
+                }
+        except Exception as e:
+            print(f"[DB WARN] fetch_student_by_rfid SQLite query error: {e}")
+
+        # ── Step 2: Fallback to accounts JSON cache (backward compat) ──────────
+        # Also mirrors the hit into the indexed SQLite `students` table so every
+        # subsequent tap is served by the fast Step 1 lookup.
+        local_match = self.find_student_by_rfid(raw_uid)
+        if local_match:
+            try:
+                self.upsert_student({
+                    "rfid_uid": local_match.get("rfidUid") or q,
+                    "student_id_number": local_match.get("id"),
+                    "full_name": local_match.get("name"),
+                    "email": local_match.get("email"),
+                    "balance": local_match.get("balance", 0.0),
+                    "daily_limit": local_match.get("daily_limit", 200.0),
+                    "pay_later_count": local_match.get("pay_later_count", 0),
+                    "pay_later_balance": local_match.get("pay_later_balance", 0.0)
+                })
+            except Exception as cache_err:
+                print(f"[DB WARN] Failed to mirror accounts-cache hit into SQLite: {cache_err}")
+            return local_match
+
+        # ── Step 3: Live Supabase cloud lookup ─────────────────────────────────
+        # NOTE: `profiles` has no `pay_later_balance` / `wallet_balance` column.
+        # Selecting them makes PostgREST reject the whole query (HTTP 400), which
+        # would silently force every new-card lookup into the fail-closed path.
+        # Balance columns are `balance` (+ `wallets.balance`) and the pay-later
+        # liability is `credit_liability`.
+        print(f"[RFID LOOKUP] Not in local cache — querying Supabase cloud for RFID: {q}")
+        for uid_variant in list(dict.fromkeys([q, q_clean, q_nozero])):
+            if not uid_variant:
+                continue
+            url = (
+                f"{SUPABASE_URL}/rest/v1/profiles"
+                f"?rfid_uid=eq.{urllib.parse.quote(uid_variant)}"
+                f"&select=id,full_name,email,student_id_number,rfid_uid,role,status,"
+                f"balance,daily_limit,pay_later_count,pay_later_pre_authorized,credit_liability,credit_limit,"
+                f"wallets(balance,daily_limit)"
+            )
+            try:
+                req = urllib.request.Request(
+                    url,
+                    headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {SUPABASE_ANON_KEY}"}
+                )
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    if resp.status == 200:
+                        profiles = json.loads(resp.read().decode('utf-8'))
+                        if profiles and isinstance(profiles, list) and profiles:
+                            p = profiles[0]
+                            # Resolve wallet balance (embedded wallets row wins, then flat column)
+                            w = p.get("wallets")
+                            w = w[0] if isinstance(w, list) and w else (w if isinstance(w, dict) else {})
+                            bal = w.get("balance")
+                            if bal is None:
+                                bal = p.get("balance")
+                            bal = float(bal or 0.0)
+                            dlim = w.get("daily_limit")
+                            if dlim is None:
+                                dlim = p.get("daily_limit")
+                            dlim = float(dlim if dlim is not None else 200.0)
+
+                            student_profile = {
+                                "id": p.get("student_id_number") or p.get("id"),
+                                "name": p.get("full_name", "Student"),
+                                "email": p.get("email", ""),
+                                "rfidUid": p.get("rfid_uid", q),
+                                "uuid": p.get("id"),
+                                "balance": bal,
+                                "wallet_balance": bal,
+                                "daily_limit": dlim,
+                                "status": p.get("status", "active"),
+                                "pay_later_count": int(p.get("pay_later_count") or 0),
+                                "pay_later_pre_authorized": p.get("pay_later_pre_authorized") is True,
+                                "pay_later_allowance": p.get("pay_later_pre_authorized") is not False,
+                                "pay_later_balance": float(p.get("credit_liability") or 0.0),
+                                "credit_limit": float(p.get("credit_limit") or 0.0)
+                            }
+
+                            # Cache the newly resolved profile into SQLite for instant future taps
+                            try:
+                                self.upsert_student({
+                                    "rfid_uid": p.get("rfid_uid", q),
+                                    "student_id_number": p.get("student_id_number"),
+                                    "full_name": p.get("full_name"),
+                                    "email": p.get("email"),
+                                    "id": p.get("id"),
+                                    "balance": bal,
+                                    "daily_limit": dlim,
+                                    "pay_later_count": int(p.get("pay_later_count") or 0),
+                                    "pay_later_balance": float(p.get("credit_liability") or 0.0)
+                                })
+                            except Exception as cache_err:
+                                print(f"[DB WARN] Failed to cache cloud profile: {cache_err}")
+
+                            print(f"[RFID LOOKUP] Cloud resolved: {q} -> {p.get('full_name')} ({p.get('student_id_number')})")
+                            return student_profile
+            except urllib.error.HTTPError as e:
+                print(f"[RFID LOOKUP] Supabase query rejected for '{uid_variant}': HTTP {e.code} {e.reason}")
+            except Exception as e:
+                print(f"[RFID LOOKUP] Supabase cloud query failed for '{uid_variant}': {e}")
+
+        # ── Step 4: FAIL CLOSED — unregistered card, no fallback ───────────────
+        print(f"[RFID LOOKUP] FAIL CLOSED: RFID '{q}' not found in SQLite or Supabase. No mock user returned.")
+        return None
 
     def deduct_product_stock(self, product_id, qty=1):
         """Step 2 Inventory Deduction: Decrements stock in SQLite products table."""
@@ -1155,55 +1384,41 @@ class CameraThread(threading.Thread):
         sweep_y = int(80 + (320 * (math.sin(math.radians(angle_deg)) + 1.0) / 2.0))
         cv2.line(canvas, (105, sweep_y), (535, sweep_y), (212, 182, 6), 2)
 
-        # Simulated item 1: Buttercream Biscuits (novalunch_yolo.pt class 0)
-        item1 = lookup_pos_item("Buttercream_Biscuits") or {
-            "id": "item-01", "name": "Buttercream Biscuits", "price": 30.0, "category": "SNACKS & BAKERY", "stock": 50, "requires_cashier_review": False
-        }
-        item2 = lookup_pos_item("Jack_And_Jill_Magic_Chips") or {
-            "id": "item-02", "name": "Jack & Jill Magic Chips", "price": 25.0, "category": "SNACKS & BAKERY", "stock": 50, "requires_cashier_review": False
-        }
-        p1 = float(item1.get("price", 35.0))
-        p2 = float(item2.get("price", 25.0))
-
-        cv2.rectangle(canvas, (150, 130), (320, 270), (14, 14, 74), -1)
-        cv2.rectangle(canvas, (150, 130), (320, 270), (74, 24, 201), 2)
-        cv2.putText(canvas, item1.get("name", "Buttercream Biscuits"), (160, 160), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
-        cv2.putText(canvas, f"P{p1:.2f}", (160, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (199, 243, 254), 1)
-
-        # Simulated item 2: Jack & Jill Magic Chips (novalunch_yolo.pt class 1)
-        cv2.rectangle(canvas, (360, 150), (480, 360), (74, 14, 23), -1)
-        cv2.rectangle(canvas, (360, 150), (480, 360), (217, 119, 6), 2)
-        cv2.putText(canvas, item2.get("name", "Magic Chips"), (370, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
-        cv2.putText(canvas, f"P{p2:.2f}", (370, 200), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (254, 243, 199), 1)
-
-        detections = [
-            {
-                "id": str(item1.get("id", "item-01")),
-                "product_id": str(item1.get("id", "item-01")),
-                "ai_label": "Buttercream_Biscuits",
-                "name": item1.get("name", "Buttercream Biscuits"),
-                "category": item1.get("category", "SNACKS & BAKERY"),
-                "qty": 1,
-                "price": p1,
-                "stock": int(item1.get("stock", 50)),
-                "requires_cashier_review": False,
-                "bbox": [150, 130, 170, 140],
-                "conf": 0.98
-            },
-            {
-                "id": str(item2.get("id", "item-02")),
-                "product_id": str(item2.get("id", "item-02")),
-                "ai_label": "Jack_And_Jill_Magic_Chips",
-                "name": item2.get("name", "Jack & Jill Magic Chips"),
-                "category": item2.get("category", "SNACKS & BAKERY"),
-                "qty": 1,
-                "price": p2,
-                "stock": int(item2.get("stock", 50)),
-                "requires_cashier_review": False,
-                "bbox": [360, 150, 120, 210],
-                "conf": 0.96
-            }
+        # Demo overlay is purely cosmetic. Detections are emitted ONLY for class
+        # labels that resolve to a real, active catalog product (price > 0).
+        # There are NO placeholder/mock product objects: an unresolvable label is
+        # skipped entirely rather than substituted with a hardcoded item.
+        demo_slots = [
+            {"label": "Buttercream_Biscuits",           "box": (150, 130, 320, 270), "fill": (14, 14, 74),  "edge": (74, 24, 201),  "text": (160, 160, 199, 243, 254)},
+            {"label": "Jack_And_Jill_Magic_Chips",       "box": (360, 150, 480, 360), "fill": (74, 14, 23),  "edge": (217, 119, 6),  "text": (370, 180, 254, 243, 199)},
         ]
+
+        detections = []
+        for idx, slot in enumerate(demo_slots):
+            item = lookup_pos_item(slot["label"])
+            if not item:
+                # Not present in the real catalog — draw nothing, detect nothing.
+                continue
+            x1, y1, x2, y2 = slot["box"]
+            tx, ty, tr, tg, tb = slot["text"]
+            price = float(item.get("price", 0.0) or 0.0)
+            cv2.rectangle(canvas, (x1, y1), (x2, y2), slot["fill"], -1)
+            cv2.rectangle(canvas, (x1, y1), (x2, y2), slot["edge"], 2)
+            cv2.putText(canvas, str(item.get("name", slot["label"])), (tx, ty), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
+            cv2.putText(canvas, f"P{price:.2f}", (tx, ty + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (tr, tg, tb), 1)
+            detections.append({
+                "id": str(item.get("id")),
+                "product_id": str(item.get("id")),
+                "ai_label": str(item.get("ai_label") or slot["label"]),
+                "name": item.get("name"),
+                "category": item.get("category", "SNACKS & BAKERY"),
+                "qty": 1,
+                "price": price,
+                "stock": int(item.get("stock", 50)),
+                "requires_cashier_review": False,
+                "bbox": [x1, y1, x2 - x1, y2 - y1],
+                "conf": 0.98 - (0.02 * idx)
+            })
         return canvas, detections
 
     def run(self):
@@ -1899,6 +2114,8 @@ class NovaLunchKioskGUI:
         self.status_message = "Tap Student RFID Card on Reader to Begin"
         self.latest_tray_image = ""
         self.cart_manual_override_lock = False
+        self.error_message = None
+        self._last_settlement_info = None
 
         # Stability & Motion
         self.countdown_remaining = 5.0
@@ -1947,17 +2164,20 @@ class NovaLunchKioskGUI:
         """Returns JSON-serializable snapshot of live kiosk state for Cashier POS.
 
         Standardized payload (Wave 3 spec):
-          - `cart_items`: Normalized list with id/name/price/quantity fields for Cashier Order Tally.
-          - `cart`:       Raw internal cart_items list (backward compatibility).
-          - `active_student`: Top-level student field alias.
-          - `total_amount`: Rounded float total.
-          - `kiosk_state`: Human-readable state string.
-          - `status`:     Always 'SUCCESS' when kiosk is alive.
+          - `cart_items`:         Normalized list with id/name/price/quantity fields for Cashier Order Tally.
+                                  Populated EXCLUSIVELY from active YOLO detections (no phantom items).
+          - `cart`:               Raw internal cart_items list (backward compatibility).
+          - `active_student`:     Top-level student field alias.
+          - `total_amount`:       Rounded float total.
+          - `kiosk_state`:        Human-readable state string.
+          - `student_new_balance`:New balance after deduction (present only on SETTLEMENT event).
+          - `status`:             Always 'SUCCESS' when kiosk is alive.
         """
         detections = []
         ai_engine = "YOLOv8 Engine"
         fps = 60
         if hasattr(self, 'camera_thread') and self.camera_thread:
+            # Always read directly from YOLO inference pipeline — never from a fallback
             detections = self.camera_thread.get_latest_detections()
             ai_engine, fps, _ = self.camera_thread.get_ai_status()
 
@@ -1975,13 +2195,13 @@ class NovaLunchKioskGUI:
             for item in raw_cart
         ] if raw_cart else []
 
-        return {
+        payload = {
             "status": "SUCCESS",
             "kiosk_state": STATE_NAMES.get(self.current_state, "UNKNOWN"),
             "current_state_id": self.current_state,
             "active_student": self.active_student if is_active_session else None,
             "student": self.active_student if is_active_session else None,
-            # Standardized normalized cart for Cashier Order Tally rendering
+            # Standardized normalized cart sourced directly from YOLO inference
             "cart_items": normalized_cart_items,
             # Raw cart preserved for backward compatibility with legacy polling
             "cart": raw_cart,
@@ -1998,6 +2218,19 @@ class NovaLunchKioskGUI:
             "awaiting_pay_later_confirm": getattr(self, 'awaiting_pay_later_confirm', False),
             "timestamp": time.time()
         }
+
+        # Attach post-deduction wallet balance on SETTLEMENT so connected web
+        # portals immediately refresh the virtual RFID pass without a reload.
+        if self.current_state == STATE_SETTLEMENT and hasattr(self, '_last_settled_new_balance'):
+            payload["student_new_balance"] = self._last_settled_new_balance
+            payload["student_id_settled"] = getattr(self, '_last_settled_student_id', None)
+            info = getattr(self, "_last_settlement_info", None)
+            if info:
+                payload["settlement"] = info
+                payload["wallet_balance"] = info.get("remaining")
+                payload["amount_paid"] = info.get("paid")
+
+        return payload
 
     def notify_pos_update(self):
         """Broadcasts live cart/state update to all connected Cashier POS terminals."""
@@ -2019,27 +2252,10 @@ class NovaLunchKioskGUI:
     def execute_simulation_step(self, step):
         if step == 1:
             # Step 1: RFID Tap
+            # No synthetic customer is ever injected. Until a real card resolves an
+            # identity, active_student stays None and the session remains unregistered.
             if not self.active_student:
-                accounts = self.db_manager.load_accounts()
-                if accounts:
-                    st = accounts[0]
-                    self.active_student = {
-                        "id": st.get("student_id_number", "SJC-1001"),
-                        "name": st.get("full_name", "Adrian Nonog"),
-                        "email": st.get("email", "student@sjc.edu.ph"),
-                        "rfidUid": st.get("rfid_uid", "0009401737"),
-                        "balance": float(st.get("balance", 250.0)),
-                        "daily_limit": float(st.get("daily_limit", 300.0))
-                    }
-                else:
-                    self.active_student = {
-                        "id": "SJC-1001",
-                        "name": "Adrian Nonog",
-                        "email": "student@sjc.edu.ph",
-                        "rfidUid": "0009401737",
-                        "balance": 250.0,
-                        "daily_limit": 300.0
-                    }
+                self.active_student = None
             if self.active_student:
                 self.active_preorders = self.db_manager.get_active_preorders(self.active_student["id"], self.active_student.get("name"))
                 if self.active_preorders:
@@ -2058,13 +2274,14 @@ class NovaLunchKioskGUI:
 
         elif step == 3:
             # Step 3: Payment Confirmation
+            # Cart MUST only contain items detected by YOLO — no phantom injection.
+            # If cart is empty, stay in STATE_SCANNING and alert the student.
             if not self.active_student:
                 self.execute_simulation_step(1)
             if not self.cart_items:
-                item1 = lookup_pos_item("Buttercream_Biscuits")
-                if item1:
-                    self.cart_items = [dict(item1, qty=1)]
-                    self.recalculate_total()
+                self.status_message = "No items detected on counter. Please place food on the scanning platform."
+                self.notify_pos_update()
+                return
             self.cart_manual_override_lock = True
             self.transition_to_state(STATE_PAYMENT_CONFIRMATION)
 
@@ -2091,6 +2308,7 @@ class NovaLunchKioskGUI:
             self.stable_start_time = 0.0
             self.last_detection_hash = ""
             self.cart_manual_override_lock = False
+            self.error_message = None
             self.status_message = "Welcome to NovaLunch! Tap Student RFID Card to begin."
 
         elif new_state == STATE_PREORDER_ANNOUNCEMENT:
@@ -2104,24 +2322,18 @@ class NovaLunchKioskGUI:
                 self.greet_audio_spoken = True
 
         elif new_state == STATE_GREET:
+            # No synthetic customer fallback: an unresolved session stays anonymous.
             if not self.active_student:
-                accounts = self.db_manager.load_accounts()
-                if accounts:
-                    st = accounts[0]
-                    self.active_student = {
-                        "id": st.get("student_id_number"),
-                        "name": st.get("full_name"),
-                        "email": st.get("email"),
-                        "rfidUid": st.get("rfid_uid"),
-                        "balance": float(st.get("balance", 200.0)),
-                        "daily_limit": float(st.get("daily_limit", 200.0))
-                    }
-            st_name = self.active_student["name"] if self.active_student else "Student"
-            self.status_message = f"Hello {st_name}! Place food items on scanning platform."
+                self.active_student = None
+            st_name = (self.active_student or {}).get("name") or None
+            self.status_message = f"Hello {st_name}! Place food items on scanning platform." if st_name else "Tap Student RFID Card on Reader to Begin"
             self.stable_start_time = 0.0
             self.last_detection_hash = ""
             if not self.greet_audio_spoken:
-                speak_text(f"Welcome {st_name.split()[0]}! Place your tray on the platform.")
+                if st_name:
+                    speak_text(f"Welcome {str(st_name).split()[0]}! Place your tray on the platform.")
+                else:
+                    speak_text("Please tap your student card on the reader to begin.")
                 self.greet_audio_spoken = True
 
         elif new_state == STATE_SCANNING:
@@ -2146,7 +2358,7 @@ class NovaLunchKioskGUI:
             else:
                 self.cart_items = []
                 self.total_amount = 0.0
-                self.status_message = "Waiting for tray... Place food on scanning platform."
+                self.status_message = "⚠️ No items detected on counter. Please place food on the scanning platform."
 
             # Save snapshot
             try:
@@ -2172,6 +2384,15 @@ class NovaLunchKioskGUI:
             self.status_message = f"🟢 AI Scanning items (5.0s)... Hold tray steady"
 
         elif new_state == STATE_PAYMENT_CONFIRMATION:
+            # Never lock an empty cart: an empty tray stays in STATE_SCANNING.
+            if not self.cart_items:
+                self.current_state = STATE_SCANNING
+                self.state_timer = time.time()
+                self.cart_manual_override_lock = False
+                self.status_message = "⚠️ No items detected on counter. Please place food on the scanning platform."
+                speak_text("No items detected on counter. Please place your food on the scanning platform.")
+                self.notify_pos_update()
+                return
             self.cart_manual_override_lock = True
             cnt = sum(i.get("qty", 1) for i in self.cart_items)
             self.status_message = f"🟢 Scanned {cnt} item(s) (₱{self.total_amount:.2f}) — Ready for Payment Confirmation"
@@ -2180,7 +2401,10 @@ class NovaLunchKioskGUI:
             self.status_message = "Payment have been confirmed please claim your order."
 
         elif new_state == STATE_ERROR:
-            self.status_message = "⚠️ UNREGISTERED RFID CARD — PLEASE VISIT ADMIN"
+            self.cart_items = []
+            self.total_amount = 0.0
+            self.cart_manual_override_lock = False
+            self.status_message = getattr(self, "error_message", None) or "⚠️ UNREGISTERED RFID CARD — PLEASE REGISTER AT THE CANTEEN OFFICE"
 
         self.notify_pos_update()
 
@@ -2274,54 +2498,151 @@ class NovaLunchKioskGUI:
         # Clear any pending Pay Later confirmation state
         self.awaiting_pay_later_confirm = False
         self.cart_manual_override_lock = False
-        amt = self.total_amount
-        student_id = str(self.active_student.get("id") or self.active_student.get("student_id_number") or "STU-2026")
-        st_name = self.active_student.get("name", "Student")
-        curr_bal = float(self.active_student.get("balance", 0.0))
 
-        if curr_bal < amt:
-            self.status_message = f"INSUFFICIENT BALANCE (Req P{amt:.2f}, Bal P{curr_bal:.2f}) — USE PAY LATER"
+        # ── Balance Calculation ────────────────────────────────────────────────
+        previous_balance = float(self.active_student.get("balance") or self.active_student.get("wallet_balance") or 0.0)
+        charge_amount = float(self.total_amount)
+        new_balance = max(0.0, round(previous_balance - charge_amount, 2))
+
+        student_id = str(self.active_student.get("id") or self.active_student.get("student_id_number") or "STU-2026")
+        student_uuid = str(self.active_student.get("uuid") or "").strip()
+        st_name = self.active_student.get("name", "Student")
+        rfid_uid = str(self.active_student.get("rfidUid") or self.active_student.get("rfid_uid") or "").strip()
+
+        if previous_balance < charge_amount:
+            self.status_message = f"INSUFFICIENT BALANCE (Req P{charge_amount:.2f}, Bal P{previous_balance:.2f}) — USE PAY LATER"
             speak_text(f"Insufficient balance for {st_name.split()[0]}. Please use pay later at cashier.")
             self.notify_pos_update()
             return
 
-        rem_bal = max(0.0, round(curr_bal - amt, 2))
-        self.active_student["balance"] = rem_bal
+        # Update active student balance in memory immediately
+        self.active_student["balance"] = new_balance
+        self.active_student["wallet_balance"] = new_balance
 
-        # Deduct balance in local edge database cache
-        self.db_manager.deduct_student_balance(student_id, amt)
+        # ── Local SQLite: Deduct balance in accounts JSON cache and students table ──
+        self.db_manager.deduct_student_balance(student_id, charge_amount)
+        self.db_manager.update_student_balance_sqlite(rfid_uid, student_id, new_balance)
 
         tx_id = f"TXN_{int(time.time())}_{student_id.replace('-', '')}"
         self.db_manager.record_transaction(
-            tx_id, student_id, self.cart_items, amt,
+            tx_id, student_id, self.cart_items, charge_amount,
             self.latest_tray_image, payment_method="rfid"
         )
 
-        # Deduct product stock for each cart item after successful payment
+        # ── Supabase Cloud: Update wallet balance immediately (non-blocking) ────
+        def _update_supabase_balance():
+            try:
+                # Prefer the atomic Supabase RPC to avoid race conditions
+                if student_uuid:
+                    rpc_url = f"{SUPABASE_URL}/rest/v1/rpc/fn_deduct_wallet_balance"
+                    rpc_req = urllib.request.Request(
+                        rpc_url,
+                        data=json.dumps({"p_user_id": student_uuid, "p_amount": charge_amount}).encode('utf-8'),
+                        headers={
+                            "apikey": SUPABASE_ANON_KEY,
+                            "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
+                            "Content-Type": "application/json"
+                        },
+                        method="POST"
+                    )
+                    with urllib.request.urlopen(rpc_req, timeout=5) as rpc_resp:
+                        if rpc_resp.status in (200, 201, 204):
+                            print(f"[CHECKOUT] Supabase wallet deducted via RPC for UUID={student_uuid}, amount=P{charge_amount:.2f}")
+                            return
+                # Fallback: direct PATCH on the profiles row. NOTE: the cloud
+                # schema stores the wallet balance in `profiles.balance` (mirrored
+                # into `wallets.balance`) — there is no `wallet_balance` column,
+                # so PATCHing one would silently no-op.
+                if student_id:
+                    patch_url = f"{SUPABASE_URL}/rest/v1/profiles?student_id_number=eq.{urllib.parse.quote(student_id)}"
+                    patch_req = urllib.request.Request(
+                        patch_url,
+                        data=json.dumps({"balance": new_balance}).encode('utf-8'),
+                        headers={
+                            "apikey": SUPABASE_ANON_KEY,
+                            "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
+                            "Content-Type": "application/json",
+                            "Prefer": "return=minimal"
+                        },
+                        method="PATCH"
+                    )
+                    with urllib.request.urlopen(patch_req, timeout=5) as patch_resp:
+                        if patch_resp.status in (200, 204):
+                            print(f"[CHECKOUT] Supabase profiles.balance updated for {student_id}, new_balance=P{new_balance:.2f}")
+                            # Keep the mirrored wallets row in sync when it exists
+                            if student_uuid:
+                                try:
+                                    w_url = f"{SUPABASE_URL}/rest/v1/wallets?user_id=eq.{urllib.parse.quote(student_uuid)}"
+                                    w_req = urllib.request.Request(
+                                        w_url,
+                                        data=json.dumps({"balance": new_balance}).encode('utf-8'),
+                                        headers={
+                                            "apikey": SUPABASE_ANON_KEY,
+                                            "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
+                                            "Content-Type": "application/json",
+                                            "Prefer": "return=minimal"
+                                        },
+                                        method="PATCH"
+                                    )
+                                    with urllib.request.urlopen(w_req, timeout=5) as w_resp:
+                                        if w_resp.status in (200, 204):
+                                            print(f"[CHECKOUT] Supabase wallets.balance synced for UUID={student_uuid}")
+                                except Exception as w_err:
+                                    print(f"[CHECKOUT NOTICE] wallets mirror skipped: {w_err}")
+            except Exception as e:
+                print(f"[CHECKOUT WARN] Supabase balance update deferred (will sync via OfflineSyncWorker): {e}")
+        threading.Thread(target=_update_supabase_balance, daemon=True).start()
+
+        # ── Deduct product stock for each cart item after successful payment ────
         for item in self.cart_items:
             prod_id = item.get("product_id") or item.get("id") or item.get("name")
             qty = int(item.get("qty", 1))
             if prod_id:
                 self.db_manager.deduct_product_stock(prod_id, qty)
 
-        self.status_message = f"PAYMENT CONFIRMED: P{amt:.2f} Deducted ({st_name}). New Balance: P{rem_bal:.2f}"
+        # ── CFD Settlement Status: Show paid amount + remaining balance ─────────
+        self.status_message = (
+            f"✅ PAYMENT APPROVED | Paid: P{charge_amount:.2f} | "
+            f"Remaining Balance: P{new_balance:.2f} | Student: {st_name}"
+        )
+
+        # Structured settlement record consumed by the CFD settlement popup and
+        # broadcast to every connected web portal.
+        self._last_settlement_info = {
+            "paid": round(charge_amount, 2),
+            "remaining": round(new_balance, 2),
+            "previous_balance": round(previous_balance, 2),
+            "student_name": st_name,
+            "student_id": student_id,
+            "rfid_uid": rfid_uid
+        }
+
         if self.sounds.get("success"):
             try:
                 self.sounds["success"].play()
             except Exception:
                 pass
 
-        speak_text(f"Payment approved for {int(amt)} pesos. Thank you {st_name.split()[0]}!")
+        # ── Voice Feedback: Paid amount + remaining balance ────────────────────
+        speak_text(
+            f"Payment approved. Paid {int(charge_amount)} pesos. "
+            f"Remaining balance {int(new_balance)} pesos."
+        )
 
-        # Wave 3 Task 3: Immediately wipe cart internals and broadcast empty payload
-        # so Cashier Order Tally drawer clears in real-time before settlement screen shows.
+        # Store settlement metadata so get_live_kiosk_data can attach it to the SETTLEMENT event
+        self._last_settled_new_balance = new_balance
+        self._last_settled_student_id = student_id
+
+        # ── Wave 3 Task 3: Broadcast empty cart + settlement balance immediately ──
+        # Wipe cart internals so Cashier Order Tally clears in real-time.
         self.cart_items = []
         self.total_amount = 0.0
-        self.active_student = None
         self.detection_history.clear()
         self.last_detection_hash = ""
-        self.notify_pos_update()          # Broadcast empty cart to POS immediately
+        # Transition BEFORE clearing active_student so student_new_balance is in the broadcast
         self.transition_to_state(STATE_SETTLEMENT)
+        self.active_student = None
+        self.notify_pos_update()   # Broadcast settlement event with student_new_balance
 
     def handle_rfid_tap(self, scanned_uid=None):
         now = time.time()
@@ -2345,7 +2666,7 @@ class NovaLunchKioskGUI:
                 elif clean == active_id:
                     is_match = True
                 else:
-                    scanned_student = self.db_manager.find_student_by_rfid(clean)
+                    scanned_student = self.db_manager.fetch_student_by_rfid(clean)
                     if scanned_student and (scanned_student.get("id") == self.active_student.get("id") or scanned_student.get("student_id_number") == self.active_student.get("student_id_number")):
                         is_match = True
 
@@ -2412,11 +2733,24 @@ class NovaLunchKioskGUI:
             if self.current_state == STATE_SETTLEMENT and self.active_student:
                 return
 
-            student = self.db_manager.find_student_by_rfid(clean)
+            # Cart Latching Rule: an RFID tap during scan/stability must never
+            # synthesize cart items. With 0 detected items we stay in STATE_SCANNING.
+            if self.current_state in [STATE_SCANNING, STATE_STABILITY_COUNTDOWN] and not self.cart_items:
+                self.transition_to_state(STATE_SCANNING)
+                self.status_message = "⚠️ No items detected on counter. Please place food on the scanning platform."
+                speak_text("No items detected on counter. Please place your food on the scanning platform.")
+                self.notify_pos_update()
+                return
+
+            # Hardened RFID resolution: SQLite cache first, live Supabase cloud
+            # fallback second (which UPSERTs the profile for instant future taps).
+            # Returns None on an unregistered card — NEVER a default/mock student.
+            student = self.db_manager.fetch_student_by_rfid(clean)
             if student:
                 self.active_student = student
                 self.cart_manual_override_lock = False
-                bal = float(student.get("balance", 0.0))
+                bal = float(student.get("balance", 0.0) or student.get("wallet_balance", 0.0) or 0.0)
+                student.setdefault("wallet_balance", bal)
                 if bal <= 0:
                     self.status_message = f"⚠️ Low/Zero Balance (₱{bal:.2f}). You may use Pay Later at Cashier."
                 else:
@@ -2428,8 +2762,10 @@ class NovaLunchKioskGUI:
                 else:
                     self.transition_to_state(STATE_GREET)
             else:
-                self.status_message = f"UNREGISTERED RFID CARD ({clean}) -- Please visit Admin Office to register your card."
-                speak_text(f"Unregistered card detected. Please visit the admin office to register your R F I D card.")
+                # FAIL CLOSED — unregistered card. No default user is substituted.
+                self.error_message = f"⚠️ Unregistered RFID Card ({clean}). Please register card."
+                self.status_message = self.error_message
+                speak_text("Unregistered card. Please register at the canteen office.")
                 self.transition_to_state(STATE_ERROR)
             return
 
@@ -2446,6 +2782,11 @@ class NovaLunchKioskGUI:
         elif self.current_state == STATE_SCANNING:
             if len(self.cart_items) > 0 and self.total_amount > 0:
                 self.transition_to_state(STATE_STABILITY_COUNTDOWN)
+            else:
+                # 0 detected items — never lock an empty cart, stay in STATE_SCANNING
+                self.status_message = "⚠️ No items detected on counter. Please place food on the scanning platform."
+                speak_text("No items detected on counter. Please place your food on the scanning platform.")
+                self.notify_pos_update()
         elif self.current_state == STATE_STABILITY_COUNTDOWN:
             self.cart_manual_override_lock = True
             self.transition_to_state(STATE_PAYMENT_CONFIRMATION)
@@ -2654,13 +2995,31 @@ class NovaLunchKioskGUI:
         self.screen.blit(t2, (banner.centerx - t2.get_width() // 2, banner.y + 48))
 
     def render_settlement_banner(self, video_area):
-        banner = pygame.Rect(video_area.centerx - 220, video_area.centery - 40, 440, 80)
-        pygame.draw.rect(self.screen, COLOR_EMERALD_BG, banner, border_radius=16)
-        pygame.draw.rect(self.screen, COLOR_EMERALD, banner, width=2, border_radius=16)
-        t1 = self.font_large.render("✓ PAYMENT APPROVED", True, COLOR_EMERALD)
-        t2 = self.font_subtitle_bold.render("Payment have been confirmed please claim your order.", True, COLOR_TEXT_MAIN)
+        # Two-line layout: title, paid amount, remaining balance, student subtitle
+        banner = pygame.Rect(video_area.centerx - 290, video_area.centery - 78, 580, 156)
+        pygame.draw.rect(self.screen, COLOR_EMERALD_BG, banner, border_radius=18)
+        pygame.draw.rect(self.screen, COLOR_EMERALD, banner, width=2, border_radius=18)
+
+        info = getattr(self, "_last_settlement_info", None) or {}
+
+        t1 = self.font_large.render("\u2705 PAYMENT APPROVED", True, COLOR_EMERALD)
         self.screen.blit(t1, (banner.centerx - t1.get_width() // 2, banner.y + 12))
-        self.screen.blit(t2, (banner.centerx - t2.get_width() // 2, banner.y + 48))
+
+        if info:
+            t2 = self.font_subtitle_bold.render(f"Paid: \u20B1{float(info.get('paid', 0.0)):.2f}", True, COLOR_TEXT_MAIN)
+            t3 = self.font_subtitle_bold.render(
+                f"Remaining Balance: \u20B1{float(info.get('remaining', 0.0)):.2f}", True, COLOR_TEXT_MAIN
+            )
+            t4 = self.font_brand_sub.render(f"Student: {info.get('student_name', 'Student')}", True, COLOR_EMERALD)
+        else:
+            t2 = self.font_subtitle_bold.render("Payment confirmed. Please claim your order.", True, COLOR_TEXT_MAIN)
+            t3 = self.font_brand_sub.render("Enjoy your meal!", True, COLOR_EMERALD)
+            t4 = None
+
+        self.screen.blit(t2, (banner.centerx - t2.get_width() // 2, banner.y + 56))
+        self.screen.blit(t3, (banner.centerx - t3.get_width() // 2, banner.y + 84))
+        if t4:
+            self.screen.blit(t4, (banner.centerx - t4.get_width() // 2, banner.y + 116))
 
     def render_toolbar(self):
         """Renders an interactive, guided 3-step progress bar for students."""

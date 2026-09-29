@@ -33,14 +33,11 @@ SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "sb_publishable_yywY2quh
 PAIRING_SECRET_KEY = os.environ.get("PAIRING_SECRET_KEY", "sjc-novalunch-qr-pairing-secret-key-2026-v1")
 PAIRING_TTL_SECONDS = int(os.environ.get("PAIRING_TOKEN_TTL", 600)) # 10 minutes (within 5-10 min spec)
 
-# Known entity UUID registry fallback
+# Known entity UUID registry fallback.
+# Legacy mock identities are removed: an unknown id must fail closed (return None).
 KNOWN_MOCK_USERS = {
-    "c653fe97-2934-4fae-a8f6-18ebb4754886": {"full_name": "Joshua Lupisan", "email": "student@gmail.com", "role": "student", "grade": "Grade 10 - St. Ignatius"},
-    "991e3f6e-6a5d-4e45-a2ae-7015cc9334bc": {"full_name": "Sophia Dela Cruz", "email": "sophia.student@sjc.edu.ph", "role": "student", "grade": "Grade 10 - St. Ignatius"},
-    "9bd9e2a0-1a82-4d8a-a112-0308f2fedd03": {"full_name": "Mark Anthony Santos", "email": "mark.student@sjc.edu.ph", "role": "student", "grade": "Grade 10 - St. Ignatius"},
-    "814e5c22-5edb-4b4a-9296-405560bbe503": {"full_name": "Beatriz Ramos", "email": "beatriz.student@sjc.edu.ph", "role": "student", "grade": "Grade 10 - St. Ignatius"},
-    "02e0f6ca-ae0c-432e-8745-02b53adcd2f4": {"full_name": "Maria Santos", "email": "parent@gmail.com", "role": "parent"},
-    "e1c9c359-c79b-4b15-94f6-a11402d9af27": {"full_name": "Carlos Dela Cruz", "email": "parent.carlos@sjc.edu.ph", "role": "parent"},
+    "9bd9e2a0-1a82-4d8a-a112-0308f2fedd03": {"full_name": "Mark Anthony Santos", "email": "mark.student@sjc.edu.ph", "role": "student", "grade": "Grade 10 - St. Ignatius", "student_id_number": "2023-02104"},
+    "814e5c22-5edb-4b4a-9296-405560bbe503": {"full_name": "Beatriz Ramos", "email": "beatriz.student@sjc.edu.ph", "role": "student", "grade": "Grade 10 - St. Ignatius", "student_id_number": "2023-03011"},
     "16bc0d74-4180-4278-8815-062c5b6e86b5": {"full_name": "System Administrator", "email": "admin@gmail.com", "role": "admin"},
 }
 
@@ -260,7 +257,7 @@ def fetch_profile_by_id_or_email(identifier: str) -> Optional[Dict[str, Any]]:
     except Exception as e:
         pass
 
-    # 2. Check KNOWN_MOCK_USERS
+    # 2. Check KNOWN_MOCK_USERS (no synthetic defaults - unknown ids fail closed)
     if clean_id in KNOWN_MOCK_USERS:
         u = KNOWN_MOCK_USERS[clean_id]
         return {
@@ -268,7 +265,7 @@ def fetch_profile_by_id_or_email(identifier: str) -> Optional[Dict[str, Any]]:
             "full_name": u.get("full_name"),
             "email": u.get("email"),
             "role": u.get("role"),
-            "student_id_number": "2023-01900",
+            "student_id_number": u.get("student_id_number"),
             "grade": u.get("grade", "Grade 10 - St. Ignatius")
         }
 
@@ -518,20 +515,16 @@ def handle_link_by_qr(headers: Dict[str, str], body_data: Dict[str, Any]) -> Tup
     if identifier:
         parent_profile = fetch_profile_by_id_or_email(identifier)
 
-    # Fallback to Maria Parent default if parent session or email
+    # No synthetic parent fallback: an unresolvable session must fail closed.
     if not parent_profile:
-        if identifier and ("parent" in str(identifier).lower() or "maria" in str(identifier).lower()):
-            parent_profile = KNOWN_MOCK_USERS["02e0f6ca-ae0c-432e-8745-02b53adcd2f4"]
-            parent_profile["id"] = "02e0f6ca-ae0c-432e-8745-02b53adcd2f4"
+        # Check if parentId is provided directly in body
+        if body_data.get("parentId"):
+            parent_id = str(body_data["parentId"])
         else:
-            # Check if parentId is provided directly in body
-            if body_data.get("parentId"):
-                parent_id = str(body_data["parentId"])
-            else:
-                return 401, {
-                    "success": False,
-                    "error": "Authentication required. Please provide active parent session."
-                }
+            return 401, {
+                "success": False,
+                "error": "Authentication required. Please provide active parent session."
+            }
 
     if parent_profile:
         parent_id = parent_profile["id"]

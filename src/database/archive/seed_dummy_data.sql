@@ -8,12 +8,12 @@
 -- ------------------------------------------------------------------------------
 -- Student Accounts:
 --   - Email: juan.student@sjc.edu.ph    | Password: Student123! | RFID: 9A-4F-21-C8 | Bal: ₱350.00
---   - Email: sophia.student@sjc.edu.ph  | Password: Student123! | RFID: 7B-3E-11-F4 | Bal: ₱420.00
+--   - (legacy student seed removed)
 --   - Email: mark.student@sjc.edu.ph    | Password: Student123! | RFID: 5C-2A-88-D1 | Bal: ₱85.00
 --   - Email: beatriz.student@sjc.edu.ph | Password: Student123! | RFID: 3D-11-99-B0 | Bal: ₱120.00
 --
 -- Parent Accounts:
---   - Email: parent.maria@sjc.edu.ph    | Password: Parent123!  | Linked to: Juan & Sophia
+--   - Email: parent.maria@sjc.edu.ph    | Password: Parent123!  | Linked to: verified students only
 --   - Email: parent.carlos@sjc.edu.ph   | Password: Parent123!  | Linked to: Juan
 --
 -- Cashier Account:

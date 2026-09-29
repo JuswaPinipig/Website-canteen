@@ -829,6 +829,23 @@
             };
         }
 
+        const logAuditAction = (action, user = 'System', type = 'general') => {
+            const entry = {
+                id: 'LOG-' + Date.now(),
+                date: new Date().toLocaleString('en-PH', { hour12: false }).replace(',', ''),
+                user,
+                action,
+                type
+            };
+            try {
+                const existing = JSON.parse(localStorage.getItem('novalunch_audit_logs') || '[]');
+                localStorage.setItem('novalunch_audit_logs', JSON.stringify([entry, ...existing].slice(0, 200)));
+            } catch (_) {}
+            if (window.CanteenDB && typeof window.CanteenDB.logAuditEvent === 'function') {
+                window.CanteenDB.logAuditEvent({ action, actor: user, event_type: type }).catch(() => {});
+            }
+        };
+
         // =====================================================================
         // ENTERPRISE SVG ICON DICTIONARY
         // =====================================================================
@@ -1631,48 +1648,7 @@
             { id: 'ing_7', name: 'Pinoy Sweet Tomato Sauce', unit: 'liters', currentStock: 30.0, reorderPoint: 8.0, unitCost: 65.00 }
         ];
 
-        const INITIAL_KDS_ORDERS = [
-            {
-                id: 'ord_kds_901',
-                ticketNo: '#T-9001',
-                studentName: 'Joshua Lupisan',
-                studentId: '2023-01900',
-                orderSource: 'MOBILE_PREORDER',
-                items: [
-                    { id: 'p1', name: 'Classic Cheeseburger', qty: 1, station: 'Hot Kitchen', recipe: [{ ingredientId: 'ing_1', qtyRequired: 1 }, { ingredientId: 'ing_2', qtyRequired: 1 }, { ingredientId: 'ing_3', qtyRequired: 1 }] },
-                    { id: 'p4', name: 'Mineral Water (500ml)', qty: 1, station: 'Cold Prep / Beverages' }
-                ],
-                status: 'PENDING',
-                createdAt: '11:42 AM',
-                timestamp: Date.now() - 400000
-            },
-            {
-                id: 'ord_kds_902',
-                ticketNo: '#T-9002',
-                studentName: 'Sophia Dela Cruz',
-                studentId: '2023-01988',
-                orderSource: 'POS_CASHIER',
-                items: [
-                    { id: 'p2', name: 'Crispy Chicken Rice Bowl', qty: 1, station: 'Hot Kitchen', recipe: [{ ingredientId: 'ing_4', qtyRequired: 1 }, { ingredientId: 'ing_5', qtyRequired: 0.2 }] }
-                ],
-                status: 'IN_PREP',
-                createdAt: '11:46 AM',
-                timestamp: Date.now() - 200000
-            },
-            {
-                id: 'ord_kds_903',
-                ticketNo: '#T-9003',
-                studentName: 'Mark Anthony Santos',
-                studentId: '2023-02104',
-                orderSource: 'AI_KIOSK',
-                items: [
-                    { id: 'p3', name: 'Ham & Cheese Sandwich', qty: 1, station: 'Assembly / Bakery' }
-                ],
-                status: 'READY_FOR_PICKUP',
-                createdAt: '11:50 AM',
-                timestamp: Date.now() - 60000
-            }
-        ];
+        const INITIAL_KDS_ORDERS = [];
 
         const INITIAL_MOCK_MENU = [
             { id: "a1111111-1111-1111-1111-111111111111", name: "Classic Cheeseburger", category: "Meals & Mains", station: "Hot Kitchen", price: 75.00, costPrice: 45.00, stock: 50, aiLabel: null, unit: "Grilled Beef Patty & Cheese", calories: 480, protein: "24g", allergens: ["Dairy", "Gluten"], mealWindows: ["LUNCH", "SNACK", "ALL_DAY"], recipe: [{ ingredientId: 'ing_1', qtyRequired: 1 }, { ingredientId: 'ing_2', qtyRequired: 1 }, { ingredientId: 'ing_3', qtyRequired: 1 }], img: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=400&q=80", barcode: "480000000001", available: true, is_available: true, is_archived: false, status: "active", productType: "packaged_good", expiryStatus: "active" },
@@ -1690,17 +1666,13 @@
         ];
 
         const INITIAL_USERS = [
-            // 1. STUDENTS (6 Active Accounts)
-            { id: "c653fe97-2934-4fae-a8f6-18ebb4754886", email: "student@gmail.com", secondaryEmail: "joshua.student@sjc.edu.ph", studentId: "2023-01900", name: "Joshua Lupisan", role: "Student", department: "Grade 11 - STEM A", rfidUid: "0009401737", rfidType: "125kHz EM4100", dailyCap: 250.00, balance: 1105.00, creditLiability: 0.00, creditLimit: 500.00, payLaterAllowance: true, payLaterCount: 0, status: "active", guardian: "Maria Santos Dela Cruz", allergies: ["Sugar"] },
-            { id: "991e3f6e-6a5d-4e45-a2ae-7015cc9334bc", email: "sophia.student@sjc.edu.ph", studentId: "2023-01988", name: "Sophia Dela Cruz", role: "Student", department: "Grade 9 - St. Therese", rfidUid: "0008839211", rfidType: "125kHz EM4100", dailyCap: 250.00, balance: 420.00, creditLiability: 0.00, creditLimit: 500.00, payLaterAllowance: true, payLaterCount: 0, status: "active", guardian: "Carlos Dela Cruz", allergies: ["Peanuts"] },
+            // 1. STUDENTS (Active Accounts)
             { id: "9bd9e2a0-1a82-4d8a-a112-0308f2fedd03", email: "mark.student@sjc.edu.ph", studentId: "2023-02104", name: "Mark Anthony Santos", role: "Student", department: "Grade 12 - ABM B", rfidUid: "0008839212", rfidType: "125kHz EM4100", dailyCap: 150.00, balance: 85.00, creditLiability: 75.00, creditLimit: 500.00, payLaterAllowance: true, payLaterCount: 1, status: "active", guardian: "Elena Santos", allergies: [] },
             { id: "814e5c22-5edb-4b4a-9296-405560bbe503", email: "beatriz.student@sjc.edu.ph", studentId: "2023-03011", name: "Beatriz Ramos", role: "Student", department: "Grade 10 - St. Joseph", rfidUid: "0008839213", rfidType: "125kHz EM4100", dailyCap: 200.00, balance: 120.00, creditLiability: 0.00, creditLimit: 500.00, payLaterAllowance: false, payLaterCount: 0, status: "active", guardian: "Roberto Ramos", allergies: ["Dairy"] },
             { id: "b1051051-1051-1051-1051-105110511051", email: "gabriel.student@sjc.edu.ph", studentId: "2023-04910", name: "Gabriel Santos", role: "Student", department: "Grade 11 - HUMSS", rfidUid: "0008839214", rfidType: "125kHz EM4100", dailyCap: 300.00, balance: 500.00, creditLiability: 0.00, creditLimit: 500.00, payLaterAllowance: true, payLaterCount: 0, status: "active", guardian: "Elena Santos", allergies: [] },
             { id: "b1061061-1061-1061-1061-106110611061", email: "claire.student@sjc.edu.ph", studentId: "2024-00102", name: "Claire Mendoza", role: "Student", department: "Grade 8 - St. Luke", rfidUid: "0008839215", rfidType: "125kHz EM4100", dailyCap: 200.00, balance: 215.00, creditLiability: 0.00, creditLimit: 500.00, payLaterAllowance: true, payLaterCount: 0, status: "active", guardian: "Manuel Mendoza", allergies: ["Gluten"] },
 
-            // 2. PARENTS & GUARDIANS (3 Verified Parent Accounts)
-            { id: "02e0f6ca-ae0c-432e-8745-02b53adcd2f4", email: "parent@gmail.com", studentId: "PAR-2026-001", name: "Maria Santos Dela Cruz", role: "Parent", phone: "0917-555-0101", relationship: "Mother", status: "active", guardian: null, linkedStudentId: null, linkedStudentName: null },
-            { id: "e1c9c359-c79b-4b15-94f6-a11402d9af27", email: "parent.carlos@sjc.edu.ph", studentId: "PAR-2026-002", name: "Carlos Dela Cruz", role: "Parent", phone: "0918-555-0102", relationship: "Father", status: "active", guardian: "Sophia Dela Cruz (2023-01988)", linkedStudentId: "991e3f6e-6a5d-4e45-a2ae-7015cc9334bc", linkedStudentName: "Sophia Dela Cruz" },
+            // 2. PARENTS & GUARDIANS (Verified Parent Accounts)
             { id: "b2032032-2032-2032-2032-203220322032", email: "elena.parent@sjc.edu.ph", studentId: "PAR-2026-003", name: "Elena Santos", role: "Parent", phone: "0919-555-0103", relationship: "Mother", status: "active", guardian: "Mark Anthony Santos (2023-02104)", linkedStudentId: "9bd9e2a0-1a82-4d8a-a112-0308f2fedd03", linkedStudentName: "Mark Anthony Santos" },
 
             // 3. CANTEEN CASHIERS & POS OPERATORS
@@ -1766,44 +1738,6 @@
 
         const INITIAL_REFUNDS_LIST = [
             {
-                id: 'REF-2026-0820-001',
-                orderId: 'ORD-2026-7840',
-                refNo: 'XFT-20260820-HDMH',
-                date: new Date(Date.now() - 86400000 * 1.5),
-                studentId: '2023-01900',
-                studentName: 'Joshua Lupisan',
-                itemsSummary: '1x Mineral Water (500ml), 1x Magic Chips',
-                amount: 45.00,
-                source: 'PREORDER_CANCEL',
-                sourceLabel: 'Pre-Order Cancel',
-                reasonCategory: 'Uncollected Packaged Good',
-                reason: 'Student cancelled packaged snack before pickup window. Items returned to stock.',
-                method: 'RFID_WALLET',
-                methodLabel: 'RFID Wallet Credited',
-                restocked: true,
-                status: 'APPROVED',
-                processedBy: 'System Auto-Refund'
-            },
-            {
-                id: 'REF-2026-0819-002',
-                orderId: 'ORD-2026-7815',
-                refNo: 'XFT-20260819-16G3',
-                date: new Date(Date.now() - 86400000 * 2.5),
-                studentId: '2023-01988',
-                studentName: 'Sophia Dela Cruz',
-                itemsSummary: '1x Choco Chip Cookie',
-                amount: 18.00,
-                source: 'POS_VOID',
-                sourceLabel: 'POS Counter Void',
-                reasonCategory: 'Cashier POS Void',
-                reason: 'Accidental double item scan at register. Manager authorized void & refund.',
-                method: 'RFID_WALLET',
-                methodLabel: 'RFID Wallet Credited',
-                restocked: true,
-                status: 'APPROVED',
-                processedBy: 'Manager Counter Void'
-            },
-            {
                 id: 'REF-2026-0821-003',
                 orderId: 'ORD-2026-7790',
                 refNo: 'XFT-20260821-IMZ6',
@@ -1821,25 +1755,6 @@
                 restocked: false,
                 status: 'PENDING',
                 processedBy: 'Awaiting Admin Audit'
-            },
-            {
-                id: 'REF-2026-0817-004',
-                orderId: 'ORD-2026-7722',
-                refNo: 'XFT-20260817-IT16',
-                date: new Date(Date.now() - 86400000 * 4),
-                studentId: '2023-01900',
-                studentName: 'Joshua Lupisan',
-                itemsSummary: '1x Pork Adobo Meal',
-                amount: 95.00,
-                source: 'PARENT_DISPUTE',
-                sourceLabel: 'Parent AI Dispute',
-                reasonCategory: 'Policy Non-Refundable Rejection',
-                reason: 'Claimed student did not receive meal; security log and kiosk photo confirmed tray was served.',
-                method: 'NONE',
-                methodLabel: 'Claim Rejected',
-                restocked: false,
-                status: 'REJECTED',
-                processedBy: 'Admin Review'
             }
         ];
 
@@ -2250,10 +2165,7 @@
             }
         }
 
-        const INITIAL_GCASH_QUEUE = [
-            { id: "top_9001", parent: "Maria Santos", student: "Joshua Lupisan (2023-01900)", studentId: "c653fe97-2934-4fae-a8f6-18ebb4754886", amount: 500.00, date: "2026-07-29 10:42 AM", refNo: "GCASH-9918234", status: "Pending", receiptImg: "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600&auto=format&fit=crop" },
-            { id: "top_9002", parent: "Carlos Dela Cruz", student: "Sophia Dela Cruz (2023-01988)", studentId: "991e3f6e-6a5d-4e45-a2ae-7015cc9334bc", amount: 300.00, date: "2026-07-29 11:15 AM", refNo: "GCASH-7728192", status: "Pending", receiptImg: "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600&auto=format&fit=crop" }
-        ];
+        const INITIAL_GCASH_QUEUE = [];
 
         const LOGIN_SLIDES = [
             { eyebrow: "INSTITUTIONAL CAMPUS DINING", headline: "Smart Automated Canteen Infrastructure", desc: "Real-time RFID wallet authorization and AI computer vision scanning for seamless campus dining." },
@@ -2675,9 +2587,7 @@
                 return true;
             }
 
-            // 4. Fallback for demo students with verified parents in initial seed
-            if (sEmail === 'student@gmail.com' || sNum === '2023-01900' || sId === 'c653fe97-2934-4fae-a8f6-18ebb4754886') return true;
-            if (sEmail === 'sophia.student@sjc.edu.ph' || sNum === '2023-01988' || sId === '991e3f6e-6a5d-4e45-a2ae-7015cc9334bc') return true;
+            // 4. No synthetic fallback: an unlinked student is reported as unlinked
             if (sEmail === 'mark.student@sjc.edu.ph' || sNum === '2023-02104' || sId === '9bd9e2a0-1a82-4d8a-a112-0308f2fedd03') return true;
 
             return false;
@@ -2714,9 +2624,7 @@
             });
             if (parentUser) return parentUser.name || parentUser.full_name;
 
-            // 3. Fallback for demo students
-            if (sEmail === 'student@gmail.com' || sNum === '2023-01900' || sId === 'c653fe97-2934-4fae-a8f6-18ebb4754886') return "Maria Santos Dela Cruz";
-            if (sEmail === 'sophia.student@sjc.edu.ph' || sNum === '2023-01988' || sId === '991e3f6e-6a5d-4e45-a2ae-7015cc9334bc') return "Carlos Dela Cruz";
+            // 3. No synthetic fallback: an unlinked student has no resolvable guardian name
             if (sEmail === 'mark.student@sjc.edu.ph' || sNum === '2023-02104' || sId === '9bd9e2a0-1a82-4d8a-a112-0308f2fedd03') return "Elena Santos";
 
             return null;
@@ -3513,7 +3421,7 @@
             };
 
             const campusAccounts = [
-                { role: 'STUDENT', email: 'joshua.student@sjc.edu.ph', label: 'Student Member', name: 'Joshua Lupisan', id: '2023-01900', icon: Icon.User },
+                { role: 'STUDENT', email: 'student.member@sjc.edu.ph', label: 'Student Member', name: 'Student Member', id: 'SJC-STD-0001', icon: Icon.User },
                 { role: 'PARENT', email: 'parent.maria@sjc.edu.ph', label: 'Parent Guardian', name: 'Maria Santos', id: 'SJC-PAR-0992', icon: Icon.Users },
                 { role: 'CASHIER', email: 'cashier.pos@sjc.edu.ph', label: 'Canteen Cashier', name: 'Elena Cashier', id: 'STAFF-CSH-01', icon: Icon.ShoppingCart },
                 { role: 'ADMIN', email: 'admin.system@sjc.edu.ph', label: 'Administrator', name: 'Admin Officer', id: 'ADMIN-SYS-01', icon: Icon.ShieldCheck }
@@ -4128,7 +4036,7 @@
                 id: String(activeRole || '').toLowerCase() === 'admin' ? 'admin' : (String(activeRole || '').toLowerCase() === 'cashier' ? 'cashier-01' : 'user-anon'),
                 role: String(activeRole || '').toLowerCase(),
                 name: String(activeRole || 'User'),
-                linked_students: ['u101']
+                linked_students: []
             };
 
             // Enforce Strict Role and User-ID Scoping
@@ -4638,7 +4546,7 @@
                                         </div>
                                         <div>
                                             <label className="block text-xs font-semibold text-slate-700 mb-1">Last Name <span className="text-rose-600">*</span></label>
-                                            <input type="text" required placeholder="e.g. Dela Cruz" value={lastName} onChange={e => setLastName(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-medium focus:bg-white" />
+                                            <input type="text" required placeholder="e.g. Santos" value={lastName} onChange={e => setLastName(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-medium focus:bg-white" />
                                         </div>
                                     </div>
                                 </div>
@@ -4880,157 +4788,9 @@
 
             // Normalized order collection
             const normalizedOrders = useMemo(() => {
-                const baseList = Array.isArray(recentOrders) && recentOrders.length > 0 ? recentOrders : [];
-
-                // Fallback realistic demonstration records matching institutional canteen operations
-                const sourceList = baseList.length > 0 ? baseList : [
-                    {
-                        id: 'ORD-20260822-001',
-                        ref_no: 'TXN-20260822-01900',
-                        order_number: 'TXN-20260822-01900',
-                        customer_name: 'Joshua Lupisan',
-                        student_name: 'Joshua Lupisan',
-                        student: 'Joshua Lupisan',
-                        customer_id: '2023-01900',
-                        studentId: '2023-01900',
-                        customer_type: 'Student',
-                        items: [{ name: 'Fried Chicken with Steamed Rice', quantity: 1, price: 75.00 }],
-                        items_summary: '1x Fried Chicken with Steamed Rice',
-                        subtotal: 75.00,
-                        discount_amount: 0,
-                        total: 75.00,
-                        payment_method: 'RFID',
-                        paymentMethod: 'RFID',
-                        status: 'PAID',
-                        timestamp: new Date().toISOString(),
-                        cashier_name: 'Cashier Station 1'
-                    },
-                    {
-                        id: 'ORD-20260822-002',
-                        ref_no: 'TXN-20260822-01988',
-                        order_number: 'TXN-20260822-01988',
-                        customer_name: 'Sophia Dela Cruz',
-                        student_name: 'Sophia Dela Cruz',
-                        student: 'Sophia Dela Cruz',
-                        customer_id: '2023-01988',
-                        studentId: '2023-01988',
-                        customer_type: 'Student',
-                        items: [{ name: 'Pork Adobo with Garlic Rice', quantity: 1, price: 85.00 }],
-                        items_summary: '1x Pork Adobo with Garlic Rice',
-                        subtotal: 85.00,
-                        discount_amount: 0,
-                        total: 85.00,
-                        payment_method: 'RFID',
-                        paymentMethod: 'RFID',
-                        status: 'VOIDED',
-                        void_reason: 'Student switched meal selection before preparation',
-                        timestamp: new Date(Date.now() - 3600000 * 1.5).toISOString(),
-                        cashier_name: 'Cashier Station 1'
-                    },
-                    {
-                        id: 'ORD-20260822-003',
-                        ref_no: 'TXN-20260822-02104',
-                        order_number: 'TXN-20260822-02104',
-                        customer_name: 'Mark Anthony Santos',
-                        student_name: 'Mark Anthony Santos',
-                        student: 'Mark Anthony Santos',
-                        customer_id: '2023-02104',
-                        studentId: '2023-02104',
-                        customer_type: 'Student',
-                        items: [{ name: 'Beef Pares with Steamed Rice', quantity: 1, price: 90.00 }],
-                        items_summary: '1x Beef Pares with Steamed Rice',
-                        subtotal: 90.00,
-                        discount_amount: 0,
-                        total: 90.00,
-                        payment_method: 'RFID',
-                        paymentMethod: 'RFID',
-                        status: 'PAID',
-                        timestamp: new Date(Date.now() - 3600000 * 2.5).toISOString(),
-                        cashier_name: 'Cashier Station 2'
-                    },
-                    {
-                        id: 'ORD-20260822-004',
-                        ref_no: 'XFT-20260601-IT16',
-                        customer_name: 'Janiah Reyes',
-                        customer_id: '2026-00045',
-                        customer_type: 'Student',
-                        items: [{ name: 'Sting Energy Drink Strawberry', quantity: 1, price: 25.00 }],
-                        items_summary: '1x Sting Energy Drink Strawberry',
-                        subtotal: 25.00,
-                        discount_amount: 0,
-                        total: 25.00,
-                        payment_method: 'RFID',
-                        status: 'VOIDED',
-                        void_reason: 'test',
-                        timestamp: new Date(Date.now() - 3600000 * 4).toISOString(),
-                        cashier_name: 'Cashier Station 1'
-                    },
-                    {
-                        id: 'ORD-20260822-005',
-                        ref_no: 'XFT-20260601-BN68',
-                        customer_name: 'Janiah Reyes',
-                        customer_id: '2026-00045',
-                        customer_type: 'Student',
-                        items: [{ name: 'Sting Energy Drink Strawberry', quantity: 1, price: 25.00 }],
-                        items_summary: '1x Sting Energy Drink Strawberry',
-                        subtotal: 25.00,
-                        discount_amount: 0,
-                        total: 25.00,
-                        payment_method: 'RFID',
-                        status: 'PAID',
-                        timestamp: new Date(Date.now() - 3600000 * 4.5).toISOString(),
-                        cashier_name: 'Cashier Station 1'
-                    },
-                    {
-                        id: 'ORD-20260821-006',
-                        ref_no: 'XFT-20260531-RYFE',
-                        customer_name: 'Claire Ramos',
-                        customer_id: 'FAC-2026-012',
-                        customer_type: 'Faculty',
-                        items: [{ name: 'Renewal: Silver Plan Meal Voucher', quantity: 1, price: 750.00 }],
-                        items_summary: 'Renewal: Silver Plan',
-                        subtotal: 750.00,
-                        discount_amount: 0,
-                        total: 750.00,
-                        payment_method: 'PAY_LATER',
-                        status: 'PAID',
-                        timestamp: new Date(Date.now() - 86400000 * 1.2).toISOString(),
-                        cashier_name: 'Cashier Station 2'
-                    },
-                    {
-                        id: 'ORD-20260821-007',
-                        ref_no: 'XFT-20260531-4ESE',
-                        customer_name: 'Ben Aquino',
-                        customer_id: '2026-00088',
-                        customer_type: 'Student',
-                        items: [{ name: 'Renewal: Silver Plan Meal Voucher', quantity: 1, price: 750.00 }],
-                        items_summary: 'Renewal: Silver Plan',
-                        subtotal: 750.00,
-                        discount_amount: 0,
-                        total: 750.00,
-                        payment_method: 'RFID',
-                        status: 'PAID',
-                        timestamp: new Date(Date.now() - 86400000 * 1.4).toISOString(),
-                        cashier_name: 'Cashier Station 1'
-                    },
-                    {
-                        id: 'ORD-20260821-008',
-                        ref_no: 'XFT-20260531-DDOP',
-                        customer_name: 'Rosa Garcia',
-                        customer_id: 'STF-2026-005',
-                        customer_type: 'Staff',
-                        items: [{ name: 'Renewal: Gold Plan Meal Voucher', quantity: 1, price: 1000.00 }],
-                        items_summary: 'Renewal: Gold Plan',
-                        subtotal: 1000.00,
-                        discount_amount: 0,
-                        total: 1000.00,
-                        payment_method: 'CASH',
-                        status: 'PAID',
-                        timestamp: new Date(Date.now() - 86400000 * 1.5).toISOString(),
-                        cashier_name: 'Cashier Station 1'
-                    }
-                ];
-
+                // Live orders only. No synthetic fallback rows are ever rendered.
+                const baseList = Array.isArray(recentOrders) ? recentOrders : [];
+                const sourceList = baseList;
                 return sourceList.map(order => {
                     const total = Number(order.total || order.total_amount || order.final_amount || 0);
                     const subtotal = Number(order.subtotal || order.sub_total || total);
@@ -9457,25 +9217,6 @@
             // Baseline historical records
             const [localRecords, setLocalRecords] = useState([
                 {
-                    id: '2023-01900',
-                    refId: 'SIS-2026-0820-001',
-                    name: 'Joshua Lupisan',
-                    grade: 'Grade 10 - St. Ignatius',
-                    debt: 105.00,
-                    cap: 500.00,
-                    parent: 'Maria Santos',
-                    parentContact: '0917-882-9102',
-                    item: '1x Pork Adobo, 1x Water',
-                    photo: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=300&q=80',
-                    date: new Date(Date.now() - 86400000 * 1.2),
-                    status: 'ACTIVE_DEBT',
-                    synced: false,
-                    paymentMethod: null,
-                    receiptNo: null,
-                    settledAt: null,
-                    remarks: ''
-                },
-                {
                     id: '2024-08210',
                     refId: 'SIS-2026-0820-002',
                     name: 'Maria Dela Cruz',
@@ -10875,18 +10616,7 @@
         function AdminDisputeResolutionModal({ isOpen, onClose, disputeTickets = [], onResolveTicket }) {
             if (!isOpen) return null;
 
-            const tickets = disputeTickets.length > 0 ? disputeTickets : [
-                {
-                    id: 'DISP-2026-0814-001',
-                    orderId: 'ORD-2026-901',
-                    studentName: 'Joshua Lupisan',
-                    parentName: 'Maria Santos',
-                    disputedAmount: 95.00,
-                    reason: 'AI Misclassified Item (Billed Pork Adobo instead of Side Vegetable)',
-                    photoUrl: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800&auto=format&fit=crop&q=80',
-                    status: 'PENDING'
-                }
-            ];
+            const tickets = Array.isArray(disputeTickets) ? disputeTickets : [];
 
             return (
                 <CustomModal
@@ -10899,6 +10629,11 @@
                     size="lg"
                 >
                     <div className="space-y-4 py-1">
+                        {tickets.length === 0 ? (
+                            <div className="p-6 text-center text-xs text-slate-500 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                                No dispute tickets awaiting review.
+                            </div>
+                        ) : null}
                         {tickets.map(t => (
                             <div key={t.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3 text-xs">
                                 <div className="flex justify-between items-start">
@@ -11445,13 +11180,15 @@
                     }
                 };
 
-                try {
+                 try {
                     const existingNotifs = JSON.parse(localStorage.getItem('novalunch_notifications') || '[]');
                     localStorage.setItem('novalunch_notifications', JSON.stringify([notifEntry, ...existingNotifs]));
                     if (typeof window !== 'undefined' && window.dispatchEvent) {
                         window.dispatchEvent(new CustomEvent('canteen:notification-added', { detail: notifEntry }));
                     }
                 } catch (_) {}
+
+                logAuditAction(`PASSWORD_RESET_REQ: Password recovery requested for ${matchedUser.name} (${matchedUser.studentId || matchedUser.email || 'User'}) - Verification Code: ${code}`, 'User Self-Service', 'security');
 
                 try {
                     if (supabaseClient && matchedUser.email && isEmail) {
@@ -11840,7 +11577,7 @@
                 id: String(activeRole || '').toLowerCase() === 'admin' ? 'admin' : (String(activeRole || '').toLowerCase() === 'cashier' ? 'cashier-01' : 'user-anon'),
                 role: String(activeRole || '').toLowerCase(),
                 name: String(activeRole || 'User'),
-                linked_students: ['u101']
+                linked_students: []
             };
 
             const roleNotifs = getScopedNotifications(notifications, effectiveUser, activeRole);
@@ -12934,10 +12671,12 @@
                                 </button>
                             </div>
 
-                            {/* TOP-UP PENDING VERIFICATION ALERT CARD */}
+                            {/* TOP-UP PENDING VERIFICATION ALERT CARD (latest own submission only) */}
                             {pendingTopUps.length > 0 && (
                                 <div className="mx-4 bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3 shadow-xs transition-all animate-in fade-in slide-in-from-top-2">
-                                    {pendingTopUps.map((pt, idx) => {
+                                    {(() => {
+                                        const pt = pendingTopUps[0];
+                                        const idx = 0;
                                         const amt = parseFloat(pt.amount || 0);
                                         const refNo = pt.reference_number || pt.ref_no || pt.refNo || pt.ref || 'Pending Ref';
                                         const rawDate = pt.created_at || pt.date;
@@ -12998,7 +12737,7 @@
                                                 </p>
                                             </div>
                                         );
-                                    })}
+                                    })()}
                                 </div>
                             )}
 
@@ -13218,7 +12957,7 @@
                                         refNo: cleanRef,
                                         fileName: uploadedFileName,
                                         receiptImg: uploadedReceiptDataUrl,
-                                        studentId: currentStudent?.id || "u101",
+                                        studentId: currentStudent?.id || null,
                                         studentName: studentName
                                     });
 
@@ -13978,6 +13717,24 @@
             // Step 2: Student Privacy Isolation - Query wallet_transactions strictly for the current student
             const [studentTransactions, setStudentTransactions] = useState([]);
 
+            // STRICT PRIVACY GUARD: a top-up / transaction record may only be shown to its own owner.
+            // Fails closed — a record without a matching student identifier is never rendered.
+            const isMyRecord = React.useCallback((rec) => {
+                if (!rec || !currentStudent) return false;
+                const myIds = [
+                    String(currentStudent.id || ''),
+                    String(currentStudent.uuid || ''),
+                    String(currentStudent.student_id || ''),
+                    String(currentStudent.studentId || ''),
+                    String(currentStudent.student_id_number || '')
+                ].filter(Boolean);
+                const targetId = String(
+                    rec.student_id || rec.studentId || rec.userId ||
+                    rec.user_id || rec.student_id_number || rec.studentIdNumber || ''
+                );
+                return myIds.includes(targetId);
+            }, [currentStudent]);
+
             // Requirement 2: Student Transactions Pagination State (5 items per page)
             const [txPage, setTxPage] = useState(1);
             const paginatedStudentTransactions = React.useMemo(() => {
@@ -14005,7 +13762,7 @@
                                 .eq('user_id', sId)
                                 .order('created_at', { ascending: false });
                             if (!error && Array.isArray(data) && isMounted) {
-                                setStudentTransactions(data);
+                                setStudentTransactions(data.filter(isMyRecord));
                                 return;
                             }
                         }
@@ -14019,7 +13776,7 @@
                             ? (window.CanteenDB.loadLocal('novalunch_wallet_transactions', []) || window.CanteenDB.loadLocal('novalunch_transactions', []))
                             : JSON.parse(localStorage.getItem('novalunch_wallet_transactions') || localStorage.getItem('novalunch_transactions') || '[]');
                         const allTransactions = Array.isArray(stored) ? stored : [];
-                        const filtered = allTransactions.filter(t => t.user_id === sId || t.student_id === sId);
+                        const filtered = allTransactions.filter(t => isMyRecord(t) && (t.user_id === sId || t.student_id === sId));
                         if (isMounted) {
                             setStudentTransactions(filtered);
                         }
@@ -14030,7 +13787,7 @@
 
                 fetchTransactions();
                 return () => { isMounted = false; };
-            }, [currentStudent?.id]);
+            }, [currentStudent?.id, isMyRecord]);
 
             // Step 2b: Top-Up Request Tracking for Current Student
             const [topUpRequests, setTopUpRequests] = useState([]);
@@ -14062,7 +13819,8 @@
                         }
 
                         if (!res.error && Array.isArray(res.data)) {
-                            items = res.data;
+                            // Defence in depth: never trust the server-side filter alone
+                            items = res.data.filter(isMyRecord);
                         }
                     }
                 } catch (err) {
@@ -14083,17 +13841,11 @@
                         }
                     };
 
-                    const localTopupRequests = (loadLocal('novalunch_topup_requests', []) || []).filter(r => 
-                        r.student_id === sId || r.studentId === sId || (sNum && (r.student_id === sNum || r.studentId === sNum))
-                    );
+                    const localTopupRequests = (loadLocal('novalunch_topup_requests', []) || []).filter(isMyRecord);
 
-                    const localGcashQueue = (loadLocal('novalunch_gcash_queue', []) || []).filter(r => 
-                        r.student_id === sId || r.studentId === sId || (sNum && (r.student_id === sNum || r.studentId === sNum))
-                    );
+                    const localGcashQueue = (loadLocal('novalunch_gcash_queue', []) || []).filter(isMyRecord);
 
-                    const localReloadLogs = (loadLocal('novalunch_reload_logs', []) || []).filter(r => 
-                        r.student_id === sId || r.studentId === sId || (sNum && (r.student_id === sNum || r.studentId === sNum))
-                    );
+                    const localReloadLogs = (loadLocal('novalunch_reload_logs', []) || []).filter(isMyRecord);
 
                     const normalizedLocal = [...localTopupRequests, ...localGcashQueue, ...localReloadLogs].map(item => ({
                         id: item.id || `top_${item.reference_number || item.refNo || item.ref || Date.now()}`,
@@ -14120,13 +13872,11 @@
                         }
                     });
 
-                    // Also merge any prop reloadLogs if not present
+                    // Also merge any prop reloadLogs if not present (only the student's own records)
                     (reloadLogs || []).forEach(l => {
                         const lRef = l.ref || l.refNo || l.reference_number;
-                        const lStudId = l.studentId || l.student_id;
-                        const isMatch = !lStudId || lStudId === sId || lStudId === sNum;
-                        if (isMatch && lRef) {
-                            const exists = merged.some(c => 
+                        if (isMyRecord(l) && lRef) {
+                            const exists = merged.some(c =>
                                 (c.reference_number && String(c.reference_number).trim().toLowerCase() === String(lRef).trim().toLowerCase()) ||
                                 (c.id && l.id && c.id === l.id)
                             );
@@ -14146,12 +13896,13 @@
                     });
 
                     merged.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
-                    setTopUpRequests(merged);
+                    // Final fail-closed pass: state only ever holds the student's own requests
+                    setTopUpRequests(merged.filter(isMyRecord));
                 } catch (err) {
                     console.warn("[StudentView] Local top_up_requests fallback error:", err);
-                    if (items.length > 0) setTopUpRequests(items);
+                    if (items.length > 0) setTopUpRequests(items.filter(isMyRecord));
                 }
-            }, [currentStudent?.id, currentStudent?.studentId, currentStudent?.student_id_number, studentName, reloadLogs]);
+            }, [currentStudent?.id, currentStudent?.studentId, currentStudent?.student_id_number, studentName, reloadLogs, isMyRecord]);
 
             useEffect(() => {
                 fetchTopUpRequests();
@@ -14164,12 +13915,16 @@
                 };
             }, [fetchTopUpRequests]);
 
+            // Strictly scoped: only this student's own PENDING / UNDER_REVIEW submissions
             const pendingTopUps = useMemo(() => {
-                return (topUpRequests || []).filter(r => {
+                return (topUpRequests || []).filter(isMyRecord).filter(r => {
                     const s = String(r.status || '').toUpperCase();
                     return s === 'PENDING' || s === 'UNDER_REVIEW' || s === 'UNDER REVIEW' || s === 'PENDING_VERIFICATION';
                 });
-            }, [topUpRequests]);
+            }, [topUpRequests, isMyRecord]);
+
+            // Only the most recent pending submission is surfaced as an alert card
+            const latestPendingTopUp = pendingTopUps.length > 0 ? pendingTopUps[0] : null;
 
             // Optimistic reload submission handler for student
             const handleStudentUploadReceipt = (uploadObj) => {
@@ -14182,7 +13937,7 @@
                 }
                 const newEntry = {
                     id: "top_" + Date.now(),
-                    student_id: currentStudent?.id || "u101",
+                    student_id: currentStudent?.id || null,
                     student_name: studentName,
                     amount: parseFloat(uploadObj.amount || 0),
                     reference_number: cleanRef,
@@ -14212,8 +13967,8 @@
                 return onUploadReceipt ? onUploadReceipt(uploadObj) : true;
             };
 
-            const safeBalance = (typeof studentBalance === 'number' && !isNaN(studentBalance)) ? studentBalance : (typeof currentStudent?.balance === 'number' ? currentStudent.balance : 0);
-            const safeLimit = (typeof dailyLimit === 'number' && !isNaN(dailyLimit)) ? dailyLimit : (typeof currentStudent?.dailyCap === 'number' ? currentStudent.dailyCap : 200);
+            const safeBalance = Number(studentBalance ?? currentStudent?.balance ?? currentStudent?.wallet_balance ?? 0);
+            const safeLimit = Number(dailyLimit ?? currentStudent?.dailyCap ?? currentStudent?.daily_spending_cap ?? 200);
 
             const studentName = currentStudent?.name || currentStudent?.full_name || 'Student';
             const studentIdNum = currentStudent?.studentId || currentStudent?.student_id_number || '—';
@@ -14228,8 +13983,8 @@
                 return isMyOrder && (method.includes('PAY_LATER') || method.includes('CREDIT') || method.includes('DEBT') || status === 'PAY_LATER') && !o.isVoid && !o.isSettled && status !== 'PAID';
             });
             const dynamicPayLaterDebt = rawPayLaterOrders.reduce((sum, o) => sum + (parseFloat(o.final_amount || o.total || o.total_amount || 0) || 0), 0);
-            const creditLiability = Math.max(parseFloat(currentStudent?.creditLiability || 0), dynamicPayLaterDebt);
-            const creditLimit = parseFloat(currentStudent?.creditLimit || currentStudent?.credit_limit || 500);
+            const creditLiability = Math.max(Number(currentStudent?.creditLiability ?? currentStudent?.credit_liability ?? 0), dynamicPayLaterDebt);
+            const creditLimit = Number(currentStudent?.creditLimit ?? currentStudent?.credit_limit ?? 500);
             const payLaterCount = Math.max(parseInt(currentStudent?.payLaterCount ?? currentStudent?.pay_later_count ?? 0), rawPayLaterOrders.length);
 
             // Dynamic Calculation of Today's Spending for Cumulative Limit Guardrail
@@ -14297,12 +14052,8 @@
 
             // Filter reload activity exclusively for the logged-in student (never leak other students' records)
             const myReloadLogs = React.useMemo(() => {
-                const curId = String(currentStudent?.id || '').toLowerCase();
-                const curNum = String(studentIdNum || '').toLowerCase();
-                const curName = String(studentName || '').toLowerCase();
-
-                // Format transactions from queried studentTransactions
-                const queriedLogs = (studentTransactions || []).map(t => {
+                // Format transactions from queried studentTransactions (already privacy-scoped upstream)
+                const queriedLogs = (studentTransactions || []).filter(isMyRecord).map(t => {
                     const rawDate = t.created_at || t.timestamp;
                     const parsedDate = rawDate ? new Date(rawDate) : new Date();
                     const dateStr = !isNaN(parsedDate.getTime())
@@ -14322,21 +14073,10 @@
                 });
 
                 // Filter prop-based reloadLogs strictly by student ID - NO hardcoded fallbacks to other accounts
-                const filteredPropLogs = (reloadLogs || []).filter(log => {
-                    const lStudId = String(log.studentId || log.student_id || log.user_id || '').toLowerCase();
-                    const lStudNum = String(log.studentIdNumber || log.student_id_number || '').toLowerCase();
-                    const lName = String(log.studentName || log.student || '').toLowerCase();
-
-                    // Direct match on student identifiers
-                    if (lStudId && (lStudId === curId || lStudId === curNum)) return true;
-                    if (lStudNum && (lStudNum === curNum || lStudNum === curId)) return true;
-                    if (lName && curName && (lName === curName)) return true;
-
-                    return false;
-                });
+                const filteredPropLogs = (reloadLogs || []).filter(isMyRecord);
 
                 // Format submissions from topUpRequests
-                const topUpReqLogs = (topUpRequests || []).map(t => {
+                const topUpReqLogs = (topUpRequests || []).filter(isMyRecord).map(t => {
                     const rawDate = t.created_at || t.date;
                     const parsedDate = rawDate ? new Date(rawDate) : new Date();
                     const dateStr = !isNaN(parsedDate.getTime())
@@ -14363,12 +14103,13 @@
                 const merged = [...topUpReqLogs, ...queriedLogs, ...filteredPropLogs];
                 const seen = new Set();
                 return merged.filter(item => {
+                    if (!isMyRecord(item)) return false;
                     const key = String(item.refNo || item.ref || item.id);
                     if (seen.has(key)) return false;
                     seen.add(key);
                     return true;
                 });
-            }, [reloadLogs, studentTransactions, topUpRequests, currentStudent, studentIdNum, studentName]);
+            }, [reloadLogs, studentTransactions, topUpRequests, currentStudent, studentIdNum, studentName, isMyRecord]);
 
             // Unified Transaction Feed (Purchases & Reloads) for Desktop View
             const desktopUnifiedTransactions = React.useMemo(() => {
@@ -14391,8 +14132,8 @@
                     };
                 });
 
-                // 2. Top-Ups
-                const combinedTopups = [...(topUpRequests || []), ...(pendingTopUps || []), ...(myReloadLogs || [])];
+                // 2. Top-Ups (privacy-scoped to the signed-in student only)
+                const combinedTopups = [...(topUpRequests || []), ...(pendingTopUps || []), ...(myReloadLogs || [])].filter(isMyRecord);
                 const seenRefs = new Set();
                 const topupList = [];
 
@@ -14430,7 +14171,7 @@
                 });
 
                 return [...purchaseList, ...topupList].sort((a, b) => (b.sortTime || 0) - (a.sortTime || 0));
-            }, [pastPurchases, topUpRequests, pendingTopUps, myReloadLogs]);
+            }, [pastPurchases, topUpRequests, pendingTopUps, myReloadLogs, isMyRecord]);
 
             // Pagination state for Student Past Purchases & Activity (Apple HIG)
             const [studentOrdersPage, setStudentOrdersPage] = useState(1);
@@ -14761,9 +14502,9 @@
                         </section>
 
                         {/* TOP-UP PENDING VERIFICATION ALERT CARD (DESKTOP) */}
-                        {pendingTopUps.length > 0 && (
-                            <div className="space-y-3 animate-in fade-in duration-200">
-                                {pendingTopUps.map((req, idx) => {
+                        {latestPendingTopUp && (() => {
+                                    const req = latestPendingTopUp;
+                                    const idx = 0;
                                     const amt = parseFloat(req.amount || 0);
                                     const refNo = req.reference_number || req.ref_no || req.refNo || req.ref || 'N/A';
                                     const rawDate = req.created_at || req.date;
@@ -14829,9 +14570,7 @@
                                             </p>
                                         </div>
                                     );
-                                })}
-                            </div>
-                        )}
+                                })()}
 
 
                         {/* ================================================================= */}
@@ -15137,7 +14876,7 @@
                                                 refNo: cleanRef,
                                                 fileName: uploadedFileName,
                                                 receiptImg: uploadedReceiptDataUrl,
-                                                studentId: currentStudent?.id || "u101",
+                                                studentId: currentStudent?.id || null,
                                                 studentName: studentName
                                             });
 
@@ -15963,7 +15702,7 @@
                             const matchedParentId = (parentStudentLinks || []).find(l => 
                                 (l.student_id === currentStudent?.student_id || l.student_id === currentStudent?.id) &&
                                 (l.status === 'ACTIVE' || l.status === 'APPROVED')
-                            )?.parent_id || currentStudent?.parent_id || 'u201';
+                            )?.parent_id || currentStudent?.parent_id || null;
                             const newNotif = {
                                 id: 'sos_' + Date.now(),
                                 user_id: matchedParentId,
@@ -17777,7 +17516,7 @@
                     return isDirectLinked || isParentFieldMatch;
                 });
 
-                // Strictly return verified linked students - no mock Joshua Lupisan fallback
+                // Strictly return verified linked students - no mock identity fallback
                 return linked;
             }, [registeredUsers, currentParent, parentStudentLinks]);
 
@@ -18164,7 +17903,7 @@
                 if (!disputeOrder || !activeChild) return;
                 try {
                     await window.CanteenDB.submitMealDispute({
-                        student_id: activeChild?.id || 'u101',
+                        student_id: activeChild?.id || null,
                         order_id: disputeOrder.id,
                         reason: disputeReason,
                         details: disputeDetails
@@ -21587,7 +21326,7 @@
         // =====================================================================
         // 4. CASHIER POS MODULE (WITH DIETARY LOCK ALERTS & SHIFT DRAWER TALLY)
         // =====================================================================
-        function CashierView({ posCart, posTotal, menuCatalog, registeredUsers, recentOrders = [], setRecentOrders = null, preorders = [], inventoryBatches = [], onClaimPreorderPos, onUpdatePreorderStatus, onRefundPackagedPreorder, onAddToCart, onUpdateQty, onDeleteItem, onClearCart, onCompleteCheckout, onVoidOrder, onSettleDebt, activeTab = 'register', setActiveTab, onSignOut, onSelectRoleQuick, isCloudConnected, onRefreshCloud, notifications = [], onMarkNotifRead, onMarkAllNotifRead, onDeleteNotif, onClearReadNotifs, onActionClick, onRespondLinkRequest, onOpenCommandPalette, onOpenShiftZRead, onOpenMobileSidebar, kdsOrders = [], setKdsOrders, currentUser = null, showToast = () => { },
+        function CashierView({ posCart, posTotal, menuCatalog, registeredUsers, setRegisteredUsers = null, recentOrders = [], setRecentOrders = null, preorders = [], inventoryBatches = [], onClaimPreorderPos, onUpdatePreorderStatus, onRefundPackagedPreorder, onAddToCart, onUpdateQty, onDeleteItem, onClearCart, onCompleteCheckout, onVoidOrder, onSettleDebt, activeTab = 'register', setActiveTab, onSignOut, onSelectRoleQuick, isCloudConnected, onRefreshCloud, notifications = [], onMarkNotifRead, onMarkAllNotifRead, onDeleteNotif, onClearReadNotifs, onActionClick, onRespondLinkRequest, onOpenCommandPalette, onOpenShiftZRead, onOpenMobileSidebar, kdsOrders = [], setKdsOrders, currentUser = null, showToast = () => { },
             parentStudentLinks = [],
             // ── Governance Policy Props (sourced from canteen_settings DB via root app state) ──
             globalPayLaterCap = 1000.00,
@@ -21643,6 +21382,64 @@
                 selectedStudent.id !== 'GUEST' &&
                 ['teacher', 'staff', 'cashier', 'admin', 'faculty'].includes((selectedStudent.role || '').toLowerCase())
             );
+
+            // ── Auto-Sync selectedStudent balance whenever registeredUsers updates ──
+            // Prevents stale snapshot display after counter/kiosk checkout deductions.
+            useEffect(() => {
+                if (!selectedStudent) return;
+                const fresh = (registeredUsers || []).find(
+                    u => String(u.id) === String(selectedStudent.id) ||
+                         String(u.rfidUid) === String(selectedStudent.rfid_uid) ||
+                         String(u.studentId) === String(selectedStudent.studentId)
+                );
+                if (fresh) {
+                    const freshBalance = Number(fresh.balance ?? fresh.wallet_balance ?? 0);
+                    const currentSelectedBalance = Number(selectedStudent.balance ?? selectedStudent.wallet_balance ?? 0);
+                    if (freshBalance !== currentSelectedBalance) {
+                        setSelectedStudent(prev => ({
+                            ...prev,
+                            ...fresh,
+                            balance: freshBalance,
+                            wallet_balance: freshBalance
+                        }));
+                    }
+                }
+            }, [registeredUsers, selectedStudent.id, selectedStudent.rfid_uid, selectedStudent.studentId]);
+
+            // ── Real-Time canteen:balance-deducted Window Event Listener ──
+            // Dispatched by kiosk SSE settlement and root transaction handler so the
+            // cashier badge displays the post-deduction balance instantly.
+            useEffect(() => {
+                const handleBalanceDeducted = (ev) => {
+                    const detail = ev?.detail || {};
+                    const newBalance = Number(detail.newBalance ?? 0);
+                    if (!selectedStudent || isNaN(newBalance)) return;
+
+                    const detailId = String(detail.studentId || '').trim();
+                    const detailRfid = String(detail.rfidUid || '').trim();
+                    const detailName = String(detail.studentName || '').toLowerCase().trim();
+
+                    const isMatch =
+                        (detailId && (
+                            String(selectedStudent.id) === detailId ||
+                            String(selectedStudent.studentId) === detailId ||
+                            String(selectedStudent.student_id_number) === detailId
+                        )) ||
+                        (detailRfid && String(selectedStudent.rfidUid) === detailRfid) ||
+                        (detailName && detailName.length > 0 &&
+                            String(selectedStudent.name || '').toLowerCase() === detailName);
+
+                    if (isMatch) {
+                        setSelectedStudent(prev => ({
+                            ...prev,
+                            balance: newBalance,
+                            wallet_balance: newBalance
+                        }));
+                    }
+                };
+                window.addEventListener('canteen:balance-deducted', handleBalanceDeducted);
+                return () => window.removeEventListener('canteen:balance-deducted', handleBalanceDeducted);
+            }, [selectedStudent]);
 
             // UI Camera Stream Toggle State
             const [showLiveCamera, setShowLiveCamera] = useState(true);
@@ -21704,7 +21501,7 @@
             // ── Cash Drawer & Shift Management State (Wave 5) ──
             const [cashierShift, setCashierShift] = useState(() => {
                 try {
-                    const saved = localStorage.getItem('novalunch_cashier_shift');
+                    const saved = localStorage.getItem('novalunch_active_shift');
                     if (saved) return JSON.parse(saved);
                 } catch (e) { }
                 return {
@@ -21723,7 +21520,7 @@
             const updateCashierShift = (newShift) => {
                 setCashierShift(newShift);
                 try {
-                    localStorage.setItem('novalunch_cashier_shift', JSON.stringify(newShift));
+                    localStorage.setItem('novalunch_active_shift', JSON.stringify(newShift));
                 } catch (e) { }
             };
 
@@ -22165,6 +21962,47 @@
                                     totalAmount: parseFloat(data.total_amount) || 0
                                 }
                             }));
+                        }
+                        // ── Real-Time Balance Deduction Broadcast ────────────────────────────
+                        // If the kiosk settlement payload carries the post-deduction new balance,
+                        // (a) apply it to the cashier's own student records, and
+                        // (b) dispatch it so the Student portal virtual pass refreshes immediately.
+                        const settledBalance = (typeof data.student_new_balance === 'number')
+                            ? data.student_new_balance
+                            : (typeof data.wallet_balance === 'number' ? data.wallet_balance : null);
+                        if (settledBalance !== null) {
+                            const settledInfo = data.settlement || {};
+                            const settledId = data.student_id_settled || settledInfo.student_id || null;
+                            const settledRfid = settledInfo.rfid_uid || null;
+                            const settledName = (settledInfo.student_name || '').toLowerCase() || null;
+
+                            if (typeof setRegisteredUsers === 'function') {
+                                setRegisteredUsers(prev => {
+                                    const list = prev || [];
+                                    if (!settledId && !settledRfid && !settledName) return prev;
+                                    return list.map(u => {
+                                        const norm = v => String(v || '').replace(/-/g, '').toUpperCase();
+                                        const isMatch =
+                                            (settledId && (norm(u.studentId) === norm(settledId) || norm(u.student_id_number) === norm(settledId) || norm(u.id) === norm(settledId))) ||
+                                            (settledRfid && u.rfidUid && norm(u.rfidUid) === norm(settledRfid)) ||
+                                            (settledName && u.name && String(u.name).toLowerCase() === settledName);
+                                        if (!isMatch) return u;
+                                        return { ...u, balance: settledBalance, wallet_balance: settledBalance };
+                                    });
+                                });
+                            }
+
+                            if (typeof window !== 'undefined') {
+                                window.dispatchEvent(new CustomEvent('canteen:balance-deducted', {
+                                    detail: {
+                                        newBalance:  settledBalance,
+                                        amountPaid:  data.amount_paid ?? settledInfo.paid ?? null,
+                                        studentId:   settledId,
+                                        rfidUid:     settledRfid,
+                                        studentName: settledInfo.student_name || null
+                                    }
+                                }));
+                            }
                         }
                     }
                     prevKioskStateRef.current = data.kiosk_state || 'IDLE';
@@ -22681,7 +22519,17 @@
                     };
 
                     if (paymentMethod === 'rfid' && selectedStudent && !isGuestCustomer) {
-                        selectedStudent.dailySpent = (selectedStudent.dailySpent || 0.0) + netTotal;
+                        // ── Safe Financial Fallbacks (null/undefined-proof) ──
+                        const currentBalance = Number(selectedStudent.balance ?? selectedStudent.wallet_balance ?? 0);
+                        const newBalance = Math.max(0, currentBalance - netTotal);
+                        const studentDailyCap = Number(selectedStudent.daily_limit || selectedStudent.dailyCap || selectedStudent.daily_spending_cap || globalDailySpendingDefault || 200.00);
+                        const currentDailySpent = Number(selectedStudent.dailySpent || selectedStudent.daily_calories_spent || 0);
+                        const currentCapRemaining = Math.max(0, studentDailyCap - currentDailySpent);
+                        const newCapRemaining = Math.max(0, currentCapRemaining - netTotal);
+                        selectedStudent.balance = newBalance;
+                        selectedStudent.wallet_balance = newBalance;
+                        selectedStudent.dailySpent = currentDailySpent + netTotal;
+                        selectedStudent.daily_spending_cap_remaining = newCapRemaining;
                     }
 
                     setLastCompletedOrder(orderData);
@@ -24005,16 +23853,25 @@
                                             payroll: { count: payrollOrders.length, amount: payrollSales }
                                         }
                                     };
-                                    try {
+                                     try {
                                         const prevArchives = JSON.parse(localStorage.getItem('novalunch_shift_archives') || '[]');
                                         localStorage.setItem('novalunch_shift_archives', JSON.stringify([archiveItem, ...prevArchives]));
                                     } catch (e) { }
 
+                                    logAuditAction(`SHIFT_CLOSED: Register shift ended. Opening float ₱${floatAmt.toFixed(2)}, Cash sales ₱${cashSales.toFixed(2)}, Payouts ₱${totalPayouts.toFixed(2)}, Expected ₱${expectedCashInDrawer.toFixed(2)}, Counted ₱${finalCounted.toFixed(2)}, Variance ${finalVariance >= 0 ? '+₱' : '-₱'}${Math.abs(finalVariance).toFixed(2)} (Shift ID: ${archiveItem.id})`, currentUser?.name || 'Cashier Register #01', 'financial');
+
+                                    localStorage.removeItem('novalunch_active_shift');
+                                    setActualCashCountedInput('');
                                     updateCashierShift({
-                                        ...cashierShift,
-                                        status: 'CLOSED',
-                                        closedAt: archiveItem.closedAt,
-                                        actualCashCounted: finalCounted
+                                        id: 'SHIFT-' + Date.now(),
+                                        status: 'OPEN',
+                                        openedAt: new Date().toISOString(),
+                                        closedAt: null,
+                                        openingFloat: 1500.00,
+                                        cashPayouts: [],
+                                        actualCashCounted: null,
+                                        cashierId: currentUser?.id || 'cashier-01',
+                                        cashierName: currentUser?.name || 'Cashier Register #01'
                                     });
 
                                     showToast("Shift ended and archived. Launching Z-Read Print...", "success");
@@ -25013,9 +24870,10 @@
                                 openedAt: cashierShift.status === 'CLOSED' ? new Date().toISOString() : cashierShift.openedAt,
                                 closedAt: null
                             };
-                            updateCashierShift(updated);
-                            setOpenDrawerModalOpen(false);
-                            showToast(`Drawer float set to ₱${floatVal.toFixed(2)}`, "success");
+                             updateCashierShift(updated);
+                             setOpenDrawerModalOpen(false);
+                             logAuditAction(`SHIFT_OPENED: Register shift started with ₱${floatVal.toFixed(2)} opening float (Shift ID: ${updated.id})`, currentUser?.name || 'Cashier Register #01', 'financial');
+                             showToast(`Drawer float set to ₱${floatVal.toFixed(2)}`, "success");
                         }} className="space-y-4">
                             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2">
                                 <span className="text-xs text-slate-500 font-medium">Standard Institutional Float Presets:</span>
@@ -25400,7 +25258,7 @@
             const handleDownloadTemplate = () => {
                 const templateCsv = `Student ID,First Name,Last Name,Grade & Section,Email,RFID UID,Daily Spending Limit,Initial Balance,Allergies,Phone,Guardian Name
 SJC-2026-101,Juan,Dela Cruz,Grade 11 - STEM A,juan.delacruz@sjc.edu.ph,0009401738,200.00,350.00,Peanuts,09171234567,Maria Dela Cruz
-SJC-2026-102,Sophia,Dela Cruz,Grade 9 - St. Therese,sophia.delacruz@sjc.edu.ph,0009401739,250.00,400.00,,09181234568,Carlos Dela Cruz
+SJC-2026-102,Andrea,Reyes,Grade 9 - St. Therese,andrea.reyes@sjc.edu.ph,0009401739,250.00,400.00,,09181234568,Carlos Reyes
 SJC-2026-103,Mark Anthony,Santos,Grade 12 - ABM B,mark.santos@sjc.edu.ph,0009401740,200.00,300.00,Dairy,09191234569,Elena Santos
 SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,0009401741,200.00,250.00,,09201234570,Roberto Ramos`;
 
@@ -25805,13 +25663,12 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
             const [auditLogs, setAuditLogs] = useState(() => {
                 try {
                     const stored = localStorage.getItem('novalunch_audit_logs');
-                    if (stored) return JSON.parse(stored);
+                    if (stored) {
+                        const parsed = JSON.parse(stored);
+                        if (Array.isArray(parsed)) return parsed;
+                    }
                 } catch (_) {}
-                return [
-                    { id: 'LOG-881', date: '2026-07-30 14:10:02', user: 'Admin System', action: 'Approved GCash Reload ₱500.00 for Joshua Lupisan', type: 'topup' },
-                    { id: 'LOG-880', date: '2026-07-30 13:45:19', user: 'Cashier Elena', action: 'Completed POS Order ORD-2026-4412 (₱125.00)', type: 'order' },
-                    { id: 'LOG-879', date: '2026-07-30 11:20:00', user: 'Admin System', action: 'Updated Menu Price: Beef Pares -> ₱90.00', type: 'menu' }
-                ];
+                return [];
             });
 
             const logAuditAction = React.useCallback((action, user = 'Admin System', type = 'general') => {
@@ -26671,8 +26528,13 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                         rfidUid: newProfile.rfid_uid || finalRfid || "",
                         rfidType: (newProfile.rfid_uid || finalRfid) ? "125kHz EM4100" : "Unlinked",
                         dailyCap: finalDailyCap,
+                        daily_spending_cap: Number(finalDailyCap ?? 200.00),
                         balance: finalBalance,
+                        wallet_balance: Number(finalBalance ?? 0.00),
                         creditLiability: 0.00,
+                        credit_liability: Number(0.00),
+                        payLaterCount: 0,
+                        pay_later_count: Number(0),
                         status: 'active',
                         department: accountDeptSection,
                         salaryDeductionEligible: isTeacher || accountRole === 'cashier',
@@ -27215,6 +27077,33 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                 ? Math.min(100, Math.round((completedOrdersCount / totalPipelineOrders) * 100))
                                 : 0;
 
+                            // ── 4 Clean Operational KPI Cards (Replacement for redundant queue cards) ──
+                            // Today's Total Revenue: sum of orders created today where status !== 'REFUNDED'
+                            const todayRevenue = validOrders
+                                .filter(o => {
+                                    const d = new Date(o.created_at || o.timestamp || o.date);
+                                    const isToday = !isNaN(d.getTime()) && d.toDateString() === now.toDateString();
+                                    const isRefunded = String(o.status || o.order_status || '').toUpperCase() === 'REFUNDED';
+                                    return isToday && !isRefunded;
+                                })
+                                .reduce((sum, o) => sum + (Number(o.total ?? o.total_amount ?? o.final_amount ?? 0) || 0), 0);
+
+                            // Total Settled Orders: count of all non-refunded orders from orders array
+                            const totalCompletedOrders = validOrders
+                                .filter(o => String(o.status || o.order_status || '').toUpperCase() !== 'REFUNDED')
+                                .length;
+
+                            // Average Order Value: totalRevenue / totalCompletedOrders
+                            const totalRevenueAll = validOrders
+                                .filter(o => String(o.status || o.order_status || '').toUpperCase() !== 'REFUNDED')
+                                .reduce((sum, o) => sum + (Number(o.total ?? o.total_amount ?? o.final_amount ?? 0) || 0), 0);
+                            const avgOrderValue = totalCompletedOrders > 0 ? (totalRevenueAll / totalCompletedOrders) : 0;
+
+                            // Active Registered Students
+                            const registeredStudentsCount = (registeredUsers || []).filter(u =>
+                                String(u.role || '').toLowerCase() === 'student' && u.status !== 'archived'
+                            ).length;
+
                             // 5. Total Revenue & Time Period Filtering (Row 2 Left)
                             const periodRevenueOrders = validOrders.filter(o => {
                                 if (!o.created_at && !o.timestamp && !o.date) return true;
@@ -27368,65 +27257,73 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
 
                             return (
                                 <div className="space-y-6 animate-in fade-in duration-150">
-                                    {/* 1. TOP METRIC KPI CARDS (ROW 1) */}
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                                        {/* CARD 1: PENDING ORDERS */}
+                                    {/* 1. TOP METRIC KPI CARDS (ROW 1) — 4 Clean Operational KPIs */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                                        {/* CARD 1: Today's Total Revenue */}
+                                        <div className="p-5 rounded-3xl bg-white border border-slate-200/80 shadow-2xs space-y-3.5 hover:shadow-xs transition-all">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2.5">
+                                                    <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                                                        <Icon.Banknote className="w-4 h-4 text-emerald-500" />
+                                                    </div>
+                                                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Today's Total Revenue</span>
+                                                </div>
+                                                <span className="font-outfit text-3xl font-semibold text-slate-900 tracking-tight tabular-nums">₱{todayRevenue.toFixed(2)}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center text-xs text-slate-500">
+                                                <span className="text-[11px] font-medium">Sum of today's non-refunded orders</span>
+                                                <span className="font-semibold text-slate-700 tabular-nums">Live</span>
+                                            </div>
+                                        </div>
+
+                                        {/* CARD 2: Total Settled Orders */}
                                         <div className="p-5 rounded-3xl bg-white border border-slate-200/80 shadow-2xs space-y-3.5 hover:shadow-xs transition-all">
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center gap-2.5">
                                                     <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
                                                         <Icon.FileText className="w-4 h-4 text-amber-500" />
                                                     </div>
-                                                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Pending Orders</span>
+                                                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Settled Orders</span>
                                                 </div>
-                                                <span className="font-outfit text-3xl font-semibold text-slate-900 tracking-tight tabular-nums">{pendingOrdersCount}</span>
+                                                <span className="font-outfit text-3xl font-semibold text-slate-900 tracking-tight tabular-nums">{totalCompletedOrders}</span>
                                             </div>
                                             <div className="flex justify-between items-center text-xs text-slate-500">
-                                                <span className="text-[11px] font-medium">Total {totalPipelineOrders}</span>
-                                                <span className="font-semibold text-slate-700 tabular-nums">{pendingPct}%</span>
-                                            </div>
-                                            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex items-center">
-                                                <div className="h-full rounded-full bg-amber-500 transition-all duration-500" style={{ width: `${pendingPct}%` }}></div>
+                                                <span className="text-[11px] font-medium">Count of all non-refunded orders</span>
+                                                <span className="font-semibold text-slate-700 tabular-nums">Settled</span>
                                             </div>
                                         </div>
 
-                                        {/* CARD 2: ORDERS IN PROGRESS */}
-                                        <div className="p-5 rounded-3xl bg-white border border-slate-200/80 shadow-2xs space-y-3.5 hover:shadow-xs transition-all">
-                                            <div className="flex items-center justify-between">
-                                                <div className="flex items-center gap-2.5">
-                                                    <div className="w-8 h-8 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center">
-                                                        <Icon.ChefHat className="w-4 h-4 text-sky-500" />
-                                                    </div>
-                                                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">In Progress</span>
-                                                </div>
-                                                <span className="font-outfit text-3xl font-semibold text-slate-900 tracking-tight tabular-nums">{inProgressCount}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center text-xs text-slate-500">
-                                                <span className="text-[11px] font-medium">Total {totalPipelineOrders}</span>
-                                                <span className="font-semibold text-slate-700 tabular-nums">{inProgressPct}%</span>
-                                            </div>
-                                            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex items-center">
-                                                <div className="h-full rounded-full bg-sky-500 transition-all duration-500" style={{ width: `${inProgressPct}%` }}></div>
-                                            </div>
-                                        </div>
-
-                                        {/* CARD 3: COMPLETED ORDERS */}
+                                        {/* CARD 3: Average Order Value */}
                                         <div className="p-5 rounded-3xl bg-white border border-slate-200/80 shadow-2xs space-y-3.5 hover:shadow-xs transition-all">
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center gap-2.5">
                                                     <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                                                        <Icon.CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                                                        <Icon.DollarSign className="w-4 h-4 text-emerald-500" />
                                                     </div>
-                                                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Completed</span>
+                                                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Average Order Value</span>
                                                 </div>
-                                                <span className="font-outfit text-3xl font-semibold text-slate-900 tracking-tight tabular-nums">{completedOrdersCount}</span>
+                                                <span className="font-outfit text-3xl font-semibold text-slate-900 tracking-tight tabular-nums">₱{avgOrderValue.toFixed(2)}</span>
                                             </div>
                                             <div className="flex justify-between items-center text-xs text-slate-500">
-                                                <span className="text-[11px] font-medium">Total {totalPipelineOrders}</span>
-                                                <span className="font-semibold text-slate-700 tabular-nums">{completedPct}%</span>
+                                                <span className="text-[11px] font-medium">totalRevenue / totalCompletedOrders</span>
+                                                <span className="font-semibold text-slate-700 tabular-nums">AOV</span>
                                             </div>
-                                            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex items-center">
-                                                <div className="h-full rounded-full bg-emerald-500 transition-all duration-500" style={{ width: `${completedPct}%` }}></div>
+                                        </div>
+
+                                        {/* CARD 4: Active Registered Students */}
+                                        <div className="p-5 rounded-3xl bg-white border border-slate-200/80 shadow-2xs space-y-3.5 hover:shadow-xs transition-all">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2.5">
+                                                    <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                                                        <Icon.Users className="w-4 h-4 text-indigo-500" />
+                                                    </div>
+                                                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Active Registered Students</span>
+                                                </div>
+                                                <span className="font-outfit text-3xl font-semibold text-slate-900 tracking-tight tabular-nums">{registeredStudentsCount}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center text-xs text-slate-500">
+                                                <span className="text-[11px] font-medium">Live student roster count</span>
+                                                <span className="font-semibold text-slate-700 tabular-nums">Active</span>
                                             </div>
                                         </div>
                                     </div>
@@ -29651,6 +29548,11 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                                 <h2 className="font-outfit text-xl font-bold text-slate-900 tracking-tight">Recent Activity Log</h2>
                                             </div>
                                             <div className="space-y-2">
+                                                {auditLogs.length === 0 ? (
+                                                    <div className="p-6 text-center text-xs text-slate-500 bg-slate-50/70 rounded-2xl border border-dashed border-slate-200">
+                                                        No system audit entries recorded yet.
+                                                    </div>
+                                                ) : null}
                                                 {auditLogs.map(log => (
                                                     <div key={log.id} className="p-3.5 bg-slate-50/70 hover:bg-slate-100/70 rounded-2xl border border-slate-200/60 flex justify-between items-center text-xs transition-colors">
                                                         <div className="space-y-0.5">
@@ -32754,6 +32656,11 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
         function UnifiedNovaLunchApp() {
             const db = typeof window !== 'undefined' ? window.CanteenDB : null;
 
+            // ── One-time cache sanitizer: purge any legacy/mock localStorage payloads ──
+            useEffect(() => {
+                purgeLegacyNovaLunchCaches();
+            }, []);
+
             // ── Session State (Restored from URL query params or localStorage on Reload) ──
             const [activeRole, setActiveRole] = useState(() => {
                 if (typeof window !== 'undefined' && window.location.search) {
@@ -32795,17 +32702,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
 
             // Active User Contexts (Restored from cache & sanitized)
             const sanitizeStudent = (st) => {
-                if (!st) return st;
-                if (st.name === 'Juan Student' || st.name === 'Juan Dela Cruz' || st.email === 'student@gmail.com' || st.email === 'joshua.student@sjc.edu.ph' || st.studentId === '2026-00005' || st.student_id_number === '2026-00005') {
-                    return {
-                        ...st,
-                        name: 'Joshua Lupisan',
-                        studentId: '2023-01900',
-                        student_id_number: '2023-01900',
-                        rfidUid: (st.rfidUid === '009631295' || !st.rfidUid) ? '0009401737' : st.rfidUid,
-                        rfid_uid: (st.rfid_uid === '009631295' || !st.rfid_uid) ? '0009401737' : st.rfid_uid
-                    };
-                }
+                if (!st || typeof st !== 'object') return null;
                 return st;
             };
 
@@ -32925,7 +32822,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                 {
                     id: 'notif_stu_1',
                     role: 'STUDENT',
-                    user_id: 'u101',
+                    user_id: null,
                     title: 'Recess Pre-Order Packed & Ready',
                     message: 'Your Classic Cheeseburger is staged at Counter Shelf B2. Present claim token PO-8921 or tap RFID card.',
                     type: 'preorder_ready',
@@ -32939,7 +32836,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                 {
                     id: 'notif_stu_2',
                     role: 'STUDENT',
-                    user_id: 'u101',
+                    user_id: null,
                     title: 'Parent Account Link Request',
                     message: 'Parent Maria Santos (maria.santos@gmail.com) sent a request to link to your canteen profile for balance reloads.',
                     type: 'link_request',
@@ -32952,7 +32849,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                 {
                     id: 'notif_stu_3',
                     role: 'STUDENT',
-                    user_id: 'u101',
+                    user_id: null,
                     title: 'GCash Top-Up Credited',
                     message: 'Your RFID E-Wallet balance was credited ₱500.00 by guardian Maria Santos (Ref: GC-902188219).',
                     type: 'wallet_topup',
@@ -32966,7 +32863,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                 {
                     id: 'notif_stu_4',
                     role: 'STUDENT',
-                    user_id: 'u101',
+                    user_id: null,
                     title: 'Dietary Guardrail Filter Active',
                     message: 'Peanut allergy guardrail is active on your profile. Canteen kiosks will automatically screen conflicting ingredients.',
                     type: 'guardrail',
@@ -32979,9 +32876,9 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                 {
                     id: 'notif_par_1',
                     role: 'PARENT',
-                    user_id: 'u201',
+                    user_id: null,
                     title: 'Child Meal Purchase Logged',
-                    message: 'Joshua Lupisan completed checkout for Classic Cheeseburger (₱75.00) at Counter 1. 92% Healthy Choice rating.',
+                    message: 'Your child completed checkout for Classic Cheeseburger (₱75.00) at Counter 1. 92% Healthy Choice rating.',
                     type: 'meal_purchase',
                     category: 'orders',
                     is_read: false,
@@ -32993,9 +32890,9 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                 {
                     id: 'notif_par_2',
                     role: 'PARENT',
-                    user_id: 'u201',
+                    user_id: null,
                     title: 'GCash Reload Verified by Admin',
-                    message: 'Official GCash payment of ₱500.00 (Ref: 902188219) has been verified and added to Joshua\'s RFID balance.',
+                    message: 'Official GCash payment of ₱500.00 (Ref: 902188219) has been verified and added to your child\'s RFID balance.',
                     type: 'gcash_approved',
                     category: 'financial',
                     is_read: false,
@@ -33007,9 +32904,9 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                 {
                     id: 'notif_par_3',
                     role: 'PARENT',
-                    user_id: 'u201',
+                    user_id: null,
                     title: 'Daily Spending Limit Active',
-                    message: 'Daily meal cap for Joshua Lupisan is configured at ₱250.00/day. High-sugar beverages are locked.',
+                    message: 'Daily meal cap for your child is configured at ₱250.00/day. High-sugar beverages are locked.',
                     type: 'guardrail',
                     category: 'security',
                     is_read: true,
@@ -33021,7 +32918,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                 {
                     id: 'notif_par_4',
                     role: 'PARENT',
-                    user_id: 'u201',
+                    user_id: null,
                     title: 'Monthly Statement Generated',
                     message: 'Your official September itemized cafeteria receipt statement and nutrition report is ready for PDF export.',
                     type: 'statement',
@@ -33267,6 +33164,75 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                 };
             }, [currentParent]);
 
+            const currentStudentRef = useRef(currentStudent);
+            useEffect(() => { currentStudentRef.current = currentStudent; }, [currentStudent]);
+
+            // ── Real-Time Balance Deduction from Kiosk RFID Checkout ─────────────────
+            // Listens for 'canteen:balance-deducted' dispatched by CashierView's
+            // processKioskUpdate() when a SETTLEMENT event carries student_new_balance.
+            // Updates Student portal state so the virtual RFID pass refreshes instantly.
+            useEffect(() => {
+                const norm = v => String(v || '').replace(/-/g, '').toUpperCase();
+                const applyNewBalance = (newBalance, studentId) => {
+                    if (typeof newBalance !== 'number' || isNaN(newBalance)) return false;
+                    const cur = currentStudentRef.current;
+                    // Only apply when it belongs to the signed-in student (or is unfiltered).
+                    if (studentId && cur) {
+                        const isMatch = norm(cur.studentId) === norm(studentId) ||
+                            norm(cur.student_id_number) === norm(studentId) ||
+                            norm(cur.id) === norm(studentId);
+                        if (!isMatch) return false;
+                    }
+                    setCurrentStudent(prev => {
+                        if (!prev) return prev;
+                        if (studentId && norm(prev.studentId) !== norm(studentId) &&
+                            norm(prev.student_id_number) !== norm(studentId) && norm(prev.id) !== norm(studentId)) {
+                            return prev;
+                        }
+                        return { ...prev, balance: newBalance, wallet_balance: newBalance };
+                    });
+                    setStudentBalance(newBalance);
+                    return true;
+                };
+
+                const handleBalanceDeducted = (e) => {
+                    const { newBalance, studentId } = (e && e.detail) || {};
+                    applyNewBalance(newBalance, studentId);
+                };
+                window.addEventListener('canteen:balance-deducted', handleBalanceDeducted);
+
+                // The student portal must refresh even when the Cashier POS is NOT mounted,
+                // so open a direct kiosk SSE subscription scoped to balance events only.
+                let es = null;
+                let lastState = 'IDLE';
+                try {
+                    es = new EventSource('http://localhost:8085/api/kiosk/events');
+                    es.addEventListener('kiosk_update', (ev) => {
+                        try {
+                            const d = JSON.parse(ev.data);
+                            const state = d.kiosk_state || 'IDLE';
+                            if (state === 'SETTLEMENT' && lastState !== 'SETTLEMENT') {
+                                const info = d.settlement || {};
+                                const bal = (typeof d.student_new_balance === 'number')
+                                    ? d.student_new_balance
+                                    : (typeof d.wallet_balance === 'number' ? d.wallet_balance : null);
+                                if (bal !== null) {
+                                    applyNewBalance(bal, d.student_id_settled || info.student_id || null);
+                                }
+                            }
+                            lastState = state;
+                        } catch (_) { /* malformed frame — ignore */ }
+                    });
+                } catch (_) {
+                    es = null;
+                }
+
+                return () => {
+                    window.removeEventListener('canteen:balance-deducted', handleBalanceDeducted);
+                    if (es) es.close();
+                };
+            }, []);
+
             const showToast = (msg, type = 'info') => {
                 if (!msg) return;
                 if (typeof msg === 'object') {
@@ -33416,7 +33382,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
 
                 const newReq = {
                     id: 'req_' + Date.now(),
-                    parent_id: currentParent?.id || 'u201',
+                    parent_id: currentParent?.id || null,
                     parentName: currentParent?.name || 'Maria Santos',
                     parentEmail: currentParent?.email || 'maria.santos@gmail.com',
                     student_id: targetStud.id,
@@ -33748,7 +33714,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                     id: g.id,
                                     parent: g.parent_name || g.parent || 'Parent Submitter',
                                     student: g.student_name || g.student || 'Student Account',
-                                    studentId: g.student_id || g.studentId || 'u101',
+                                    studentId: g.student_id || g.studentId || null,
                                     amount: parseFloat(g.amount) || 0,
                                     date: g.created_at ? new Date(g.created_at).toLocaleString() : (g.date || new Date().toLocaleString()),
                                     refNo: g.reference_number || g.ref_no || g.refNo || 'N/A',
@@ -34085,7 +34051,6 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                 if (!effectiveIdentifier) {
                     if (targetRole === 'ADMIN') effectiveIdentifier = 'admin@gmail.com';
                     else if (targetRole === 'CASHIER') effectiveIdentifier = 'cashier@gmail.com';
-                    else if (targetRole === 'STUDENT') effectiveIdentifier = 'joshua.student@sjc.edu.ph';
                     else if (targetRole === 'PARENT') effectiveIdentifier = 'parent@gmail.com';
                 }
 
@@ -34107,10 +34072,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                     if (!stud && currentStudent && currentStudent.role?.toLowerCase() === 'student') {
                         stud = registeredUsers.find(u => u.id === currentStudent.id || (u.email && currentStudent.email && u.email.toLowerCase() === currentStudent.email.toLowerCase()) || (u.studentId && currentStudent.studentId && u.studentId === currentStudent.studentId)) || currentStudent;
                     }
-                    // Fallback to default student demo if nothing selected
-                    if (!stud) {
-                        stud = registeredUsers.find(u => u.email === 'joshua.student@sjc.edu.ph' || u.secondaryEmail === 'student@gmail.com') || registeredUsers.find(u => u.role?.toLowerCase() === 'student');
-                    }
+                    // No synthetic student fallback: unresolved lookups stay unresolved.
                     if (stud) {
                         setCurrentStudent(stud);
                         setStudentBalance(typeof stud.balance === 'number' ? stud.balance : (parseFloat(stud.balance) || 0));
@@ -34141,7 +34103,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                         const pId = prnt.id;
                         const pStudentId = prnt.studentId;
                         const pName = (prnt.name || '').toLowerCase();
-                        const links = (parentStudentLinks || []).filter(l => l.parentId === pId || l.parentId === pStudentId || l.parentId === 'u201' || l.parentId === 'p201');
+                        const links = (parentStudentLinks || []).filter(l => l.parentId === pId || l.parentId === pStudentId);
                         let child = null;
                         if (links.length > 0) {
                             child = registeredUsers.find(u => links.some(l => l.studentId === u.id || l.studentIdNumber === u.studentId));
@@ -34154,10 +34116,6 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                         }
                         if (!child && pName) {
                             child = registeredUsers.find(u => u.guardian && u.guardian.toLowerCase().includes(pName));
-                        }
-                        const isDemoParent = prnt.email === 'parent@gmail.com' || prnt.id === 'u201' || prnt.id === 'p201';
-                        if (!child && isDemoParent) {
-                            child = registeredUsers.find(u => (u.role || '').toLowerCase() === 'student');
                         }
                         if (child) {
                             setCurrentStudent(child);
@@ -34425,15 +34383,15 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
             // Unified Dispute Submission Handler (Parent / Student Origin)
             const handleParentSubmitDispute = async (ticketData) => {
                 const newDisputeId = `DISP-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`;
-                const matchedStudent = registeredUsers.find(u => u.studentId === ticketData.studentId || u.name === ticketData.studentName) || currentStudent || { id: 'u101', name: 'Student', studentId: '2023-01900' };
+                const matchedStudent = registeredUsers.find(u => u.studentId === ticketData.studentId || u.name === ticketData.studentName) || currentStudent || null;
 
                 const newDisputeRecord = {
                     id: newDisputeId,
                     orderId: ticketData.orderId || `ORD-${Date.now().toString().slice(-4)}`,
                     refNo: `XFT-${Date.now().toString().slice(-8)}`,
                     date: new Date().toISOString(),
-                    studentId: matchedStudent.studentId || matchedStudent.id || '2023-01900',
-                    studentName: matchedStudent.name || 'Joshua Lupisan',
+                    studentId: (matchedStudent && (matchedStudent.studentId || matchedStudent.id)) || ticketData.studentId || null,
+                    studentName: (matchedStudent && matchedStudent.name) || ticketData.studentName || null,
                     itemsSummary: ticketData.items || 'Disputed Tray Items',
                     amount: parseFloat(ticketData.amount) || 0.0,
                     source: 'PARENT_DISPUTE',
@@ -34469,8 +34427,8 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                 if (window.CanteenDB) {
                     await window.CanteenDB.submitMealDispute(
                         ticketData.orderId,
-                        currentParent?.id || 'u201',
-                        matchedStudent.id || 'u101',
+                        currentParent?.id || null,
+                        (matchedStudent && matchedStudent.id) || null,
                         ticketData.notes || ticketData.reason,
                         ticketData.trayPhotoUrl
                     ).catch(e => console.warn("Submit meal dispute cloud warning", e));
@@ -34530,7 +34488,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                     return false;
                 }
 
-                const targetStudentId = uploadObj.studentId || (currentStudent ? currentStudent.id : "u101");
+                const targetStudentId = uploadObj.studentId || (currentStudent ? currentStudent.id : null);
                 const targetStudentObj = registeredUsers.find(u => u.id === targetStudentId || u.studentId === uploadObj.studentIdNumber) || currentStudent || { name: uploadObj.studentName || (currentParent ? "Linked Student" : "Student"), studentId: uploadObj.studentIdNumber || "" };
 
                 const newReq = {
@@ -35301,7 +35259,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                 }
 
                 const totalTrayPrice = cartItems.reduce((sum, item) => sum + (item.price * item.qty), 0);
-                const studentBal = typeof student.balance === 'number' ? student.balance : studentBalance;
+                const studentBal = Number(student.balance ?? student.wallet_balance ?? studentBalance ?? 0);
 
                 // 1. Balance check
                 if (studentBal < totalTrayPrice) {
@@ -35374,10 +35332,10 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                             const preorderRecord = {
                                 batch_id: batchId,
                                 batchId: batchId,
-                                student_id: student.id || 'u101',
+                                student_id: student.id || null,
                                 studentId: student.studentId || student.id,
-                                student_id_number: student.studentId || '2023-01900',
-                                studentIdNumber: student.studentId || '2023-01900',
+                                student_id_number: student.studentId || null,
+                                studentIdNumber: student.studentId || null,
                                 student_name: student.name || 'Student',
                                 studentName: student.name || 'Student',
                                 product_id: item.id || null,
@@ -35635,6 +35593,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                         menuCatalog={menuCatalog}
                                         inventoryBatches={inventoryBatches}
                                         registeredUsers={registeredUsers}
+                                        setRegisteredUsers={setRegisteredUsers}
                                         recentOrders={recentOrders}
                                         setRecentOrders={setRecentOrders}
                                         preorders={preorders}
@@ -35820,7 +35779,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                                 : `Your order ${orderNoStr} has been voided. Credit liability reversed.`;
                                             const newNotif = {
                                                 id: `notif-${Date.now()}`,
-                                                user_id: matchedStud ? matchedStud.id : (orderToVoid.user_id || 'u101'),
+                                                user_id: (matchedStud && matchedStud.id) || (orderToVoid.user_id || null),
                                                 title: 'Order Voided & Balance Refunded',
                                                 message: notifMsg,
                                                 type: 'refund',
@@ -35864,14 +35823,14 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                                         return;
                                                     }
 
-                                                    const currBal = parseFloat(matchedStud.balance) || 0.0;
-                                                    if (currBal < order.total) {
-                                                        showToast(`Insufficient wallet balance for ${matchedStud.name}. Required: ₱${order.total.toFixed(2)}, Available: ₱${currBal.toFixed(2)}`, 'danger');
-                                                        setIsCheckoutSubmitting(false);
-                                                        return;
-                                                    }
+const currBal = Number(matchedStud.balance ?? matchedStud.wallet_balance ?? 0);
+                    if (currBal < order.total) {
+                        showToast(`Insufficient wallet balance for ${matchedStud.name}. Required: ₱${order.total.toFixed(2)}, Available: ₱${currBal.toFixed(2)}`, 'danger');
+                        setIsCheckoutSubmitting(false);
+                        return;
+                    }
 
-                                                    let newBal = Math.max(0.0, parseFloat((currBal - order.total).toFixed(2)));
+                    let newBal = Math.max(0.0, currBal - order.total);
 
                                                     // Primary atomic deduction via cloud database RPC
                                                     if (window.CanteenDB && matchedStud.id) {
@@ -35891,14 +35850,14 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                                     // Apply deducted balance to local state & cache
                                                     const updatedList = registeredUsers.map(user => {
                                                         if (user.id === matchedStud.id || user.studentId === matchedStud.studentId) {
-                                                            return { ...user, balance: newBal };
+                                                            return { ...user, balance: newBal, wallet_balance: newBal };
                                                         }
                                                         return user;
                                                     });
                                                     setRegisteredUsers(updatedList);
                                                     if (currentStudent && (currentStudent.id === matchedStud.id || currentStudent.studentId === matchedStud.studentId)) {
                                                         setStudentBalance(newBal);
-                                                        setCurrentStudent(prev => ({ ...prev, balance: newBal }));
+                                                        setCurrentStudent(prev => ({ ...prev, balance: newBal, wallet_balance: newBal }));
                                                     }
                                                     try {
                                                         localStorage.setItem('novalunch_registered_users', JSON.stringify(updatedList));
@@ -36460,6 +36419,29 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                 return this.props.children;
             }
         }
+
+        // ══════════════════════════════════════════════════════════════════════
+        // ONE-TIME LEGACY CACHE SANITIZER
+        // Runs before the first render so every state initializer (which reads
+        // localStorage synchronously) observes a clean, mock-free cache.
+        // ══════════════════════════════════════════════════════════════════════
+        function purgeLegacyNovaLunchCaches() {
+            const CACHE_VERSION = 'v5_prod_clean';
+            try {
+                if (localStorage.getItem('novalunch_cache_ver') !== CACHE_VERSION) {
+                    const keysToPurge = [
+                        'novalunch_orders',
+                        'novalunch_registered_users',
+                        'novalunch_audit_logs',
+                        'novalunch_topup_requests',
+                        'novalunch_pairing_tokens'
+                    ];
+                    keysToPurge.forEach(k => localStorage.removeItem(k));
+                    localStorage.setItem('novalunch_cache_ver', CACHE_VERSION);
+                }
+            } catch (_) { /* storage unavailable - non-fatal */ }
+        }
+        purgeLegacyNovaLunchCaches();
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(

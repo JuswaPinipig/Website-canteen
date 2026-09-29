@@ -10,15 +10,13 @@
     }
 
     // Verified Supabase PostgreSQL Entity UUID Registry
+    // Legacy mock identities have been removed. Unresolvable short codes must fail
+    // closed (return null) so no synthetic student is ever written to the backend.
     const KNOWN_MOCK_USER_UUIDS = {
-        "u101": "c653fe97-2934-4fae-a8f6-18ebb4754886", // Joshua Lupisan / student@gmail.com
-        "u102": "991e3f6e-6a5d-4e45-a2ae-7015cc9334bc", // Sophia Dela Cruz
         "u103": "9bd9e2a0-1a82-4d8a-a112-0308f2fedd03", // Mark Anthony Santos
         "u104": "814e5c22-5edb-4b4a-9296-405560bbe503", // Beatriz Ramos
         "u105": "b1051051-1051-1051-1051-105110511051", // Gabriel Santos
         "u106": "b1061061-1061-1061-1061-106110611061", // Claire Mendoza
-        "p201": "02e0f6ca-ae0c-432e-8745-02b53adcd2f4", // Maria Parent / parent@gmail.com
-        "p202": "e1c9c359-c79b-4b15-94f6-a11402d9af27", // Carlos Dela Cruz
         "p203": "b2032032-2032-2032-2032-203220322032", // Elena Santos
         "c301": "a04adc89-ea0c-4495-b7c6-649aea22e861", // Elena Cashier / cashier@gmail.com
         "c302": "b3023023-3023-3023-3023-302330233023", // Mario Rossi
@@ -2099,15 +2097,13 @@
             if (!studentGrade) studentGrade = 'Grade 10';
             if (!studentIdNum) studentIdNum = targetId;
 
-            // Generate clean 6-digit uppercase alphanumeric pairing code (excluding confusing chars 0, O, 1, I)
-            const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-            let pairingCode = '';
-            for (let i = 0; i < 6; i++) {
-                pairingCode += chars.charAt(Math.floor(Math.random() * chars.length));
-            }
+            // Sanitized uppercase pairing code (shared lookup key across every device)
+            const cleanCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+            const pairingCode = cleanCode;
 
             const nowTs = Math.floor(Date.now() / 1000);
-            const exp = nowTs + 600;
+            const expiresAtIso = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+            const exp = Math.floor(new Date(expiresAtIso).getTime() / 1000);
             const jti = 'pair-' + Math.random().toString(36).substring(2, 10);
             const mockPayload = {
                 studentId: targetId,
@@ -2123,50 +2119,65 @@
             };
             const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.' + btoa(unescape(encodeURIComponent(JSON.stringify(mockPayload)))).replace(/=/g, '') + '.sig_' + jti;
 
-            // 1. Persist to local tokens storage (immediate offline & client fallback)
+            // 1. Canonical cloud token record — the only shape guaranteed to exist in qr_pairing_tokens.
+            //    This is what makes the code resolvable from the parent's phone (cross-device sync).
             const tokenRecord = {
+                code: cleanCode,
+                student_id: targetId,
+                student_name: targetName,
+                status: 'PENDING',
+                created_at: new Date().toISOString(),
+                expires_at: expiresAtIso // 15 mins TTL
+            };
+
+            // Local mirror keeps the extra UI/JWT metadata used by the offline fallback path.
+            const localRecord = {
+                ...tokenRecord,
                 id: jti,
                 jti,
-                code: pairingCode,
-                pairing_code: pairingCode,
+                pairing_code: cleanCode,
                 token_hash: jti,
-                student_id: targetId,
                 studentId: targetId,
-                student_name: targetName,
                 studentName: targetName,
                 student_id_number: studentIdNum,
                 grade: studentGrade,
-                status: 'ISSUED',
-                created_at: new Date(nowTs * 1000).toISOString(),
-                expires_at: new Date(exp * 1000).toISOString(),
                 token_raw: token
             };
 
-            // Save the token into shared local cache key novalunch_pairing_tokens
-            const existingTokens = this.loadLocal('novalunch_pairing_tokens', []);
-            existingTokens.push(tokenRecord);
-            this.saveLocal('novalunch_pairing_tokens', existingTokens);
-
-            // Also keep novalunch_qr_pairing_tokens in sync
-            const localQrTokens = this.loadLocal('novalunch_qr_pairing_tokens', []);
-            const updatedLocalQrTokens = [tokenRecord, ...localQrTokens.filter(t => t.code !== pairingCode).slice(0, 50)];
-            this.saveLocal('novalunch_qr_pairing_tokens', updatedLocalQrTokens);
-
-            // 2. Direct Supabase insert if cloud client connected
-            if (this.supabase) {
+            // 2. Persist to Supabase (authoritative cross-device store)
+            let cloudSaved = false;
+            if (supabase) {
                 try {
-                    await this.supabase.from('qr_pairing_tokens').insert([{
-                        jti,
-                        code: pairingCode,
-                        pairing_code: pairingCode,
-                        student_id: targetId,
-                        status: 'ISSUED',
-                        created_at: new Date(nowTs * 1000).toISOString(),
-                        expires_at: new Date(exp * 1000).toISOString(),
-                        token_raw: token
-                    }]);
-                } catch (dbErr) {
-                    console.warn("[CanteenDB] Supabase qr_pairing_tokens insert notice:", dbErr.message);
+                    const { error } = await supabase.from('qr_pairing_tokens').insert([tokenRecord]);
+                    if (error) {
+                        console.error("Cloud token save error:", error);
+                    } else {
+                        cloudSaved = true;
+                    }
+                } catch (e) {
+                    console.error("Cloud token save error:", e);
+                }
+            } else {
+                console.error("Cloud token save error: Supabase client unavailable (offline).");
+            }
+
+            // 3. Save to local storage cache novalunch_pairing_tokens (bounded, expired entries pruned)
+            const expiredCutoff = Date.now() - 15 * 60 * 1000;
+            const existingTokens = (this.loadLocal('novalunch_pairing_tokens', []) || [])
+                .filter(t => !t || !t.expires_at || new Date(t.expires_at).getTime() > expiredCutoff);
+            this.saveLocal('novalunch_pairing_tokens', [localRecord, ...existingTokens.filter(t => String(t.code || '').toUpperCase() !== cleanCode)].slice(0, 50));
+
+            // Also keep novalunch_qr_pairing_tokens in sync (legacy cache key)
+            const localQrTokens = (this.loadLocal('novalunch_qr_pairing_tokens', []) || [])
+                .filter(t => !t || !t.expires_at || new Date(t.expires_at).getTime() > expiredCutoff);
+            this.saveLocal('novalunch_qr_pairing_tokens', [localRecord, ...localQrTokens.filter(t => String(t.code || '').toUpperCase() !== cleanCode)].slice(0, 50));
+
+            // 4. Instant sync across tabs of the same browser
+            if (typeof BroadcastChannel !== 'undefined') {
+                try {
+                    new BroadcastChannel('novalunch_pairing_sync').postMessage(localRecord);
+                } catch (bcErr) {
+                    console.warn("[CanteenDB] Pairing BroadcastChannel notice:", bcErr);
                 }
             }
 
@@ -2176,7 +2187,8 @@
                 pairingCode: pairingCode,
                 code: pairingCode,
                 expiresAt: exp,
-                expiresIn: 600,
+                expiresIn: 900,
+                cloudSynced: cloudSaved,
                 payload: mockPayload,
                 student: { id: targetId, name: targetName, grade: studentGrade, studentId: studentIdNum }
             };
@@ -2208,6 +2220,10 @@
             }
             const isJwt = rawInput.includes('.');
             const cleanCode = isJwt ? rawInput : rawInput.replace(/[^A-Za-z0-9]/g, '').toUpperCase().trim();
+            // Normalized lookup key — the student may type lowercase, add spaces, or scan the NL: prefix
+            const targetCode = String(cleanCode).trim().toUpperCase();
+            // A token is claimable while it is still PENDING (legacy rows were written as ISSUED)
+            const CLAIMABLE_STATUSES = ['PENDING', 'ISSUED'];
 
             const session = this.loadLocal('novalunch_user_session', null) || this.loadLocal('novalunch_current_parent', null);
             const parentId = parentUserId || session?.id || session?.userId;
@@ -2234,44 +2250,48 @@
                 }
             }
 
-            // 1. Search Supabase table qr_pairing_tokens where code = cleanCode
-            if (this.supabase) {
+            // 1. Search Supabase table qr_pairing_tokens where code = targetCode (cross-device source of truth)
+            if (supabase) {
                 try {
-                    let query = this.supabase
+                    const { data: cloudToken, error: cloudErr } = await supabase
                         .from('qr_pairing_tokens')
                         .select('*')
-                        .eq('status', 'ISSUED');
+                        .eq('code', targetCode)
+                        .eq('status', 'PENDING')
+                        .maybeSingle();
 
-                    if (isJwt && jwtPayload?.jti) {
-                        query = query.or(`jti.eq.${jwtPayload.jti},code.eq.${jwtPayload.code || cleanCode}`);
+                    if (cloudErr) {
+                        console.warn("[CanteenDB] Pairing token cloud lookup notice:", cloudErr.message || cloudErr);
+                    } else if (cloudToken) {
+                        tokenRecord = cloudToken;
                     } else {
-                        query = query.or(`code.eq.${cleanCode},pairing_code.eq.${cleanCode}`);
-                    }
-
-                    const { data: dbTokens, error: tokenErr } = await query;
-                    if (!tokenErr && Array.isArray(dbTokens) && dbTokens.length > 0) {
-                        tokenRecord = dbTokens.find(t => {
-                            if (!t.expires_at) return true;
-                            const expTime = typeof t.expires_at === 'number' ? t.expires_at : (new Date(t.expires_at).getTime() / 1000);
-                            return expTime > nowTs;
-                        });
+                        // Legacy rows issued before the PENDING status contract
+                        const { data: legacyToken } = await supabase
+                            .from('qr_pairing_tokens')
+                            .select('*')
+                            .eq('code', targetCode)
+                            .eq('status', 'ISSUED')
+                            .maybeSingle();
+                        if (legacyToken) tokenRecord = legacyToken;
                     }
                 } catch (err) {
-                    console.warn("[CanteenDB] Supabase qr_pairing_tokens query notice:", err.message);
+                    console.warn("[CanteenDB] Pairing token cloud lookup exception:", err);
                 }
             }
 
-            // 2. If not found in Supabase, search local storage novalunch_pairing_tokens where code = cleanCode
+            // 2. If not found in Supabase, search local storage novalunch_pairing_tokens where code = targetCode
             if (!tokenRecord) {
                 const localPairingTokens = this.loadLocal('novalunch_pairing_tokens', []);
                 const localQrTokens = this.loadLocal('novalunch_qr_pairing_tokens', []);
-                const allLocalTokens = [...localPairingTokens, ...localQrTokens];
+                const allLocalTokens = [...(localPairingTokens || []), ...(localQrTokens || [])];
 
                 tokenRecord = allLocalTokens.find(t => {
-                    const matchesCode = t.code === cleanCode || t.pairing_code === cleanCode || t.jti === cleanCode || (isJwt && t.token_raw === cleanCode);
-                    const isIssued = t.status === 'ISSUED';
-                    const expTime = typeof t.expires_at === 'number' ? t.expires_at : (t.expires_at ? new Date(t.expires_at).getTime() / 1000 : Infinity);
-                    return matchesCode && isIssued && expTime > nowTs;
+                    if (!t) return false;
+                    const matchesCode = String(t.code || '').toUpperCase() === targetCode
+                        || String(t.pairing_code || '').toUpperCase() === targetCode
+                        || t.jti === targetCode
+                        || (isJwt && t.token_raw === cleanCode);
+                    return matchesCode && CLAIMABLE_STATUSES.includes(String(t.status || '').toUpperCase());
                 });
             }
 
@@ -2288,23 +2308,33 @@
                     grade: jwtPayload.grade || 'Student',
                     student_id_number: jwtPayload.studentIdNumber || jwtPayload.studentId,
                     jti: jwtPayload.jti,
-                    code: jwtPayload.code || cleanCode,
-                    status: 'ISSUED'
+                    code: targetCode,
+                    status: 'PENDING'
                 };
             }
 
-            // FAIL CLOSED: If no valid record or student ID matches cleanCode, throw explicit error
+            // FAIL CLOSED: If no valid record or student ID matches targetCode, throw explicit error
             const resolvedStudentId = tokenRecord?.student_id || tokenRecord?.studentId;
             if (!tokenRecord || !resolvedStudentId) {
-                throw new Error(`Pairing code "${cleanCode}" was not found. Please ensure the student screen is active.`);
+                throw new Error(`Pairing code "${targetCode}" was not found. Please ensure the student screen is active.`);
+            }
+
+            // EXPIRATION GUARD: reject stale codes before any link is written
+            if (tokenRecord.expires_at) {
+                const expiresAtMs = typeof tokenRecord.expires_at === 'number'
+                    ? tokenRecord.expires_at * 1000
+                    : new Date(tokenRecord.expires_at).getTime();
+                if (!isNaN(expiresAtMs) && expiresAtMs <= Date.now()) {
+                    throw new Error("Pairing code expired. Please regenerate on student screen.");
+                }
             }
 
             // Resolve student info strictly using the token's student_id
             const allUsers = this.loadLocal('novalunch_registered_users', []);
             let student = allUsers.find(u => u.id === resolvedStudentId || u.studentId === resolvedStudentId);
-            if (!student && this.supabase) {
+            if (!student && supabase) {
                 try {
-                    const { data: prof } = await this.supabase.from('profiles').select('*').eq('id', resolvedStudentId).maybeSingle();
+                    const { data: prof } = await supabase.from('profiles').select('*').eq('id', resolvedStudentId).maybeSingle();
                     if (prof) {
                         student = {
                             id: prof.id,
@@ -2318,22 +2348,20 @@
             }
 
             const targetStudentId = resolvedStudentId;
-            const targetStudentName = student?.name || student?.full_name || tokenRecord.name || tokenRecord.student_name || 'Student';
+            const targetStudentName = student?.name || student?.full_name || tokenRecord.student_name || tokenRecord.name || 'Student';
             const targetStudentGrade = student?.department || student?.grade || tokenRecord.grade || 'Grade 10';
             const targetStudentIdNum = student?.studentId || student?.student_id_number || tokenRecord.student_id_number || targetStudentId;
 
-            // 1. Mark token as CLAIMED in Supabase
-            if (this.supabase && (tokenRecord.jti || tokenRecord.id || tokenRecord.code)) {
+            // 1. Mark token as CLAIMED in Supabase so the code cannot be replayed
+            if (supabase) {
                 try {
-                    let updateQuery = this.supabase.from('qr_pairing_tokens').update({
-                        status: 'CLAIMED',
-                        claimed_at: new Date().toISOString(),
-                        claimed_by: parentId
-                    });
-                    if (tokenRecord.id) updateQuery = updateQuery.eq('id', tokenRecord.id);
-                    else if (tokenRecord.jti) updateQuery = updateQuery.eq('jti', tokenRecord.jti);
-                    else updateQuery = updateQuery.eq('code', tokenRecord.code || cleanCode);
-                    await updateQuery;
+                    const { error: claimErr } = await supabase
+                        .from('qr_pairing_tokens')
+                        .update({ status: 'CLAIMED' })
+                        .eq('code', targetCode);
+                    if (claimErr) {
+                        console.warn("[CanteenDB] Pairing token claim notice:", claimErr.message || claimErr);
+                    }
                 } catch (dbErr) {
                     console.warn("[CanteenDB] Supabase qr_pairing_tokens update notice:", dbErr.message);
                 }
@@ -2341,7 +2369,7 @@
 
             // 2. Mark token as CLAIMED in local caches
             const markTokensClaimed = (tokens) => (tokens || []).map(t => {
-                if (t.code === cleanCode || t.pairing_code === cleanCode || (tokenRecord.jti && t.jti === tokenRecord.jti)) {
+                if (t && (String(t.code || '').toUpperCase() === targetCode || String(t.pairing_code || '').toUpperCase() === targetCode || (tokenRecord.jti && t.jti === tokenRecord.jti))) {
                     return { ...t, status: 'CLAIMED', claimed_at: new Date().toISOString(), claimed_by: parentId };
                 }
                 return t;
@@ -2350,9 +2378,9 @@
             this.saveLocal('novalunch_qr_pairing_tokens', markTokensClaimed(this.loadLocal('novalunch_qr_pairing_tokens', [])));
 
             // 3. Insert active relation in Supabase parent_student_links
-            if (this.supabase) {
+            if (supabase) {
                 try {
-                    await this.supabase.from('parent_student_links').upsert([{
+                    await supabase.from('parent_student_links').upsert([{
                         parent_id: parentId,
                         student_id: targetStudentId,
                         relationship: 'Parent',
@@ -2434,8 +2462,23 @@
             return {
                 success: true,
                 message: `Successfully linked ${targetStudentName} to your parent account.`,
+                student_id: targetStudentId,
+                student_name: targetStudentName,
+                code: targetCode,
                 student: studentItem
             };
+        },
+
+        /**
+         * Manual 6-character code entry path. Shares the exact same claim pipeline as the QR scan
+         * so a code generated on the student screen resolves on any device.
+         */
+        async linkBySixDigitCode(parentUserId, code) {
+            const cleanCode = String(code || '').trim().toUpperCase();
+            if (!cleanCode) {
+                throw new Error("Please enter a valid pairing code.");
+            }
+            return await this.linkByQr(parentUserId, cleanCode);
         },
 
 
@@ -3699,6 +3742,22 @@
             return supabase;
         }
     };
+
+    // Pairing sync channel: mirror tokens generated in sibling tabs into the shared local cache
+    if (typeof window !== 'undefined' && typeof window.BroadcastChannel !== 'undefined') {
+        try {
+            const pairingSync = new window.BroadcastChannel('novalunch_pairing_sync');
+            pairingSync.onmessage = (event) => {
+                const record = event && event.data;
+                if (!record || !record.code) return;
+                const cache = (CanteenDB.loadLocal('novalunch_pairing_tokens', []) || [])
+                    .filter(t => t && String(t.code || '').toUpperCase() !== String(record.code).toUpperCase());
+                CanteenDB.saveLocal('novalunch_pairing_tokens', [record, ...cache].slice(0, 50));
+            };
+        } catch (e) {
+            console.warn("[CanteenDB] Pairing sync channel unavailable:", e);
+        }
+    }
 
     // Export to window scope
     if (typeof window !== 'undefined') {

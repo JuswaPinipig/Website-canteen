@@ -1,35 +1,6 @@
 {
   "students": [
     {
-      "full_name": "Joshua Lupisan",
-      "email": "joshua.student@sjc.edu.ph",
-      "secondary_email": "student@gmail.com",
-      "password": "Student123!",
-      "role": "student",
-      "student_id_number": "2023-01900",
-      "rfid_uid": "0009401737",
-      "pin_code": "1234",
-      "balance": 200.0,
-      "daily_limit": 200.0,
-      "pay_later_count": 0,
-      "pay_later_balance": 0.0,
-      "id": "c653fe97-2934-4fae-a8f6-18ebb4754886"
-    },
-    {
-      "full_name": "Sophia Dela Cruz",
-      "email": "sophia.student@sjc.edu.ph",
-      "password": "Student123!",
-      "role": "student",
-      "student_id_number": "2023-01988",
-      "rfid_uid": "7B-3E-11-F4",
-      "pin_code": "1234",
-      "balance": 200.0,
-      "daily_limit": 200.0,
-      "pay_later_count": 0,
-      "pay_later_balance": 0.0,
-      "id": "991e3f6e-6a5d-4e45-a2ae-7015cc9334bc"
-    },
-    {
       "full_name": "Mark Anthony Santos",
       "email": "mark.student@sjc.edu.ph",
       "password": "Student123!",
@@ -106,16 +77,6 @@
       "role": "student",
       "student_id_number": "SJC-8899",
       "rfid_uid": "0009988776",
-      "balance": 200.0,
-      "daily_limit": 200.0
-    },
-    {
-      "id": "68c8d0fb-59d7-47d9-a17f-1dbb62cb92ac",
-      "full_name": "Jeshua Lupisan",
-      "email": "joshua.legacy@sjc.edu.ph",
-      "role": "student",
-      "student_id_number": "2023-01900-LEGACY",
-      "rfid_uid": "9A-4F-21-C8",
       "balance": 200.0,
       "daily_limit": 200.0
     },
@@ -217,19 +178,14 @@
       "secondary_email": "parent@gmail.com",
       "password": "Parent123!",
       "role": "parent",
-      "linked_students": [
-        "2023-01900",
-        "2023-01988"
-      ]
+      "linked_students": []
     },
     {
       "full_name": "Carlos Dela Cruz",
       "email": "parent.carlos@sjc.edu.ph",
       "password": "Parent123!",
       "role": "parent",
-      "linked_students": [
-        "2023-01900"
-      ]
+      "linked_students": []
     }
   ],
   "cashiers": [
