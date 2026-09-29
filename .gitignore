@@ -18,3 +18,4 @@ database/*.db*
 # Large PyTorch / YOLO models exceeding GitHub's 100MB limit
 src/assets/models/novalunch_yolo-2.pt
 novalunch_yolo-2.pt
+src/assets/models/novalunch_yolo.pt
