@@ -19,3 +19,6 @@ database/*.db*
 src/assets/models/novalunch_yolo-2.pt
 novalunch_yolo-2.pt
 src/assets/models/novalunch_yolo.pt
+src/database/*.db
+src/database/*.db-shm
+src/database/*.db-wal
