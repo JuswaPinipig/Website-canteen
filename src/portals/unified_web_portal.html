@@ -4483,9 +4483,12 @@
                     return;
                 }
 
-                const passwordComplexityRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]{8,}$/;
-                if (!passwordComplexityRegex.test(password)) {
-                    setErrorMsg('Password must be at least 8 characters long and contain at least 1 uppercase letter, 1 lowercase letter, 1 number, and 1 special character (@$!%*?&#).');
+                const hasMinLength = password.length >= 8;
+                const hasNumber = /\d/.test(password);
+                const hasUpper = /[A-Z]/.test(password);
+
+                if (!hasMinLength || !hasNumber || !hasUpper) {
+                    setErrorMsg('Password must be at least 8 characters long, contain at least 1 number, and contain at least 1 uppercase letter.');
                     setRegStep(3);
                     return;
                 }
@@ -4691,12 +4694,28 @@
                                 <div className="space-y-3 animate-in fade-in duration-150">
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         <div>
-                                            <label className="block text-xs font-semibold text-slate-700 mb-1">Account Password (min 6 chars)</label>
+                                            <label className="block text-xs font-semibold text-slate-700 mb-1">Account Password</label>
                                             <div className="relative">
                                                 <input type={showPassword ? "text" : "password"} required placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-medium focus:bg-white pr-9" />
                                                 <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-700">
                                                     {showPassword ? <Icon.EyeOff className="w-4 h-4" /> : <Icon.Eye className="w-4 h-4" />}
                                                 </button>
+                                            </div>
+                                            {/* Live Password Strength & Instruction Checklist */}
+                                            <div className="mt-2.5 p-2.5 bg-slate-50/90 rounded-xl border border-slate-200/80 space-y-1.5 text-[11px]">
+                                                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Password Requirements:</div>
+                                                <div className={`flex items-center gap-1.5 transition-colors ${password.length >= 8 ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>
+                                                    {password.length >= 8 ? <Icon.CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> : <span className="w-3.5 h-3.5 rounded-full border border-slate-300 flex items-center justify-center text-[9px] text-slate-400 shrink-0">•</span>}
+                                                    <span>Minimum 8 characters</span>
+                                                </div>
+                                                <div className={`flex items-center gap-1.5 transition-colors ${/\d/.test(password) ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>
+                                                    {/\d/.test(password) ? <Icon.CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> : <span className="w-3.5 h-3.5 rounded-full border border-slate-300 flex items-center justify-center text-[9px] text-slate-400 shrink-0">•</span>}
+                                                    <span>At least 1 number (0-9)</span>
+                                                </div>
+                                                <div className={`flex items-center gap-1.5 transition-colors ${/[A-Z]/.test(password) ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>
+                                                    {/[A-Z]/.test(password) ? <Icon.CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> : <span className="w-3.5 h-3.5 rounded-full border border-slate-300 flex items-center justify-center text-[9px] text-slate-400 shrink-0">•</span>}
+                                                    <span>At least 1 uppercase letter (A-Z)</span>
+                                                </div>
                                             </div>
                                         </div>
                                         <div>
@@ -4707,6 +4726,12 @@
                                                     {showConfirmPassword ? <Icon.EyeOff className="w-4 h-4" /> : <Icon.Eye className="w-4 h-4" />}
                                                 </button>
                                             </div>
+                                            {confirmPassword && (
+                                                <div className={`mt-2 flex items-center gap-1.5 text-[11px] font-medium ${password === confirmPassword ? 'text-emerald-700' : 'text-rose-600'}`}>
+                                                    {password === confirmPassword ? <Icon.CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> : <Icon.AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />}
+                                                    <span>{password === confirmPassword ? 'Passwords match' : 'Passwords do not match'}</span>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -7840,9 +7865,24 @@
             setMenuCatalog = () => { },
             refundsList: propRefundsList,
             setRefundsList: propSetRefundsList,
-            showToast = () => { }
+            showToast = () => { },
+            logAuditAction = null
         }) {
             const { useState, useMemo } = React;
+
+            // Sub-nav tab mode: 'orders' | 'disputes'
+            const [refundsViewMode, setRefundsViewMode] = useState('orders');
+
+            // Order Refunds specific state
+            const [orderSearchQuery, setOrderSearchQuery] = useState('');
+            const [orderStatusFilter, setOrderStatusFilter] = useState('ALL'); // 'ALL' | 'PAID' | 'REFUNDED'
+            const [orderMethodFilter, setOrderMethodFilter] = useState('ALL'); // 'ALL' | 'RFID' | 'CASH' | 'PAY_LATER' | 'SALARY'
+            const [orderToRefund, setOrderToRefund] = useState(null);
+            const [refundReasonInput, setRefundReasonInput] = useState('Customer Request / Item Quality Issue');
+            const [refundRestockCheckbox, setRefundRestockCheckbox] = useState(true);
+            const [isSubmittingOrderRefund, setIsSubmittingOrderRefund] = useState(false);
+            const [ordersPage, setOrdersPage] = useState(1);
+            const ordersPerPage = 10;
 
             // View modes: 'WEEKLY' | 'MONTHLY'
             const [reportMode, setReportMode] = useState('WEEKLY');
@@ -7877,6 +7917,171 @@
             const [localRefundsList, setLocalRefundsList] = useState(typeof INITIAL_REFUNDS_LIST !== 'undefined' ? INITIAL_REFUNDS_LIST : []);
             const refundsList = propRefundsList || localRefundsList;
             const setRefundsList = propSetRefundsList || setLocalRefundsList;
+
+            // Filter completed transactions from recentOrders
+            const filteredCompletedOrders = useMemo(() => {
+                const list = Array.isArray(recentOrders) ? recentOrders : [];
+                return list.filter(order => {
+                    const status = String(order.status || 'PAID').toUpperCase();
+                    if (status === 'VOIDED' && orderStatusFilter !== 'ALL') return false;
+                    if (orderStatusFilter === 'PAID' && status !== 'PAID') return false;
+                    if (orderStatusFilter === 'REFUNDED' && status !== 'REFUNDED') return false;
+
+                    const pm = String(order.paymentMethod || order.payment_method || 'CASH').toUpperCase();
+                    if (orderMethodFilter !== 'ALL') {
+                        if (orderMethodFilter === 'RFID' && pm !== 'RFID') return false;
+                        if (orderMethodFilter === 'CASH' && pm !== 'CASH') return false;
+                        if (orderMethodFilter === 'PAY_LATER' && !pm.includes('PAY_LATER') && !pm.includes('CREDIT')) return false;
+                        if (orderMethodFilter === 'SALARY' && !pm.includes('SALARY') && !pm.includes('PAYROLL')) return false;
+                    }
+
+                    if (orderSearchQuery.trim()) {
+                        const q = orderSearchQuery.toLowerCase().trim();
+                        const orderNo = String(order.orderNo || order.id || order.ref_no || '').toLowerCase();
+                        const custName = String(order.student || order.student_name || order.customer_name || '').toLowerCase();
+                        const custId = String(order.studentId || order.customer_id || '').toLowerCase();
+                        const items = String(order.items_summary || (Array.isArray(order.items) ? order.items.map(i => i.name).join(' ') : '')).toLowerCase();
+                        return orderNo.includes(q) || custName.includes(q) || custId.includes(q) || items.includes(q);
+                    }
+                    return true;
+                });
+            }, [recentOrders, orderStatusFilter, orderMethodFilter, orderSearchQuery]);
+
+            const paginatedOrders = useMemo(() => {
+                const start = (ordersPage - 1) * ordersPerPage;
+                return filteredCompletedOrders.slice(start, start + ordersPerPage);
+            }, [filteredCompletedOrders, ordersPage, ordersPerPage]);
+            const totalOrderPages = Math.max(1, Math.ceil(filteredCompletedOrders.length / ordersPerPage));
+
+            const handleProcessOrderRefund = async (e) => {
+                if (e) e.preventDefault();
+                if (!orderToRefund) return;
+                setIsSubmittingOrderRefund(true);
+
+                const refundAmt = parseFloat(orderToRefund.total || orderToRefund.final_amount || orderToRefund.total_amount || 0);
+                const orderId = orderToRefund.orderNo || orderToRefund.id || orderToRefund.ref_no;
+                const method = String(orderToRefund.paymentMethod || orderToRefund.payment_method || 'RFID').toUpperCase();
+                const studentId = orderToRefund.studentId || orderToRefund.customer_id;
+                const studentName = orderToRefund.student || orderToRefund.student_name || orderToRefund.customer_name;
+
+                try {
+                    // 1. Restock items into menuCatalog and Supabase if checked
+                    if (refundRestockCheckbox && Array.isArray(orderToRefund.items) && orderToRefund.items.length > 0) {
+                        setMenuCatalog(prevCatalog => {
+                            return prevCatalog.map(prod => {
+                                const matchedItem = orderToRefund.items.find(it => (it.id && it.id === prod.id) || (it.name && it.name.toLowerCase() === prod.name.toLowerCase()));
+                                if (matchedItem) {
+                                    const addQty = parseInt(matchedItem.qty || matchedItem.quantity || 1) || 1;
+                                    const newStock = (prod.stock || 0) + addQty;
+                                    if (window.CanteenDB && typeof window.CanteenDB.updateProductStock === 'function') {
+                                        window.CanteenDB.updateProductStock(prod.id, newStock).catch(() => {});
+                                    }
+                                    return { ...prod, stock: newStock };
+                                }
+                                return prod;
+                            });
+                        });
+                    }
+
+                    // 2. Payment Reversal
+                    if (method === 'RFID') {
+                        const matchedUser = registeredUsers.find(u =>
+                            (studentId && (u.studentId === studentId || u.id === studentId)) ||
+                            (studentName && u.name && u.name.toLowerCase() === studentName.toLowerCase())
+                        );
+                        if (matchedUser) {
+                            const newBal = (parseFloat(matchedUser.balance) || 0) + refundAmt;
+                            if (window.CanteenDB && typeof window.CanteenDB.creditWalletBalance === 'function') {
+                                window.CanteenDB.creditWalletBalance(matchedUser.id, refundAmt).catch(() => {});
+                            }
+                            setRegisteredUsers(prev => prev.map(u => u.id === matchedUser.id ? { ...u, balance: newBal } : u));
+                        }
+                    } else if (method.includes('PAY_LATER') || method.includes('CREDIT') || method.includes('TAB')) {
+                        const matchedUser = registeredUsers.find(u =>
+                            (studentId && (u.studentId === studentId || u.id === studentId)) ||
+                            (studentName && u.name && u.name.toLowerCase() === studentName.toLowerCase())
+                        );
+                        if (matchedUser) {
+                            const currentLiability = parseFloat(matchedUser.creditLiability || matchedUser.credit_liability || 0);
+                            const newLiability = Math.max(0, currentLiability - refundAmt);
+                            setRegisteredUsers(prev => prev.map(u => u.id === matchedUser.id ? { ...u, creditLiability: newLiability, credit_liability: newLiability } : u));
+                        }
+                    } else if (method.includes('SALARY') || method.includes('PAYROLL') || method.includes('FACULTY')) {
+                        const matchedUser = registeredUsers.find(u =>
+                            (studentId && (u.studentId === studentId || u.employeeId === studentId || u.id === studentId)) ||
+                            (studentName && u.name && u.name.toLowerCase() === studentName.toLowerCase())
+                        );
+                        if (matchedUser) {
+                            const currentDeduction = parseFloat(matchedUser.accumulatedSalaryDeduction || 0);
+                            const newDeduction = Math.max(0, currentDeduction - refundAmt);
+                            setRegisteredUsers(prev => prev.map(u => u.id === matchedUser.id ? { ...u, accumulatedSalaryDeduction: newDeduction } : u));
+                        }
+                    }
+
+                    // 3. Update order in recentOrders to REFUNDED
+                    setRecentOrders(prevOrders => {
+                        const updated = prevOrders.map(o => {
+                            const isTarget = (o.orderNo && o.orderNo === orderId) || (o.id && o.id === orderId) || (o.ref_no && o.ref_no === orderId);
+                            if (isTarget) {
+                                return {
+                                    ...o,
+                                    status: 'REFUNDED',
+                                    refundedAmount: refundAmt,
+                                    refundedAt: new Date().toISOString(),
+                                    refundReason: refundReasonInput.trim(),
+                                    restocked: refundRestockCheckbox
+                                };
+                            }
+                            return o;
+                        });
+                        try {
+                            localStorage.setItem('novalunch_recent_orders', JSON.stringify(updated));
+                        } catch (_) {}
+                        return updated;
+                    });
+
+                    // 4. Append to refundsList
+                    const itemsSummaryText = Array.isArray(orderToRefund.items) && orderToRefund.items.length > 0
+                        ? orderToRefund.items.map(i => `${i.quantity || i.qty || 1}x ${i.name || i.item_name || 'Item'}`).join(', ')
+                        : (orderToRefund.items_summary || '1x Canteen Meal Package');
+
+                    const newRefundRecord = {
+                        id: 'REF-' + Date.now(),
+                        orderId: orderId,
+                        studentName: studentName || 'Customer',
+                        studentId: studentId || 'N/A',
+                        itemsSummary: itemsSummaryText,
+                        amount: refundAmt,
+                        method: method,
+                        methodLabel: `Refunded (${method})`,
+                        source: 'ADMIN_MANUAL',
+                        sourceLabel: 'Admin Order Refund',
+                        reason: refundReasonInput.trim(),
+                        status: 'APPROVED',
+                        processedBy: 'Admin Authority',
+                        timestamp: new Date().toISOString(),
+                        date: new Date(),
+                        restocked: refundRestockCheckbox
+                    };
+                    setRefundsList(prev => [newRefundRecord, ...prev]);
+
+                    // 5. Log audit action
+                    const auditMsg = `ORDER_REFUNDED: Ref ${orderId} (₱${refundAmt.toFixed(2)}) for ${studentName || 'Customer'} - ${refundRestockCheckbox ? 'Items Restocked' : 'No Restock'}`;
+                    if (typeof logAuditAction === 'function') {
+                        logAuditAction(auditMsg, 'Admin Authority', 'financial');
+                    } else if (window.CanteenDB && typeof window.CanteenDB.logAuditEvent === 'function') {
+                        window.CanteenDB.logAuditEvent({ action: auditMsg, actor: 'Admin Authority', event_type: 'financial' }).catch(() => {});
+                    }
+
+                    showToast(`Refund processed for ${studentName || 'order'} (₱${refundAmt.toFixed(2)}).${refundRestockCheckbox ? ' Inventory restocked.' : ''}`, 'success');
+                    setOrderToRefund(null);
+                } catch (err) {
+                    console.error("Refund error:", err);
+                    showToast("Failed to process refund: " + (err.message || 'Unknown error'), "error");
+                } finally {
+                    setIsSubmittingOrderRefund(false);
+                }
+            };
 
             // Helper to get start of current week (Monday)
             const weekDays = useMemo(() => {
@@ -8218,6 +8423,266 @@
 
             return (
                 <div className="space-y-5 animate-in fade-in duration-150">
+                    {/* SUB-NAV TAB SWITCHER */}
+                    <div className="flex items-center justify-between pb-1 flex-wrap gap-3">
+                        <div className="inline-flex bg-slate-100/90 p-1 rounded-2xl border border-slate-200/70 shadow-2xs">
+                            <button
+                                type="button"
+                                onClick={() => setRefundsViewMode('orders')}
+                                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                                    refundsViewMode === 'orders'
+                                        ? 'bg-white text-slate-900 shadow-xs'
+                                        : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                            >
+                                <Icon.ShoppingBag className="w-3.5 h-3.5 text-[#7B1E22]" />
+                                <span>Completed Transactions (Issue Refund)</span>
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold border border-slate-200">
+                                    {recentOrders.filter(o => o.status !== 'VOIDED').length}
+                                </span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setRefundsViewMode('disputes')}
+                                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                                    refundsViewMode === 'disputes'
+                                        ? 'bg-white text-slate-900 shadow-xs'
+                                        : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                            >
+                                <Icon.RotateCcw className="w-3.5 h-3.5 text-amber-700" />
+                                <span>Disputes & Audit Ledger</span>
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold border border-slate-200">
+                                    {refundsList.length}
+                                </span>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* VIEW MODE 1: COMPLETED TRANSACTIONS */}
+                    {refundsViewMode === 'orders' && (
+                        <div className="space-y-4">
+                            {/* SEARCH & FILTERS FOR ORDERS */}
+                            <div className="enterprise-card p-3.5 sm:p-4 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
+                                <div className="flex flex-wrap items-center gap-2.5 flex-1">
+                                    <div className="relative min-w-[220px] flex-1 sm:w-72">
+                                        <input
+                                            type="text"
+                                            placeholder="Search by order ref, customer name, ID, or item..."
+                                            value={orderSearchQuery}
+                                            onChange={(e) => { setOrderSearchQuery(e.target.value); setOrdersPage(1); }}
+                                            className="w-full bg-slate-50/90 border border-slate-200 rounded-xl pl-8 pr-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 transition-all font-medium"
+                                        />
+                                        <Icon.Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
+                                        {orderSearchQuery && (
+                                            <button onClick={() => { setOrderSearchQuery(''); setOrdersPage(1); }} className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600">
+                                                <Icon.X className="w-3 h-3" />
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {/* STATUS FILTER */}
+                                    <div className="relative">
+                                        <select
+                                            value={orderStatusFilter}
+                                            onChange={(e) => { setOrderStatusFilter(e.target.value); setOrdersPage(1); }}
+                                            className="appearance-none bg-slate-50/90 border border-slate-200 rounded-xl pl-3 pr-7 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100/80 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 transition-all cursor-pointer"
+                                        >
+                                            <option value="ALL">All Order Statuses</option>
+                                            <option value="PAID">Completed / Paid</option>
+                                            <option value="REFUNDED">Refunded</option>
+                                        </select>
+                                        <Icon.ChevronDown className="w-3 h-3 absolute right-2.5 top-3 text-slate-400 pointer-events-none" />
+                                    </div>
+
+                                    {/* PAYMENT METHOD FILTER */}
+                                    <div className="relative">
+                                        <select
+                                            value={orderMethodFilter}
+                                            onChange={(e) => { setOrderMethodFilter(e.target.value); setOrdersPage(1); }}
+                                            className="appearance-none bg-slate-50/90 border border-slate-200 rounded-xl pl-3 pr-7 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100/80 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 transition-all cursor-pointer"
+                                        >
+                                            <option value="ALL">All Payment Methods</option>
+                                            <option value="RFID">RFID Smart Card</option>
+                                            <option value="CASH">Cash Register</option>
+                                            <option value="PAY_LATER">Pay Later (Safety Net)</option>
+                                            <option value="SALARY">Faculty Payroll Tab</option>
+                                        </select>
+                                        <Icon.ChevronDown className="w-3 h-3 absolute right-2.5 top-3 text-slate-400 pointer-events-none" />
+                                    </div>
+                                </div>
+
+                                <div className="text-xs text-slate-500 font-medium whitespace-nowrap self-end sm:self-center">
+                                    Showing <strong className="text-slate-800">{filteredCompletedOrders.length}</strong> matching transaction{filteredCompletedOrders.length === 1 ? '' : 's'}
+                                </div>
+                            </div>
+
+                            {/* COMPLETED ORDERS TABLE */}
+                            <div className="enterprise-card rounded-2xl bg-white border border-slate-200/90 shadow-xs overflow-hidden">
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left text-xs border-collapse">
+                                        <thead>
+                                            <tr className="border-b border-slate-200/90 bg-slate-50/80 text-slate-500 font-bold uppercase text-[10px] tracking-wider">
+                                                <th className="py-3.5 px-4">Order Ref #</th>
+                                                <th className="py-3.5 px-4">Customer & Account</th>
+                                                <th className="py-3.5 px-4">Purchased Items & Details</th>
+                                                <th className="py-3.5 px-4">Date & Time</th>
+                                                <th className="py-3.5 px-4">Payment Method</th>
+                                                <th className="py-3.5 px-4 text-right">Amount</th>
+                                                <th className="py-3.5 px-4 text-center">Status</th>
+                                                <th className="py-3.5 px-4 text-right">Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {paginatedOrders.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={8} className="py-12 text-center text-slate-400">
+                                                        <Icon.Inbox className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                                                        <p className="font-semibold text-slate-600">No transactions match your search or filter criteria.</p>
+                                                        <p className="text-[11px] mt-1 text-slate-400">Try adjusting your query or filters.</p>
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                paginatedOrders.map((ord) => {
+                                                    const ordId = ord.orderNo || ord.id || ord.ref_no || 'ORD-000';
+                                                    const custName = ord.student || ord.student_name || ord.customer_name || 'Walk-in Customer';
+                                                    const custId = ord.studentId || ord.customer_id || 'N/A';
+                                                    const amt = parseFloat(ord.total || ord.final_amount || ord.total_amount || 0);
+                                                    const pm = String(ord.paymentMethod || ord.payment_method || 'RFID').toUpperCase();
+                                                    const status = String(ord.status || 'PAID').toUpperCase();
+                                                    const isRefunded = status === 'REFUNDED';
+                                                    const isVoided = status === 'VOIDED';
+
+                                                    let dateStr = 'Today';
+                                                    let timeStr = '';
+                                                    if (ord.timestamp || ord.created_at || ord.date) {
+                                                        const d = new Date(ord.timestamp || ord.created_at || ord.date);
+                                                        if (!isNaN(d.getTime())) {
+                                                            dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                                                            timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                                                        }
+                                                    }
+
+                                                    const itemsDisplay = Array.isArray(ord.items) && ord.items.length > 0
+                                                        ? ord.items.map(it => `${it.quantity || it.qty || 1}x ${it.name || it.item_name}`).join(', ')
+                                                        : (ord.items_summary || 'Meal items');
+
+                                                    return (
+                                                        <tr key={ordId} className="hover:bg-slate-50/70 transition-colors group">
+                                                            <td className="py-3 px-4 font-mono font-bold text-slate-900">
+                                                                {ordId}
+                                                            </td>
+                                                            <td className="py-3 px-4">
+                                                                <div className="font-bold text-slate-900">{custName}</div>
+                                                                <div className="font-mono text-[10px] text-slate-400">ID: {custId}</div>
+                                                            </td>
+                                                            <td className="py-3 px-4 max-w-xs sm:max-w-md">
+                                                                <div className="text-slate-800 font-medium truncate" title={itemsDisplay}>
+                                                                    {itemsDisplay}
+                                                                </div>
+                                                                {Array.isArray(ord.items) && ord.items.length > 0 && (
+                                                                    <div className="text-[10px] text-slate-400">
+                                                                        {ord.items.length} item{ord.items.length === 1 ? '' : 's'} in order
+                                                                    </div>
+                                                                )}
+                                                            </td>
+                                                            <td className="py-3 px-4 whitespace-nowrap">
+                                                                <div className="font-semibold text-slate-800">{dateStr}</div>
+                                                                {timeStr && <div className="text-[10px] text-slate-400 font-mono">{timeStr}</div>}
+                                                            </td>
+                                                            <td className="py-3 px-4 whitespace-nowrap">
+                                                                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                                                                    pm === 'RFID' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
+                                                                    pm === 'CASH' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                                    pm.includes('PAY_LATER') || pm.includes('CREDIT') ? 'bg-amber-50 text-amber-800 border-amber-200' :
+                                                                    'bg-purple-50 text-purple-700 border-purple-200'
+                                                                }`}>
+                                                                    {pm === 'RFID' ? 'RFID Card' : pm === 'CASH' ? 'Cash' : pm.includes('PAY_LATER') ? 'Pay Later' : 'Faculty Payroll'}
+                                                                </span>
+                                                            </td>
+                                                            <td className="py-3 px-4 text-right whitespace-nowrap font-mono font-bold text-slate-900">
+                                                                ₱{amt.toFixed(2)}
+                                                            </td>
+                                                            <td className="py-3 px-4 text-center whitespace-nowrap">
+                                                                {isRefunded ? (
+                                                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                                                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                                                        Refunded
+                                                                    </span>
+                                                                ) : isVoided ? (
+                                                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
+                                                                        Voided
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                                                        Paid
+                                                                    </span>
+                                                                )}
+                                                            </td>
+                                                            <td className="py-3 px-4 text-right whitespace-nowrap">
+                                                                {isRefunded ? (
+                                                                    <span className="text-[11px] font-semibold text-slate-400 italic">
+                                                                        Already Refunded
+                                                                    </span>
+                                                                ) : isVoided ? (
+                                                                    <span className="text-[11px] font-semibold text-slate-400 italic">
+                                                                        Voided
+                                                                    </span>
+                                                                ) : (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setOrderToRefund(ord);
+                                                                            setRefundReasonInput('Customer Request / Item Quality Issue');
+                                                                            setRefundRestockCheckbox(true);
+                                                                        }}
+                                                                        className="px-3 py-1.5 bg-[#7B1E22] hover:bg-[#681418] text-white rounded-xl text-xs font-bold transition-all shadow-2xs hover:shadow-xs flex items-center gap-1.5 cursor-pointer ml-auto"
+                                                                    >
+                                                                        <Icon.RotateCcw className="w-3 h-3" />
+                                                                        <span>Issue Refund</span>
+                                                                    </button>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                {/* TABLE FOOTER / PAGINATION */}
+                                {totalOrderPages > 1 && (
+                                    <div className="p-3 bg-slate-50/80 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600">
+                                        <span>Page {ordersPage} of {totalOrderPages}</span>
+                                        <div className="flex items-center gap-1.5">
+                                            <button
+                                                type="button"
+                                                disabled={ordersPage <= 1}
+                                                onClick={() => setOrdersPage(p => Math.max(1, p - 1))}
+                                                className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white font-semibold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50"
+                                            >
+                                                Previous
+                                            </button>
+                                            <button
+                                                type="button"
+                                                disabled={ordersPage >= totalOrderPages}
+                                                onClick={() => setOrdersPage(p => Math.min(totalOrderPages, p + 1))}
+                                                className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white font-semibold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50"
+                                            >
+                                                Next
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* VIEW MODE 2: DISPUTES & REFUND AUDIT LOGS */}
+                    {refundsViewMode === 'disputes' && (
+                        <>
                     {/* TOP CONTROLS & FILTER BAR */}
                     <div className="enterprise-card p-3.5 sm:p-4 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-3">
                         {/* LEFT: SEARCH & DROPDOWNS */}
@@ -8599,6 +9064,8 @@
                             </div>
                         </div>
                     </div>
+                    </>
+                    )}
 
                     {/* MODAL: MANUAL REFUND */}
                     {isManualModalOpen && (
@@ -8860,6 +9327,115 @@
                             </div>
                         </CustomModal>
                     )}
+
+                    {/* ISSUE ORDER REFUND MODAL */}
+                    {orderToRefund && (
+                        <CustomModal
+                            isOpen={Boolean(orderToRefund)}
+                            onClose={() => setOrderToRefund(null)}
+                            title="Issue Order Refund & Reversal"
+                            size="md"
+                        >
+                            <form onSubmit={handleProcessOrderRefund} className="space-y-4 py-1 text-xs">
+                                {/* ORDER SUMMARY CARD */}
+                                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5">
+                                    <div className="flex justify-between items-center font-bold text-slate-900">
+                                        <span className="font-mono text-sm">{orderToRefund.orderNo || orderToRefund.id || orderToRefund.ref_no}</span>
+                                        <span className="text-base text-brand-800">₱{parseFloat(orderToRefund.total || orderToRefund.final_amount || 0).toFixed(2)}</span>
+                                    </div>
+                                    <div className="text-slate-600 flex items-center justify-between">
+                                        <span>Customer: <strong className="text-slate-800">{orderToRefund.student || orderToRefund.student_name || orderToRefund.customer_name || 'Customer'}</strong> ({orderToRefund.studentId || orderToRefund.customer_id || 'N/A'})</span>
+                                        <span className="font-semibold text-slate-700">Payment: {String(orderToRefund.paymentMethod || orderToRefund.payment_method || 'RFID').toUpperCase()}</span>
+                                    </div>
+                                    <div className="text-[11px] text-slate-500 pt-1 border-t border-slate-200/60">
+                                        Items: {Array.isArray(orderToRefund.items) && orderToRefund.items.length > 0
+                                            ? orderToRefund.items.map(it => `${it.quantity || it.qty || 1}x ${it.name || it.item_name}`).join(', ')
+                                            : (orderToRefund.items_summary || '1x Canteen Meal Package')}
+                                    </div>
+                                </div>
+
+                                {/* REVERSAL MECHANISM CALLOUT */}
+                                <div className="p-3 rounded-xl bg-indigo-50/80 border border-indigo-200 text-indigo-950 space-y-1">
+                                    <div className="font-bold flex items-center gap-1.5 text-indigo-900">
+                                        <Icon.ShieldCheck className="w-3.5 h-3.5 text-indigo-700" />
+                                        <span>Payment Reversal Mechanism</span>
+                                    </div>
+                                    <p className="text-[11px] leading-relaxed text-indigo-800">
+                                        {String(orderToRefund.paymentMethod || orderToRefund.payment_method || '').toUpperCase() === 'RFID' ? (
+                                            <>₱<strong>{parseFloat(orderToRefund.total || 0).toFixed(2)}</strong> will be credited directly back to student's RFID smart card wallet balance.</>
+                                        ) : String(orderToRefund.paymentMethod || orderToRefund.payment_method || '').toUpperCase().includes('PAY_LATER') ? (
+                                            <>₱<strong>{parseFloat(orderToRefund.total || 0).toFixed(2)}</strong> will be deducted from student's accrued Pay Later debt liability.</>
+                                        ) : String(orderToRefund.paymentMethod || orderToRefund.payment_method || '').toUpperCase().includes('SALARY') ? (
+                                            <>₱<strong>{parseFloat(orderToRefund.total || 0).toFixed(2)}</strong> will be deducted from employee's monthly payroll salary deduction ledger.</>
+                                        ) : (
+                                            <>Cash refund of ₱<strong>{parseFloat(orderToRefund.total || 0).toFixed(2)}</strong> will be disbursed from cashier drawer.</>
+                                        )}
+                                    </p>
+                                </div>
+
+                                {/* RESTOCK ITEMS CHECKBOX */}
+                                <div className="p-3 rounded-xl bg-amber-50/60 border border-amber-200/80">
+                                    <label className="flex items-start gap-2.5 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={refundRestockCheckbox}
+                                            onChange={(e) => setRefundRestockCheckbox(e.target.checked)}
+                                            className="mt-0.5 w-4 h-4 rounded text-brand-700 focus:ring-brand-700 border-slate-300"
+                                        />
+                                        <div>
+                                            <div className="font-bold text-slate-800">Return items to inventory? (Restock)</div>
+                                            <div className="text-[11px] text-slate-600 mt-0.5">
+                                                When enabled, inventory counts in the catalog and Supabase database will be restored automatically for the items in this order.
+                                            </div>
+                                        </div>
+                                    </label>
+                                    {refundRestockCheckbox && Array.isArray(orderToRefund.items) && orderToRefund.items.length > 0 && (
+                                        <div className="mt-2.5 pt-2 border-t border-amber-200/60 text-[11px] text-slate-700 space-y-0.5">
+                                            <div className="font-semibold text-amber-900">Items to be restocked:</div>
+                                            {orderToRefund.items.map((it, idx) => (
+                                                <div key={idx} className="flex justify-between font-mono text-[10.5px]">
+                                                    <span>• {it.name || it.item_name}</span>
+                                                    <span>+{it.quantity || it.qty || 1} units</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* REFUND REASON */}
+                                <div>
+                                    <label className="font-bold text-slate-700 block mb-1">Reason for Refund / Notes</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        value={refundReasonInput}
+                                        onChange={(e) => setRefundReasonInput(e.target.value)}
+                                        placeholder="e.g. Quality issue, duplicate charge, wrong item served..."
+                                        className="w-full p-2.5 border border-slate-200 rounded-xl text-xs bg-white text-slate-800 focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400"
+                                    />
+                                </div>
+
+                                {/* ACTION BUTTONS */}
+                                <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
+                                    <button
+                                        type="button"
+                                        onClick={() => setOrderToRefund(null)}
+                                        className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-50 transition-colors"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={isSubmittingOrderRefund}
+                                        className="px-5 py-2 bg-[#7B1E22] hover:bg-[#681418] text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all disabled:opacity-50"
+                                    >
+                                        <Icon.CheckCircle2 className="w-3.5 h-3.5" />
+                                        <span>{isSubmittingOrderRefund ? 'Processing Refund...' : 'Confirm & Process Refund'}</span>
+                                    </button>
+                                </div>
+                            </form>
+                        </CustomModal>
+                    )}
                 </div>
             );
         }
@@ -8876,6 +9452,7 @@
             const [reportMode, setReportMode] = useState('WEEKLY');
             const [sortField, setSortField] = useState('debt');
             const [sortDirection, setSortDirection] = useState('desc');
+            const [liabilityTab, setLiabilityTab] = useState('students'); // 'students' | 'faculty'
 
             // Baseline historical records
             const [localRecords, setLocalRecords] = useState([
@@ -9030,6 +9607,46 @@
                 return Array.from(map.values());
             }, [localRecords, registeredUsers]);
 
+            // Faculty & Staff records mapped from registeredUsers
+            const facultyRecords = useMemo(() => {
+                const list = (registeredUsers || []).filter(u =>
+                    u.role === 'Teacher' || u.role === 'Staff' || u.role === 'Cashier' || u.salaryDeductionEligible || (parseFloat(u.accumulatedSalaryDeduction) || 0) > 0
+                );
+                return list.map(f => {
+                    const debt = parseFloat(f.accumulatedSalaryDeduction || 0);
+                    const transCount = (f.salaryDeductions || []).length;
+                    const lastTrans = transCount > 0 ? f.salaryDeductions[0] : null;
+                    const staffId = f.studentId || f.employeeId || f.id || 'FAC-000';
+                    return {
+                        id: staffId,
+                        rawId: f.id,
+                        refId: `PAYROLL-${staffId.replace(/[^a-zA-Z0-9]/g, '')}`,
+                        name: f.name || 'Faculty Member',
+                        grade: f.department || f.role || 'Staff Member',
+                        debt: debt,
+                        cap: 5000.00,
+                        parent: f.department || 'Payroll Division',
+                        parentContact: f.email || f.phone || 'HR Record',
+                        item: lastTrans ? (typeof lastTrans.items === 'string' ? lastTrans.items : 'Meal charges') : `${transCount} logged meal charge(s)`,
+                        photo: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=300&q=80',
+                        date: lastTrans?.date ? new Date(lastTrans.date) : new Date(),
+                        status: debt > 0 ? 'ACTIVE_DEBT' : 'PAID_DIRECT',
+                        synced: false,
+                        paymentMethod: null,
+                        receiptNo: null,
+                        settledAt: null,
+                        remarks: '',
+                        isFaculty: true,
+                        userObj: f
+                    };
+                });
+            }, [registeredUsers]);
+
+            // Base records active depending on liabilityTab
+            const activeBaseRecords = useMemo(() => {
+                return liabilityTab === 'faculty' ? facultyRecords : tuitionRecords;
+            }, [liabilityTab, tuitionRecords, facultyRecords]);
+
             // Helper for weekly breakdown
             const weekDays = useMemo(() => {
                 const now = new Date();
@@ -9049,7 +9666,7 @@
                     const dayKey = `${dayDate.getFullYear()}-${String(dayDate.getMonth() + 1).padStart(2, '0')}-${String(dayDate.getDate()).padStart(2, '0')}`;
                     const isToday = dayDate.toDateString() === now.toDateString();
 
-                    const dayDebtList = tuitionRecords.filter(r => {
+                    const dayDebtList = activeBaseRecords.filter(r => {
                         const rd = new Date(r.date);
                         return rd.getFullYear() === dayDate.getFullYear() &&
                             rd.getMonth() === dayDate.getMonth() &&
@@ -9067,7 +9684,7 @@
                     });
                 }
                 return days;
-            }, [tuitionRecords]);
+            }, [activeBaseRecords]);
 
             const monthWeeks = useMemo(() => {
                 const now = new Date();
@@ -9086,7 +9703,7 @@
                 ];
 
                 return weeksConfig.map((w) => {
-                    const weekRecords = tuitionRecords.filter(r => {
+                    const weekRecords = activeBaseRecords.filter(r => {
                         const rd = new Date(r.date);
                         const day = !isNaN(rd.getTime()) ? rd.getDate() : 1;
                         const recordWeek = Math.min(Math.ceil(day / 7), 5);
@@ -9103,24 +9720,24 @@
                         isCurrent
                     };
                 });
-            }, [tuitionRecords]);
+            }, [activeBaseRecords]);
 
             // Summary Metrics
             const totalActiveDebt = useMemo(() => {
-                return tuitionRecords.filter(r => r.status === 'ACTIVE_DEBT' || r.status === 'PARTIALLY_PAID').reduce((sum, r) => sum + (parseFloat(r.debt) || 0), 0);
-            }, [tuitionRecords]);
+                return activeBaseRecords.filter(r => r.status === 'ACTIVE_DEBT' || r.status === 'PARTIALLY_PAID').reduce((sum, r) => sum + (parseFloat(r.debt) || 0), 0);
+            }, [activeBaseRecords]);
 
             const activeDebtorsCount = useMemo(() => {
-                return tuitionRecords.filter(r => (r.status === 'ACTIVE_DEBT' || r.status === 'PARTIALLY_PAID') && r.debt > 0).length;
-            }, [tuitionRecords]);
+                return activeBaseRecords.filter(r => (r.status === 'ACTIVE_DEBT' || r.status === 'PARTIALLY_PAID') && r.debt > 0).length;
+            }, [activeBaseRecords]);
 
             const settledAccountsCount = useMemo(() => {
-                return tuitionRecords.filter(r => r.status === 'PAID_DIRECT' || r.status === 'SYNCED_TO_SIS' || r.status === 'ADMIN_WAIVED').length;
-            }, [tuitionRecords]);
+                return activeBaseRecords.filter(r => r.status === 'PAID_DIRECT' || r.status === 'SYNCED_TO_SIS' || r.status === 'ADMIN_WAIVED').length;
+            }, [activeBaseRecords]);
 
             // Filtered & Sorted
             const filteredTuition = useMemo(() => {
-                return tuitionRecords.filter(item => {
+                return activeBaseRecords.filter(item => {
                     if (searchQuery.trim()) {
                         const q = searchQuery.toLowerCase();
                         const matchName = item.name.toLowerCase().includes(q);
@@ -9168,7 +9785,7 @@
                     if (sortDirection === 'asc') return valA > valB ? 1 : -1;
                     return valA < valB ? 1 : -1;
                 });
-            }, [tuitionRecords, searchQuery, selectedDayKey, selectedWeekNum, reportMode, gradeFilter, statusFilter, sortField, sortDirection]);
+            }, [activeBaseRecords, searchQuery, selectedDayKey, selectedWeekNum, reportMode, gradeFilter, statusFilter, sortField, sortDirection]);
 
             const handleSort = (field) => {
                 if (sortField === field) {
@@ -9248,7 +9865,22 @@
 
                     // Invoke core handler
                     if (onSettleDebt) {
-                        await onSettleDebt(activeSettleRecord.id, amt, settleMethod, finalRef, settleRemarks);
+                        await onSettleDebt(activeSettleRecord.rawId || activeSettleRecord.id, amt, settleMethod, finalRef, settleRemarks);
+                    }
+
+                    if (activeSettleRecord.isFaculty) {
+                        setRegisteredUsers(prev => {
+                            const updated = prev.map(u => {
+                                if (u.id === activeSettleRecord.rawId || u.id === activeSettleRecord.id || u.studentId === activeSettleRecord.id) {
+                                    const curDec = parseFloat(u.accumulatedSalaryDeduction) || 0;
+                                    const newDec = isWaiver ? 0 : Math.max(0, curDec - amt);
+                                    return { ...u, accumulatedSalaryDeduction: newDec };
+                                }
+                                return u;
+                            });
+                            try { localStorage.setItem('novalunch_registered_users', JSON.stringify(updated)); } catch(e) {}
+                            return updated;
+                        });
                     }
 
                     window.dispatchEvent(new CustomEvent('canteen:transaction-updated', {
@@ -9329,6 +9961,22 @@
                 a.download = `SJC_PayLater_Settlement_Ledger_${new Date().toISOString().split('T')[0]}.csv`;
                 a.click();
                 showToast("Pay Later settlement ledger CSV exported for Registrar & Accounting.");
+            };
+
+            const handleExportFacultyPayrollCSV = () => {
+                const rows = filteredTuition;
+                const csv = "Employee ID,Staff Name,Department / Role,Transactions Count,Accrued Meal Debt (PHP),Payment Status,Payment Method,Official Receipt / Ref,Settlement Date,HR Contact,Remarks\n" +
+                    rows.map(r => {
+                        const transCount = (r.userObj && Array.isArray(r.userObj.salaryDeductions)) ? r.userObj.salaryDeductions.length : 0;
+                        return `"${r.id}","${r.name}","${r.grade}",${transCount},${r.debt.toFixed(2)},"${r.status}","${r.paymentMethod || 'N/A'}","${r.receiptNo || r.refId || 'N/A'}","${r.settledAt ? new Date(r.settledAt).toLocaleString() : new Date(r.date).toLocaleDateString()}","${r.parentContact}","${r.remarks || 'Payroll salary deduction'}"`;
+                    }).join('\n');
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `SJC_Faculty_Payroll_Deductions_${new Date().toISOString().split('T')[0]}.csv`;
+                a.click();
+                showToast("Faculty & staff payroll deduction ledger exported for HR & Accounting.");
             };
 
             const printReceiptWindow = () => {
@@ -9442,13 +10090,49 @@
 
             return (
                 <div className="space-y-5 animate-in fade-in duration-150">
+                    {/* SUB-NAV TAB SWITCHER */}
+                    <div className="flex items-center justify-between pb-1 flex-wrap gap-3">
+                        <div className="inline-flex bg-slate-100/90 p-1 rounded-2xl border border-slate-200/70 shadow-2xs">
+                            <button
+                                type="button"
+                                onClick={() => { setLiabilityTab('students'); setSelectedDayKey(null); setSelectedWeekNum(null); }}
+                                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                                    liabilityTab === 'students'
+                                        ? 'bg-white text-slate-900 shadow-xs'
+                                        : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                            >
+                                <Icon.Users className="w-3.5 h-3.5 text-amber-700" />
+                                <span>Students (Safety Net)</span>
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold border border-slate-200">
+                                    {tuitionRecords.filter(r => r.debt > 0).length}
+                                </span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => { setLiabilityTab('faculty'); setSelectedDayKey(null); setSelectedWeekNum(null); }}
+                                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                                    liabilityTab === 'faculty'
+                                        ? 'bg-white text-slate-900 shadow-xs'
+                                        : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                            >
+                                <Icon.Briefcase className="w-3.5 h-3.5 text-indigo-700" />
+                                <span>Faculty & Staff (Payroll Tab)</span>
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold border border-slate-200">
+                                    {facultyRecords.filter(r => r.debt > 0).length}
+                                </span>
+                            </button>
+                        </div>
+                    </div>
+
                     {/* METRICS & OVERVIEW BAR */}
                     <div className="grid grid-cols-1 sm:grid-cols-4 gap-3.5">
                         <div className="enterprise-card p-4 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex items-center justify-between">
                             <div>
                                 <div className="text-[10px] uppercase font-bold text-amber-800 tracking-wider">Total Active Credit Debt</div>
                                 <div className="font-outfit text-2xl font-black text-amber-950 mt-0.5">₱{totalActiveDebt.toFixed(2)}</div>
-                                <div className="text-[10px] text-amber-700 font-medium mt-0.5">Outstanding student tab liabilities</div>
+                                <div className="text-[10px] text-amber-700 font-medium mt-0.5">{liabilityTab === 'students' ? 'Outstanding student tab liabilities' : 'Accrued faculty payroll meal debt'}</div>
                             </div>
                             <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-800 flex items-center justify-center font-bold">
                                 <Icon.DollarSign className="w-5 h-5" />
@@ -9458,7 +10142,7 @@
                         <div className="enterprise-card p-4 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex items-center justify-between">
                             <div>
                                 <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Active Debt Accounts</div>
-                                <div className="font-outfit text-2xl font-black text-slate-900 mt-0.5">{activeDebtorsCount} <span className="text-xs font-normal text-slate-500">Students</span></div>
+                                <div className="font-outfit text-2xl font-black text-slate-900 mt-0.5">{activeDebtorsCount} <span className="text-xs font-normal text-slate-500">{liabilityTab === 'students' ? 'Students' : 'Faculty'}</span></div>
                                 <div className="text-[10px] text-slate-500 font-medium mt-0.5">Accounts with open credit</div>
                             </div>
                             <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-700 flex items-center justify-center font-bold">
@@ -9480,7 +10164,7 @@
                         <div className="enterprise-card p-4 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex items-center justify-between">
                             <div>
                                 <div className="text-[10px] uppercase font-bold text-indigo-800 tracking-wider">Tuition SIS Synced</div>
-                                <div className="font-outfit text-2xl font-black text-indigo-950 mt-0.5">{tuitionRecords.filter(r => r.status === 'SYNCED_TO_SIS').length} <span className="text-xs font-normal text-indigo-700">Batched</span></div>
+                                <div className="font-outfit text-2xl font-black text-indigo-950 mt-0.5">{activeBaseRecords.filter(r => r.status === 'SYNCED_TO_SIS').length} <span className="text-xs font-normal text-indigo-700">Batched</span></div>
                                 <div className="text-[10px] text-indigo-700 font-medium mt-0.5">Transferred to billing records</div>
                             </div>
                             <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-800 flex items-center justify-center font-bold">
@@ -9496,7 +10180,7 @@
                             <div className="relative min-w-[200px] flex-1 sm:flex-initial sm:w-64">
                                 <input
                                     type="text"
-                                    placeholder="Search student, ID, parent, OR ref..."
+                                    placeholder={liabilityTab === 'faculty' ? 'Search employee, ID, department, OR ref...' : 'Search student, ID, parent, OR ref...'}
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                     className="w-full bg-slate-50/90 border border-slate-200 rounded-xl pl-8 pr-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 transition-all font-medium"
@@ -9509,23 +10193,39 @@
                                 )}
                             </div>
 
-                            {/* GRADE DROPDOWN */}
-                            <div className="relative">
-                                <select
-                                    value={gradeFilter}
-                                    onChange={(e) => setGradeFilter(e.target.value)}
-                                    className="appearance-none bg-slate-50/90 border border-slate-200 rounded-xl pl-3 pr-7 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100/80 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 transition-all cursor-pointer"
-                                >
-                                    <option value="ALL">All Grades & Sections</option>
-                                    <option value="Grade 7">Grade 7</option>
-                                    <option value="Grade 8">Grade 8</option>
-                                    <option value="Grade 9">Grade 9</option>
-                                    <option value="Grade 10">Grade 10</option>
-                                    <option value="Grade 11">Grade 11</option>
-                                    <option value="Grade 12">Grade 12</option>
-                                </select>
-                                <Icon.ChevronDown className="w-3 h-3 absolute right-2.5 top-3 text-slate-400 pointer-events-none" />
-                            </div>
+                            {/* GRADE / DEPARTMENT DROPDOWN */}
+                            {liabilityTab === 'faculty' ? (
+                                <div className="relative">
+                                    <select
+                                        value={gradeFilter}
+                                        onChange={(e) => setGradeFilter(e.target.value)}
+                                        className="appearance-none bg-slate-50/90 border border-slate-200 rounded-xl pl-3 pr-7 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100/80 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 transition-all cursor-pointer"
+                                    >
+                                        <option value="ALL">All Departments</option>
+                                        <option value="Teacher">Teaching Staff</option>
+                                        <option value="Staff">Administrative Staff</option>
+                                        <option value="Cashier">Cashier / Canteen</option>
+                                    </select>
+                                    <Icon.ChevronDown className="w-3 h-3 absolute right-2.5 top-3 text-slate-400 pointer-events-none" />
+                                </div>
+                            ) : (
+                                <div className="relative">
+                                    <select
+                                        value={gradeFilter}
+                                        onChange={(e) => setGradeFilter(e.target.value)}
+                                        className="appearance-none bg-slate-50/90 border border-slate-200 rounded-xl pl-3 pr-7 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100/80 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400 transition-all cursor-pointer"
+                                    >
+                                        <option value="ALL">All Grades & Sections</option>
+                                        <option value="Grade 7">Grade 7</option>
+                                        <option value="Grade 8">Grade 8</option>
+                                        <option value="Grade 9">Grade 9</option>
+                                        <option value="Grade 10">Grade 10</option>
+                                        <option value="Grade 11">Grade 11</option>
+                                        <option value="Grade 12">Grade 12</option>
+                                    </select>
+                                    <Icon.ChevronDown className="w-3 h-3 absolute right-2.5 top-3 text-slate-400 pointer-events-none" />
+                                </div>
+                            )}
 
                             {/* STATUS DROPDOWN */}
                             <div className="relative">
@@ -9595,12 +10295,21 @@
                                 </button>
                             </div>
 
-                            <button
-                                onClick={handleExportSisCSV}
-                                className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs"
-                            >
-                                <Icon.Download className="w-3.5 h-3.5 text-amber-300" /> Export Settlement CSV
-                            </button>
+                            {liabilityTab === 'faculty' ? (
+                                <button
+                                    onClick={handleExportFacultyPayrollCSV}
+                                    className="px-3.5 py-2 bg-indigo-900 hover:bg-indigo-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs"
+                                >
+                                    <Icon.Download className="w-3.5 h-3.5 text-indigo-300" /> Export Payroll CSV
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={handleExportSisCSV}
+                                    className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs"
+                                >
+                                    <Icon.Download className="w-3.5 h-3.5 text-amber-300" /> Export Settlement CSV
+                                </button>
+                            )}
                         </div>
                     </div>
 
@@ -9688,28 +10397,28 @@
                                             className="py-3.5 px-4 cursor-pointer select-none hover:text-slate-900 transition-colors"
                                         >
                                             <div className="flex items-center gap-1">
-                                                <span>STUDENT ACCOUNT</span>
+                                                <span>{liabilityTab === 'faculty' ? 'EMPLOYEE ACCOUNT' : 'STUDENT ACCOUNT'}</span>
                                                 <Icon.ArrowUpDown className="w-3 h-3 text-slate-400" />
                                             </div>
                                         </th>
                                         <th className="py-3.5 px-4 font-bold text-slate-500">
-                                            PURCHASED ITEMS & PROOF
+                                            {liabilityTab === 'faculty' ? 'LAST MEAL CHARGE' : 'PURCHASED ITEMS & PROOF'}
                                         </th>
                                         <th className="py-3.5 px-4 font-bold text-slate-500">
-                                            GRADE & SECTION
+                                            {liabilityTab === 'faculty' ? 'DEPARTMENT & ROLE' : 'GRADE & SECTION'}
                                         </th>
                                         <th className="py-3.5 px-4 font-bold text-slate-500">
-                                            PARENT CONTACT
+                                            {liabilityTab === 'faculty' ? 'HR / EMAIL CONTACT' : 'PARENT CONTACT'}
                                         </th>
                                         <th className="py-3.5 px-4 font-bold text-slate-500 text-right">
-                                            CREDIT CAP
+                                            {liabilityTab === 'faculty' ? 'PAYROLL CAP' : 'CREDIT CAP'}
                                         </th>
                                         <th
                                             onClick={() => handleSort('debt')}
                                             className="py-3.5 px-4 cursor-pointer select-none hover:text-slate-900 transition-colors text-right"
                                         >
                                             <div className="flex items-center justify-end gap-1">
-                                                <span>ACTIVE TAB DEBT</span>
+                                                <span>{liabilityTab === 'faculty' ? 'ACCRUED DEDUCTION' : 'ACTIVE TAB DEBT'}</span>
                                                 <Icon.ArrowUpDown className="w-3 h-3 text-slate-400" />
                                             </div>
                                         </th>
@@ -9867,7 +10576,11 @@
                                         <tr>
                                             <td colSpan="8" className="py-12 text-center text-slate-400">
                                                 <Icon.Inbox className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-                                                <p className="font-semibold text-slate-600">No student debt records match your search filters.</p>
+                                                <p className="font-semibold text-slate-600">
+                                                    {liabilityTab === 'faculty'
+                                                        ? 'No faculty or staff payroll deduction records match your filters.'
+                                                        : 'No student debt records match your search filters.'}
+                                                </p>
                                             </td>
                                         </tr>
                                     )}
@@ -9878,11 +10591,11 @@
                         {/* TABLE FOOTER */}
                         <div className="p-4 bg-slate-50/80 border-t border-slate-200/90 flex flex-col sm:flex-row justify-between items-center gap-3 text-xs text-slate-600">
                             <div>
-                                Showing <strong className="text-slate-900">{filteredTuition.length}</strong> student ledger account{filteredTuition.length === 1 ? '' : 's'}
+                                Showing <strong className="text-slate-900">{filteredTuition.length}</strong> {liabilityTab === 'faculty' ? 'faculty' : 'student'} ledger account{filteredTuition.length === 1 ? '' : 's'}
                             </div>
                             <div className="flex items-center gap-4 font-mono">
                                 <div>
-                                    Total Unsettled Debt: <strong className="text-amber-900 font-bold">₱{filteredTuition.reduce((sum, r) => sum + r.debt, 0).toFixed(2)}</strong>
+                                    {liabilityTab === 'faculty' ? 'Total Accrued Payroll Deduction:' : 'Total Unsettled Debt:'} <strong className="text-amber-900 font-bold">₱{filteredTuition.reduce((sum, r) => sum + r.debt, 0).toFixed(2)}</strong>
                                 </div>
                             </div>
                         </div>
@@ -9899,15 +10612,15 @@
                     >
                         {activeSettleRecord && (
                             <div className="space-y-4 py-2">
-                                {/* STUDENT DEBT BANNER */}
+                                {/* DEBT BANNER */}
                                 <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-center justify-between">
                                     <div>
-                                        <span className="text-[10px] uppercase font-bold text-amber-800 tracking-wider">Active Tab Debt Due</span>
+                                        <span className="text-[10px] uppercase font-bold text-amber-800 tracking-wider">{activeSettleRecord.isFaculty ? 'Accrued Payroll Deduction' : 'Active Tab Debt Due'}</span>
                                         <div className="font-outfit text-2xl font-black text-amber-900">₱{activeSettleRecord.debt.toFixed(2)}</div>
-                                        <div className="text-[11px] text-amber-800/80 font-medium">Guardian: {activeSettleRecord.parent}</div>
+                                        <div className="text-[11px] text-amber-800/80 font-medium">{activeSettleRecord.isFaculty ? `Department: ${activeSettleRecord.parent}` : `Guardian: ${activeSettleRecord.parent}`}</div>
                                     </div>
                                     <div className="text-right">
-                                        <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Credit Limit</span>
+                                        <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">{activeSettleRecord.isFaculty ? 'Payroll Deduction Cap' : 'Credit Limit'}</span>
                                         <div className="font-outfit text-lg font-bold text-slate-700">₱{activeSettleRecord.cap.toFixed(2)}</div>
                                         <div className="text-[10px] text-slate-500 font-mono">Ref: {activeSettleRecord.refId}</div>
                                     </div>
@@ -10530,6 +11243,8 @@
             const [registerModalOpen, setRegisterModalOpen] = useState(false);
             const [resetEmail, setResetEmail] = useState('');
             const [resetSent, setResetSent] = useState(false);
+            const [resetVerificationCode, setResetVerificationCode] = useState('');
+            const [resetMatchedAccount, setResetMatchedAccount] = useState(null);
             const [loginErrorMsg, setLoginErrorMsg] = useState('');
             const [resetErrorMsg, setResetErrorMsg] = useState('');
 
@@ -10693,37 +11408,58 @@
                 const isStudentId = studentIdRegex.test(cleanResetInput);
 
                 if (!isEmail && !isStudentId) {
-                    setResetErrorMsg('Please enter a valid Email address (e.g. user@sjc.edu.ph) or Student ID (e.g. 2026-01900).');
+                    setResetErrorMsg('Please enter a valid Email address (e.g. user@sjc.edu.ph) or Student/Staff ID (e.g. 2026-01900).');
                     return;
                 }
 
                 const matchedUser = registeredUsers.find(u =>
                     (u.email && u.email.toLowerCase() === cleanResetInput) ||
-                    (u.studentId && u.studentId.toLowerCase() === cleanResetInput)
+                    (u.studentId && u.studentId.toLowerCase() === cleanResetInput) ||
+                    (u.id && u.id.toLowerCase() === cleanResetInput)
                 );
 
                 if (!matchedUser) {
-                    setResetErrorMsg('No registered account found matching this email address or Student ID.');
+                    setResetErrorMsg('No registered account found matching this email address or Student/Staff ID.');
                     return;
                 }
 
-                if (!matchedUser.email || !emailRegex.test(matchedUser.email)) {
-                    setResetErrorMsg('The requested account does not have a valid email address linked for recovery.');
-                    return;
-                }
+                // Generate 6-digit verification code
+                const code = String(Math.floor(100000 + Math.random() * 900000));
+                setResetVerificationCode(code);
+                setResetMatchedAccount(matchedUser);
+
+                // Dispatch notification alert to admin queue
+                const notifEntry = {
+                    id: 'NOTIF-RESET-' + Date.now(),
+                    type: 'PASSWORD_RESET_REQUEST',
+                    title: 'Password Reset Request',
+                    message: `Recovery requested for ${matchedUser.name} (${matchedUser.studentId || matchedUser.email || 'User'}). Verification Code: ${code}`,
+                    timestamp: new Date().toISOString(),
+                    read: false,
+                    is_read: false,
+                    recipientRole: 'admin',
+                    metadata: {
+                        userId: matchedUser.id,
+                        code: code,
+                        email: matchedUser.email
+                    }
+                };
 
                 try {
-                    if (supabaseClient) {
-                        const { error } = await supabaseClient.auth.resetPasswordForEmail(matchedUser.email);
-                        if (error) {
-                            throw new Error(error.message || 'Supabase password reset request failed.');
-                        }
+                    const existingNotifs = JSON.parse(localStorage.getItem('novalunch_notifications') || '[]');
+                    localStorage.setItem('novalunch_notifications', JSON.stringify([notifEntry, ...existingNotifs]));
+                    if (typeof window !== 'undefined' && window.dispatchEvent) {
+                        window.dispatchEvent(new CustomEvent('canteen:notification-added', { detail: notifEntry }));
                     }
-                    setResetSent(true);
-                } catch (err) {
-                    console.error("[Password Recovery Error]", err);
-                    setResetErrorMsg(`Failed to send recovery link: ${err.message}`);
-                }
+                } catch (_) {}
+
+                try {
+                    if (supabaseClient && matchedUser.email && isEmail) {
+                        await supabaseClient.auth.resetPasswordForEmail(matchedUser.email).catch(() => {});
+                    }
+                } catch (_) {}
+
+                setResetSent(true);
             };
 
             return (
@@ -10950,15 +11686,52 @@
                     </div>
 
                     {/* Password Recovery Modal */}
-                    <CustomModal isOpen={forgotModalOpen} onClose={() => { setForgotModalOpen(false); setResetSent(false); setResetErrorMsg(''); }} title="Password Recovery" subtitle="" icon={Icon.Mail} size="md">
+                    <CustomModal isOpen={forgotModalOpen} onClose={() => { setForgotModalOpen(false); setResetSent(false); setResetErrorMsg(''); setResetVerificationCode(''); setResetMatchedAccount(null); }} title="Password Recovery" subtitle="" icon={Icon.Mail} size="md">
                         {resetSent ? (
-                            <div className="text-center space-y-3 py-2">
-                                <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-center mx-auto">
-                                    <Icon.CheckCircle className="w-6 h-6" />
+                            <div className="text-center space-y-4 py-2 animate-in fade-in duration-150">
+                                <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-700 border border-emerald-200/80 flex items-center justify-center mx-auto shadow-2xs">
+                                    <Icon.ShieldCheck className="w-7 h-7 stroke-[2.2]" />
                                 </div>
-                                <h3 className="font-outfit text-base font-bold text-slate-900">Password Reset Email Sent!</h3>
-                                <p className="text-xs text-slate-600">We sent instructions to <strong className="text-slate-900">{resetEmail || "your registered email"}</strong>. Check your inbox to complete recovery.</p>
-                                <ActionButton variant="secondary" onClick={() => { setForgotModalOpen(false); setResetSent(false); setResetErrorMsg(''); }} className="w-full py-2 font-bold mt-2">Return to Login</ActionButton>
+                                <div className="space-y-1">
+                                    <h3 className="font-outfit text-lg font-bold text-slate-900 tracking-tight">Recovery Code Generated!</h3>
+                                    <p className="text-xs text-slate-500">
+                                        Password recovery verification code for <strong className="text-slate-800">{resetMatchedAccount?.name || resetEmail}</strong>
+                                    </p>
+                                </div>
+
+                                {/* 6-DIGIT VERIFICATION CODE CARD */}
+                                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                                    <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">
+                                        6-Digit Verification Code
+                                    </div>
+                                    <div className="font-mono text-3xl font-extrabold tracking-widest text-[#7B1E22] selection:bg-rose-100">
+                                        {resetVerificationCode || '849201'}
+                                    </div>
+                                    <div className="text-[11px] text-slate-500">
+                                        A notification alert has also been dispatched to the IT Administrator.
+                                    </div>
+                                </div>
+
+                                <div className="p-3 bg-amber-50/70 border border-amber-200/60 rounded-xl text-[11px] text-amber-900 text-left flex items-start gap-2">
+                                    <Icon.Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                    <span>
+                                        Present this code to the Canteen Administrator to instantly complete your password update.
+                                    </span>
+                                </div>
+
+                                <ActionButton
+                                    variant="primary"
+                                    onClick={() => {
+                                        setForgotModalOpen(false);
+                                        setResetSent(false);
+                                        setResetErrorMsg('');
+                                        setResetVerificationCode('');
+                                        setResetMatchedAccount(null);
+                                    }}
+                                    className="w-full py-2.5 font-bold shadow-xs cursor-pointer"
+                                >
+                                    Return to Login
+                                </ActionButton>
                             </div>
                         ) : (
                             <form onSubmit={handleResetSubmit} className="space-y-4">
@@ -10968,21 +11741,21 @@
                                         <span>{resetErrorMsg}</span>
                                     </div>
                                 )}
-                                <p className="text-xs text-slate-600">Enter your email address or Student/Staff ID below to receive a password reset link.</p>
+                                <p className="text-xs text-slate-600">Enter your registered email address or Student/Staff ID Number to generate a verification code.</p>
                                 <div>
-                                    <label className="block text-xs font-semibold mb-1">Email or Student ID</label>
+                                    <label className="block text-xs font-semibold mb-1">Email or Student / Staff ID</label>
                                     <input
                                         type="text"
                                         required
-                                        placeholder="juan.delacruz@sjc.edu.ph"
+                                        placeholder="e.g. 2026-01900 or user@sjc.edu.ph"
                                         value={resetEmail}
                                         onChange={(e) => { setResetEmail(e.target.value); setResetErrorMsg(''); }}
-                                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs font-medium"
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs font-medium focus:bg-white"
                                     />
                                 </div>
-                                <div className="flex gap-2 pt-2 border-t">
+                                <div className="flex gap-2 pt-2 border-t border-slate-100">
                                     <ActionButton variant="secondary" onClick={() => { setForgotModalOpen(false); setResetErrorMsg(''); }} className="w-1/3 py-2">Cancel</ActionButton>
-                                    <ActionButton variant="primary" type="submit" className="w-2/3 py-2 font-bold">Send Recovery Link</ActionButton>
+                                    <ActionButton variant="primary" type="submit" className="w-2/3 py-2 font-bold">Request Recovery Code</ActionButton>
                                 </div>
                             </form>
                         )}
@@ -16639,7 +17412,167 @@
                     </React.Fragment>
                     )}
 
-                    {/* 5. NATIVE iOS FROSTED GLASS TAB BAR (MATCHING STUDENT PASS NAVIGATION) */}
+                    {/* TAB 4: GUARDRAILS (MOBILE — DAILY CAP, ALLERGENS, SAFETY NET) */}
+                    {isGuardrailsTab && (
+                        <div key="tab-parent-guardrails" className="min-h-screen pb-24 overflow-y-auto">
+                            <div className="mx-4 mt-3 space-y-3">
+                                {/* Header */}
+                                <div className="flex items-center justify-between pt-1 pb-2">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="w-8 h-8 rounded-xl bg-[#7B1E22]/10 text-[#7B1E22] border border-[#7B1E22]/20 flex items-center justify-center shrink-0">
+                                            <Icon.ShieldCheck className="w-4 h-4 stroke-[2.2]" />
+                                        </div>
+                                        <div>
+                                            <h2 className="font-outfit font-extrabold text-base text-slate-900 tracking-tight">Guardrails</h2>
+                                            <p className="text-[10px] text-slate-400 font-medium mt-0.5">Controls for {childName}</p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={handleSaveGuardrails}
+                                        className="h-9 px-4 bg-[#7B1E22] hover:bg-[#631418] text-white rounded-full text-xs font-semibold flex items-center gap-1.5 active:scale-95 transition-all shadow-xs cursor-pointer"
+                                    >
+                                        <Icon.Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                                        <span>Save</span>
+                                    </button>
+                                </div>
+
+                                {saveStatusMsg && (
+                                    <div className={`p-3 rounded-2xl text-xs font-semibold flex items-center gap-2 animate-in fade-in ${!saveStatusMsg.includes('Failed') && !saveStatusMsg.includes('Error') ? 'bg-emerald-50 text-emerald-800 border border-emerald-200/80' : 'bg-rose-50 text-rose-800 border border-rose-200/80'}`}>
+                                        <Icon.Info className="w-4 h-4 shrink-0" />
+                                        <span>{saveStatusMsg}</span>
+                                    </div>
+                                )}
+
+                                {/* DAILY SPENDING CAP */}
+                                <div className="bg-white rounded-3xl border border-slate-200/60 shadow-[0_2px_12px_rgba(0,0,0,0.03)] p-5 space-y-4">
+                                    <div className="flex items-center gap-2.5 pb-2 border-b border-slate-100">
+                                        <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 border border-amber-200/60 flex items-center justify-center shrink-0">
+                                            <Icon.DollarSign className="w-3.5 h-3.5 stroke-[2.2]" />
+                                        </div>
+                                        <h3 className="font-outfit font-bold text-sm text-slate-900">Spending Limits</h3>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs font-semibold text-slate-700">Daily Spending Cap</span>
+                                            <span className="text-xs font-bold text-[#7B1E22] font-mono tabular-nums">₱{parseFloat(newLimitInput || 0).toFixed(2)}</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min="0"
+                                            max="1000"
+                                            step="50"
+                                            value={newLimitInput || 200}
+                                            onChange={(e) => setNewLimitInput(e.target.value)}
+                                            className="w-full accent-[#7B1E22] cursor-pointer"
+                                        />
+                                        <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium">
+                                            <span>₱0</span>
+                                            <span>₱1,000</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs font-semibold text-slate-700">Weekly Limit</span>
+                                            <span className="text-xs font-bold text-slate-500 font-mono tabular-nums">₱{parseFloat(weeklyLimitState || 0).toFixed(2)}</span>
+                                        </div>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            max="5000"
+                                            step="50"
+                                            value={weeklyLimitState || ''}
+                                            onChange={(e) => setWeeklyLimitState(e.target.value)}
+                                            placeholder="e.g. 1000.00"
+                                            className="w-full bg-[#F2F2F7] rounded-xl px-3.5 py-2.5 text-xs font-mono font-semibold text-slate-900 outline-none border border-transparent focus:border-[#7B1E22]/30 focus:ring-2 focus:ring-[#7B1E22]/10 transition-all"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* ALLERGEN RESTRICTIONS */}
+                                <div className="bg-white rounded-3xl border border-slate-200/60 shadow-[0_2px_12px_rgba(0,0,0,0.03)] p-5 space-y-3">
+                                    <div className="flex items-center gap-2.5 pb-2 border-b border-slate-100">
+                                        <div className="w-7 h-7 rounded-lg bg-rose-50 text-rose-600 border border-rose-200/60 flex items-center justify-center shrink-0">
+                                            <Icon.AlertTriangle className="w-3.5 h-3.5 stroke-[2.2]" />
+                                        </div>
+                                        <h3 className="font-outfit font-bold text-sm text-slate-900">Dietary Restrictions</h3>
+                                    </div>
+
+                                    {[
+                                        { label: 'Restrict Sugary Items', value: restrictSugar, setter: setRestrictSugar },
+                                        { label: 'Restrict Candies & Sweets', value: restrictCandies, setter: setRestrictCandies },
+                                        { label: 'Restrict Fried Foods', value: restrictFried, setter: setRestrictFried },
+                                        { label: 'Restrict Caffeinated Drinks', value: restrictCaffeine, setter: setRestrictCaffeine },
+                                        { label: 'Peanut & Nut Allergy Lock', value: restrictPeanuts, setter: setRestrictPeanuts },
+                                    ].map(({ label, value, setter }) => (
+                                        <div key={label} className="flex items-center justify-between py-2 border-b border-slate-50 last:border-b-0">
+                                            <div>
+                                                <div className="text-xs font-semibold text-slate-900">{label}</div>
+                                                <div className="text-[10px] text-slate-400 mt-0.5">POS counter warning</div>
+                                            </div>
+                                            <input type="checkbox" checked={value} onChange={(e) => setter(e.target.checked)} className="ios-toggle" />
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* SAFETY NET */}
+                                <div className="bg-white rounded-3xl border border-slate-200/60 shadow-[0_2px_12px_rgba(0,0,0,0.03)] p-5 space-y-3">
+                                    <div className="flex items-center gap-2.5 pb-2 border-b border-slate-100">
+                                        <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-200/60 flex items-center justify-center shrink-0">
+                                            <Icon.ShieldCheck className="w-3.5 h-3.5 stroke-[2.2]" />
+                                        </div>
+                                        <h3 className="font-outfit font-bold text-sm text-slate-900">Safety Net</h3>
+                                    </div>
+
+                                    <div className="flex items-center justify-between py-1">
+                                        <div>
+                                            <div className="text-xs font-semibold text-slate-900">Emergency Pay Later</div>
+                                            <div className="text-[10px] text-slate-400 mt-0.5">Allow meal credit when balance is zero</div>
+                                        </div>
+                                        <input
+                                            type="checkbox"
+                                            checked={payLaterAllowanceState || payLaterOverrideCap}
+                                            onChange={(e) => {
+                                                if (setPayLaterAllowanceState) setPayLaterAllowanceState(e.target.checked);
+                                                if (setPayLaterOverrideCap) setPayLaterOverrideCap(e.target.checked);
+                                            }}
+                                            className="ios-toggle"
+                                        />
+                                    </div>
+
+                                    <div className="space-y-1.5 pt-1">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs font-semibold text-slate-700">Pay Later Credit Limit</span>
+                                            <span className="text-xs font-bold text-amber-700 font-mono tabular-nums">₱{parseFloat(creditLimitState || 0).toFixed(2)}</span>
+                                        </div>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            max="2000"
+                                            step="50"
+                                            value={creditLimitState || ''}
+                                            onChange={(e) => setCreditLimitState(e.target.value)}
+                                            placeholder="e.g. 500.00"
+                                            className="w-full bg-[#F2F2F7] rounded-xl px-3.5 py-2.5 text-xs font-mono font-semibold text-slate-900 outline-none border border-transparent focus:border-amber-500/30 focus:ring-2 focus:ring-amber-100 transition-all"
+                                        />
+                                    </div>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={handleSaveGuardrails}
+                                    className="w-full py-3.5 bg-[#7B1E22] hover:bg-[#631418] text-white font-bold text-sm rounded-2xl shadow-xs active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer"
+                                >
+                                    <Icon.Check className="w-4 h-4 stroke-[2.5]" />
+                                    <span>Save All Guardrails</span>
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+
                     <nav
                         aria-label="Parent Mobile Navigation"
                         className="fixed bottom-0 left-0 right-0 z-40 bg-white/80 backdrop-blur-2xl border-t border-black/[0.08] pt-1.5 pb-[max(env(safe-area-inset-bottom),0.5rem)] px-3 flex flex-col items-center shadow-[0_-4px_20px_rgba(0,0,0,0.03)]"
@@ -16961,6 +17894,16 @@
                             .eq('student_id', targetId);
                     } catch (dbErr) {
                         console.warn("[ParentView] Supabase link delete notice:", dbErr);
+                    }
+
+                    // Fix 5: Invalidate stale RFID badge mapping on the student profile
+                    // so the physical kiosk rejects the badge on next remote sync cycle.
+                    try {
+                        if (window.CanteenDB?.updateUser) {
+                            await window.CanteenDB.updateUser(targetId, { rfid_uid: null });
+                        }
+                    } catch (rfidErr) {
+                        console.warn("[ParentView] rfid_uid clear notice:", rfidErr);
                     }
                 }
 
@@ -20701,16 +21644,6 @@
                 ['teacher', 'staff', 'cashier', 'admin', 'faculty'].includes((selectedStudent.role || '').toLowerCase())
             );
 
-            // Auto-fallback if selected payment method is not permitted for current customer account
-            useEffect(() => {
-                if (paymentMethod === 'pay_later' && !isStudentAccount && !isStaffOrTeacher) {
-                    setPaymentMethod('cash');
-                }
-                if (paymentMethod === 'salary_deduction' && !isStaffOrTeacher) {
-                    setPaymentMethod('cash');
-                }
-            }, [selectedStudent, isStudentAccount, isStaffOrTeacher, paymentMethod]);
-
             // UI Camera Stream Toggle State
             const [showLiveCamera, setShowLiveCamera] = useState(true);
 
@@ -20767,6 +21700,43 @@
             const [shiftNotesInput, setShiftNotesInput] = useState('');
             const [zReadReport, setZReadReport] = useState(null);
             const [dismissedAILabels, setDismissedAILabels] = useState(new Set());
+
+            // ── Cash Drawer & Shift Management State (Wave 5) ──
+            const [cashierShift, setCashierShift] = useState(() => {
+                try {
+                    const saved = localStorage.getItem('novalunch_cashier_shift');
+                    if (saved) return JSON.parse(saved);
+                } catch (e) { }
+                return {
+                    id: 'SHIFT-' + Date.now(),
+                    status: 'OPEN',
+                    openedAt: new Date().toISOString(),
+                    closedAt: null,
+                    openingFloat: 1500.00,
+                    cashPayouts: [],
+                    actualCashCounted: null,
+                    cashierId: currentUser?.id || 'cashier-01',
+                    cashierName: currentUser?.name || 'Cashier Register #01'
+                };
+            });
+
+            const updateCashierShift = (newShift) => {
+                setCashierShift(newShift);
+                try {
+                    localStorage.setItem('novalunch_cashier_shift', JSON.stringify(newShift));
+                } catch (e) { }
+            };
+
+            const [openDrawerModalOpen, setOpenDrawerModalOpen] = useState(false);
+            const [openingFloatInput, setOpeningFloatInput] = useState(String(cashierShift?.openingFloat || 1500));
+            const [cashPayoutModalOpen, setCashPayoutModalOpen] = useState(false);
+            const [cashPayoutAmountInput, setCashPayoutAmountInput] = useState('');
+            const [cashPayoutReasonInput, setCashPayoutReasonInput] = useState('');
+            const [actualCashCountedInput, setActualCashCountedInput] = useState(
+                cashierShift?.actualCashCounted !== null && cashierShift?.actualCashCounted !== undefined 
+                    ? String(cashierShift.actualCashCounted) 
+                    : ''
+            );
 
             // Handler: Trigger Manual Offline Edge Sync
             const handleTriggerOfflineSync = async () => {
@@ -21203,10 +22173,10 @@
                         ...prev,
                         online: true,
                         state: data.kiosk_state || 'IDLE',
-                        student: data.student || null,
-                        cart: data.cart || [],
+                        student: data.active_student || data.student || null,
+                        cart: data.cart_items || data.cart || [],
                         totalAmount: data.total_amount || 0.0,
-                        itemsCount: data.items_count || (data.cart ? data.cart.length : 0),
+                        itemsCount: data.items_count || (data.cart_items ? data.cart_items.length : 0),
                         countdown: data.countdown_remaining || 0,
                         lastSyncTime: Date.now()
                     }));
@@ -21216,37 +22186,72 @@
                     const isRegisterIdle = (currentPosCart.length === 0 && !isProcessingCheckoutRef.current);
 
                     // Match student if scanned on kiosk and cashier register is idle
-                    if (data.student && isRegisterIdle) {
+                    const kioskStudent = data.active_student || data.student;
+                    if (kioskStudent && isRegisterIdle) {
                         const currentUsers = registeredUsersRef.current || [];
                         const matched = currentUsers.find(u =>
-                            (u.studentId && u.studentId === data.student.id) ||
-                            (u.id && u.id === data.student.id) ||
-                            (u.rfidUid && data.student.rfidUid && u.rfidUid.replace(/-/g, '').toUpperCase() === data.student.rfidUid.replace(/-/g, '').toUpperCase())
+                            (u.studentId && u.studentId === kioskStudent.id) ||
+                            (u.id && u.id === kioskStudent.id) ||
+                            (u.rfidUid && kioskStudent.rfidUid && u.rfidUid.replace(/-/g, '').toUpperCase() === kioskStudent.rfidUid.replace(/-/g, '').toUpperCase())
                         );
                         if (matched) {
                             setSelectedStudent(matched);
                         }
                     }
 
-                    // Auto-mirror detected items to POS register ONLY if register is idle and mirroring enabled
-                    if (autoMirrorKiosk && isRegisterIdle && data.cart && data.cart.length > 0 && (data.kiosk_state === 'SCANNING' || data.kiosk_state === 'COUNTDOWN' || data.kiosk_state === 'CONFIRMATION' || data.kiosk_state === 'PAYMENT_CONFIRMATION' || data.kiosk_state === 'SETTLEMENT')) {
+                    // ── Wave 3 Task 3: ORDER_COMPLETED / Settlement clearing ──────────────
+                    // When kiosk transitions to SETTLEMENT (payment approved) or broadcasts an
+                    // empty cart from IDLE (after session wipe), clear the Cashier Order Tally.
+                    const isSettlementTransition = data.kiosk_state === 'SETTLEMENT';
+                    const isEmptyCartBroadcast = (
+                        (data.kiosk_state === 'IDLE' || data.kiosk_state === 'SETTLEMENT') &&
+                        (!data.cart_items || data.cart_items.length === 0) &&
+                        (!data.cart || data.cart.length === 0)
+                    );
+                    if ((isSettlementTransition || isEmptyCartBroadcast) && !isProcessingCheckoutRef.current) {
+                        setPosCart([]);
+                        setSelectedStudent(null);
+                        setCashTendered('');
+                        return; // Don't re-populate cart on settlement/idle events
+                    }
+
+                    // ── Wave 3 Task 1: Direct cart_items → posCart sync ────────────────
+                    // Use the standardized normalized cart_items array from the kiosk payload.
+                    // This replaces the old add-missing-only logic with a full authoritative sync.
+                    const kioskCartItems = data.cart_items && data.cart_items.length > 0
+                        ? data.cart_items
+                        : (data.cart && data.cart.length > 0 ? data.cart : null);
+
+                    const activeKioskStates = ['SCANNING', 'COUNTDOWN', 'CONFIRMATION', 'PAYMENT_CONFIRMATION'];
+                    if (autoMirrorKiosk && isRegisterIdle && kioskCartItems && kioskCartItems.length > 0 && activeKioskStates.includes(data.kiosk_state)) {
                         const currentCatalog = menuCatalogRef.current || [];
                         const currentDismissed = dismissedAILabelsRef.current;
-                        data.cart.forEach(kItem => {
+
+                        // Build a full replacement cart from the kiosk's canonical item list.
+                        // Quantities and prices come directly from the AI-detected payload.
+                        const newPosCart = [];
+                        kioskCartItems.forEach(kItem => {
                             const itemNameKey = (kItem.name || '').toLowerCase().trim();
                             if (currentDismissed && currentDismissed.has(itemNameKey)) return;
-                            const catalogItem = currentCatalog.find(m => m.name.toLowerCase().includes(itemNameKey) || itemNameKey.includes(m.name.toLowerCase())) || {
-                                id: kItem.id || `kiosk-${kItem.name.replace(/\s+/g, '-').toLowerCase()}`,
-                                name: kItem.name,
-                                price: kItem.price,
+                            // Resolve against local catalog for category / stock fields
+                            const catalogMatch = currentCatalog.find(m =>
+                                m.name.toLowerCase().includes(itemNameKey) ||
+                                itemNameKey.includes(m.name.toLowerCase())
+                            );
+                            const qty = kItem.quantity || kItem.qty || 1;
+                            const baseItem = catalogMatch || {
+                                id:       kItem.id || `kiosk-${(kItem.name || '').replace(/\s+/g, '-').toLowerCase()}`,
+                                name:     kItem.name,
+                                price:    parseFloat(kItem.price) || 0,
                                 category: kItem.category || 'Meals & Mains',
-                                stock: kItem.stock || 50
+                                stock:    kItem.stock || 50
                             };
-                            const existing = currentPosCart.find(p => p.name === catalogItem.name || p.id === catalogItem.id);
-                            if (!existing) {
-                                onAddToCart(catalogItem);
-                            }
+                            newPosCart.push({ ...baseItem, qty });
                         });
+
+                        if (newPosCart.length > 0) {
+                            setPosCart(newPosCart);
+                        }
                     }
                 };
 
@@ -22674,77 +23679,270 @@
                     {currentTab === 'shift' && (
                         <div className="flex-1 p-6 space-y-6 overflow-y-auto">
                             <div className="enterprise-card p-6 sm:p-7 rounded-3xl bg-white space-y-6 shadow-xs border border-slate-200/80">
-                                {/* HEADER & PRINT ACTION */}
-                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-5">
-                                    <div className="flex items-center gap-3.5">
-                                        <div className="w-10 h-10 rounded-2xl bg-brand-50 border border-brand-100/80 text-brand-700 flex items-center justify-center shadow-2xs shrink-0">
-                                            <Icon.DollarSign className="w-5 h-5" />
-                                        </div>
-                                        <div>
-                                            <h2 className="font-outfit text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Cash Drawer</h2>
-                                        </div>
-                                    </div>
-                                    <button
-                                        onClick={() => window.print()}
-                                        className="h-9 px-3.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl shadow-2xs transition-all active:scale-98 flex items-center gap-2 cursor-pointer"
-                                    >
-                                        <Icon.Printer className="w-3.5 h-3.5 text-slate-300" />
-                                        <span>Print Z-Read</span>
-                                    </button>
-                                </div>
-
-                                {/* Z-READ METRICS DISPLAY */}
                                 {(() => {
-                                    const floatAmt = 1000.00;
-                                    const rfidSales = recentOrders.filter(o => (o.paymentMethod || o.payment_method || '').toUpperCase() === 'RFID' && o.status !== 'VOIDED').reduce((sum, o) => sum + (parseFloat(o.total || o.final_amount || o.total_amount || 0) || 0), 0);
-                                    const cashSales = recentOrders.filter(o => (o.paymentMethod || o.payment_method || '').toUpperCase() === 'CASH' && o.status !== 'VOIDED').reduce((sum, o) => sum + (parseFloat(o.total || o.final_amount || o.total_amount || 0) || 0), 0);
-                                    const payLaterSales = recentOrders.filter(o => (o.paymentMethod || o.payment_method || '').toUpperCase().includes('PAY_LATER') && o.status !== 'VOIDED').reduce((sum, o) => sum + (parseFloat(o.total || o.final_amount || o.total_amount || 0) || 0), 0);
-                                    const grandTotal = recentOrders.filter(o => o.status !== 'VOIDED').reduce((sum, o) => sum + (parseFloat(o.total || o.final_amount || o.total_amount || 0) || 0), 0);
-                                    const expectedCashInDrawer = floatAmt + cashSales;
+                                    const floatAmt = parseFloat(cashierShift?.openingFloat) || 1500.00;
+                                    const cashOrders = recentOrders.filter(o => (o.paymentMethod || o.payment_method || '').toUpperCase() === 'CASH' && o.status !== 'VOIDED' && o.status !== 'REFUNDED');
+                                    const cashSales = cashOrders.reduce((sum, o) => sum + (parseFloat(o.total || o.final_amount || o.total_amount || 0) || 0), 0);
+                                    const payoutsList = cashierShift?.cashPayouts || [];
+                                    const totalPayouts = payoutsList.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+                                    const expectedCashInDrawer = floatAmt + cashSales - totalPayouts;
+                                    const actualCounted = actualCashCountedInput !== '' ? parseFloat(actualCashCountedInput) : (cashierShift?.actualCashCounted !== null && cashierShift?.actualCashCounted !== undefined ? parseFloat(cashierShift.actualCashCounted) : null);
+                                    const variance = actualCounted !== null ? (actualCounted - expectedCashInDrawer) : 0;
+                                    const isShiftOpen = cashierShift?.status !== 'CLOSED';
 
                                     return (
                                         <div className="space-y-6">
-                                            {/* APPLE HIG 4-COLUMN KPI CARDS */}
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                                <div className="p-4 sm:p-5 bg-slate-50/70 rounded-2xl border border-slate-200/60 space-y-1">
-                                                    <span className="text-xs font-medium text-slate-500">Opening Float</span>
-                                                    <div className="font-outfit text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums">₱{floatAmt.toFixed(2)}</div>
+                                            {/* HEADER & ACTIONS */}
+                                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-5">
+                                                <div className="flex items-center gap-3.5">
+                                                    <div className="w-10 h-10 rounded-2xl bg-brand-50 border border-brand-100/80 text-brand-700 flex items-center justify-center shadow-2xs shrink-0">
+                                                        <Icon.DollarSign className="w-5 h-5" />
+                                                    </div>
+                                                    <div>
+                                                        <div className="flex items-center gap-2">
+                                                            <h2 className="font-outfit text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Cash Drawer</h2>
+                                                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
+                                                                isShiftOpen ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-100 text-slate-600 border-slate-200'
+                                                            }`}>
+                                                                <span className={`w-1.5 h-1.5 rounded-full ${isShiftOpen ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></span>
+                                                                {isShiftOpen ? 'Shift Active' : 'Shift Closed'}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-xs text-slate-500 font-normal mt-0.5">
+                                                            Real-time drawer cash composition and physical float audit
+                                                        </p>
+                                                    </div>
                                                 </div>
-                                                <div className="p-4 sm:p-5 bg-slate-50/70 rounded-2xl border border-slate-200/60 space-y-1">
-                                                    <span className="text-xs font-medium text-slate-500">Cash Sales</span>
-                                                    <div className="font-outfit text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums">₱{cashSales.toFixed(2)}</div>
-                                                </div>
-                                                <div className="p-4 sm:p-5 bg-slate-50/70 rounded-2xl border border-slate-200/60 space-y-1">
-                                                    <span className="text-xs font-medium text-slate-500">RFID Sales</span>
-                                                    <div className="font-outfit text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums">₱{rfidSales.toFixed(2)}</div>
-                                                </div>
-                                                <div className="p-4 sm:p-5 bg-slate-50/70 rounded-2xl border border-slate-200/60 space-y-1">
-                                                    <span className="text-xs font-medium text-slate-500">Pay Later</span>
-                                                    <div className="font-outfit text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums">₱{payLaterSales.toFixed(2)}</div>
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setOpeningFloatInput(String(floatAmt));
+                                                            setOpenDrawerModalOpen(true);
+                                                        }}
+                                                        className="h-9 px-3.5 bg-white hover:bg-slate-50 border border-slate-200/90 text-slate-700 font-semibold text-xs rounded-xl shadow-2xs transition-all active:scale-98 flex items-center gap-1.5 cursor-pointer"
+                                                    >
+                                                        <Icon.Edit3 className="w-3.5 h-3.5 text-slate-500" />
+                                                        <span>{isShiftOpen ? 'Adjust Float' : 'Open Drawer'}</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setCashPayoutAmountInput('');
+                                                            setCashPayoutReasonInput('');
+                                                            setCashPayoutModalOpen(true);
+                                                        }}
+                                                        className="h-9 px-3.5 bg-amber-50 hover:bg-amber-100 border border-amber-200/80 text-amber-800 font-semibold text-xs rounded-xl shadow-2xs transition-all active:scale-98 flex items-center gap-1.5 cursor-pointer"
+                                                    >
+                                                        <Icon.MinusCircle className="w-3.5 h-3.5 text-amber-700" />
+                                                        <span>Record Cash Payout</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => window.print()}
+                                                        className="h-9 px-3.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl shadow-2xs transition-all active:scale-98 flex items-center gap-2 cursor-pointer"
+                                                    >
+                                                        <Icon.Printer className="w-3.5 h-3.5 text-slate-300" />
+                                                        <span>Print Z-Read</span>
+                                                    </button>
                                                 </div>
                                             </div>
 
-                                            {/* REFINED INSTITUTIONAL RECONCILIATION CARD */}
-                                            <div className="p-6 bg-slate-950 text-white rounded-2xl space-y-5 shadow-sm border border-slate-800">
-                                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                            {/* REAL-TIME DRAWER COMPOSITION FORMULA BANNER */}
+                                            <div className="space-y-2">
+                                                <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                                                    Real-Time Drawer Composition Formula
+                                                </div>
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                                                    {/* CARD 1: OPENING FLOAT */}
+                                                    <div className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/70 space-y-1 relative">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-xs font-medium text-slate-500">Opening Float</span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setOpeningFloatInput(String(floatAmt));
+                                                                    setOpenDrawerModalOpen(true);
+                                                                }}
+                                                                className="text-[10px] font-semibold text-brand-700 hover:underline cursor-pointer"
+                                                            >
+                                                                Edit
+                                                            </button>
+                                                        </div>
+                                                        <div className="font-outfit text-2xl font-bold text-slate-900 tabular-nums">
+                                                            ₱{floatAmt.toFixed(2)}
+                                                        </div>
+                                                        <div className="text-[11px] text-slate-400">Shift starting cash balance</div>
+                                                    </div>
+
+                                                    {/* CARD 2: TOTAL CASH ORDERS */}
+                                                    <div className="p-4 bg-emerald-50/50 rounded-2xl border border-emerald-200/60 space-y-1">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-xs font-semibold text-emerald-800">+ Cash Sales</span>
+                                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                                                                {cashOrders.length} orders
+                                                            </span>
+                                                        </div>
+                                                        <div className="font-outfit text-2xl font-bold text-emerald-900 tabular-nums">
+                                                            +₱{cashSales.toFixed(2)}
+                                                        </div>
+                                                        <div className="text-[11px] text-emerald-700/80">Completed counter cash tenders</div>
+                                                    </div>
+
+                                                    {/* CARD 3: CASH PAYOUTS */}
+                                                    <div className="p-4 bg-amber-50/50 rounded-2xl border border-amber-200/60 space-y-1">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-xs font-semibold text-amber-800">- Cash Payouts</span>
+                                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                                                                {payoutsList.length} withdrawals
+                                                            </span>
+                                                        </div>
+                                                        <div className="font-outfit text-2xl font-bold text-amber-900 tabular-nums">
+                                                            -₱{totalPayouts.toFixed(2)}
+                                                        </div>
+                                                        <div className="text-[11px] text-amber-700/80">Petty cash & drawer payouts</div>
+                                                    </div>
+
+                                                    {/* CARD 4: EXPECTED DRAWER CASH */}
+                                                    <div className="p-4 bg-slate-900 text-white rounded-2xl border border-slate-800 space-y-1 shadow-xs">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-xs font-medium text-slate-400">= Expected Drawer Cash</span>
+                                                            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                                                        </div>
+                                                        <div className="font-outfit text-2xl font-bold text-emerald-400 tabular-nums">
+                                                            ₱{expectedCashInDrawer.toFixed(2)}
+                                                        </div>
+                                                        <div className="text-[11px] text-slate-400">Float + Cash Sales - Payouts</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* PHYSICAL DRAWER CASH COUNT & OVER/SHORT AUDIT */}
+                                            <div className="p-5 sm:p-6 bg-slate-50/70 rounded-2xl border border-slate-200/80 space-y-4">
+                                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                                                     <div>
-                                                        <span className="text-xs font-medium text-slate-400">Shift Total Gross Revenue</span>
-                                                        <div className="font-outfit text-3xl sm:text-4xl font-bold text-white mt-1">₱{grandTotal.toFixed(2)}</div>
+                                                        <h3 className="font-outfit text-base font-bold text-slate-900">
+                                                            Cash Count & Live Over/Short Reconciliation
+                                                        </h3>
+                                                        <p className="text-xs text-slate-500 font-normal">
+                                                            Enter actual counted physical bills and coins to verify against expected drawer total
+                                                        </p>
                                                     </div>
-                                                    <div className="sm:text-right">
-                                                        <span className="text-xs font-medium text-slate-400">Expected Cash in Drawer</span>
-                                                        <div className="font-outfit text-2xl sm:text-3xl font-bold text-emerald-400 mt-1">₱{expectedCashInDrawer.toFixed(2)}</div>
-                                                    </div>
+                                                    {/* LIVE RECONCILIATION BADGE */}
+                                                    {actualCounted === null ? (
+                                                        <span className="px-3 py-1 rounded-full text-xs font-medium bg-slate-200/70 text-slate-600 border border-slate-300/60">
+                                                            Awaiting Drawer Count
+                                                        </span>
+                                                    ) : Math.abs(variance) < 0.01 ? (
+                                                        <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1.5 shadow-2xs">
+                                                            <Icon.CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
+                                                            <span>Balanced (Exact Match ₱0.00)</span>
+                                                        </span>
+                                                    ) : variance > 0 ? (
+                                                        <span className="px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-300 flex items-center gap-1.5 shadow-2xs">
+                                                            <Icon.TrendingUp className="w-3.5 h-3.5 text-blue-700" />
+                                                            <span>Overage: +₱{variance.toFixed(2)}</span>
+                                                        </span>
+                                                    ) : (
+                                                        <span className="px-3 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-1.5 shadow-2xs">
+                                                            <Icon.AlertTriangle className="w-3.5 h-3.5 text-rose-700" />
+                                                            <span>Shortage: -₱{Math.abs(variance).toFixed(2)}</span>
+                                                        </span>
+                                                    )}
                                                 </div>
-                                                <div className="pt-4 border-t border-slate-800/80 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-xs text-slate-400">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                                                        <span>Shift Status: <strong className="text-white font-semibold">Active</strong></span>
-                                                        <span className="text-slate-600">•</span>
-                                                        <span>Terminal #01 ({currentUser?.name || 'Elena R.'})</span>
+
+                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+                                                    <div className="sm:col-span-2">
+                                                        <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                                                            Actual Counted Cash in Drawer (₱)
+                                                        </label>
+                                                        <div className="relative">
+                                                            <span className="absolute left-3.5 top-2.5 font-bold text-slate-400 text-base">₱</span>
+                                                            <input
+                                                                type="number"
+                                                                step="0.01"
+                                                                placeholder="0.00"
+                                                                value={actualCashCountedInput}
+                                                                onChange={(e) => setActualCashCountedInput(e.target.value)}
+                                                                className="w-full bg-white border border-slate-300 rounded-xl pl-8 pr-4 py-2.5 text-lg font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#7B1E22]/20 focus:border-[#7B1E22] transition-all"
+                                                            />
+                                                        </div>
                                                     </div>
-                                                    <span className="font-mono text-slate-400">{new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const countedNum = parseFloat(actualCashCountedInput);
+                                                            if (isNaN(countedNum) || countedNum < 0) {
+                                                                showToast("Please enter a valid cash amount.", "error");
+                                                                return;
+                                                            }
+                                                            const updated = {
+                                                                ...cashierShift,
+                                                                actualCashCounted: countedNum
+                                                            };
+                                                            updateCashierShift(updated);
+                                                            showToast(`Saved drawer count of ₱${countedNum.toFixed(2)}`, "success");
+                                                        }}
+                                                        className="h-11 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs transition-all active:scale-98 shadow-xs flex items-center justify-center gap-2 cursor-pointer"
+                                                    >
+                                                        <Icon.Check className="w-4 h-4 text-emerald-400" />
+                                                        <span>Save Cash Count</span>
+                                                    </button>
                                                 </div>
+                                            </div>
+
+                                            {/* RECORDED PAYOUTS LOG TABLE */}
+                                            <div className="space-y-3">
+                                                <div className="flex items-center justify-between">
+                                                    <div>
+                                                        <h4 className="font-outfit text-sm font-bold text-slate-900">Recorded Cash Payouts & Petty Cash</h4>
+                                                        <p className="text-[11px] text-slate-500">Expenditures deducted from drawer during this cashier shift</p>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setCashPayoutAmountInput('');
+                                                            setCashPayoutReasonInput('');
+                                                            setCashPayoutModalOpen(true);
+                                                        }}
+                                                        className="text-xs font-semibold text-amber-800 hover:underline flex items-center gap-1 cursor-pointer"
+                                                    >
+                                                        <Icon.Plus className="w-3.5 h-3.5" />
+                                                        <span>Add Payout</span>
+                                                    </button>
+                                                </div>
+
+                                                {payoutsList.length === 0 ? (
+                                                    <div className="p-6 text-center bg-slate-50/60 rounded-2xl border border-slate-200/60 text-slate-400 text-xs">
+                                                        No cash payouts or petty cash withdrawals recorded in this shift.
+                                                    </div>
+                                                ) : (
+                                                    <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white">
+                                                        <table className="w-full text-left text-xs">
+                                                            <thead>
+                                                                <tr className="border-b border-slate-100 text-slate-400 text-[10.5px] font-semibold uppercase tracking-wider bg-slate-50/60">
+                                                                    <th className="py-2.5 px-3.5">Time</th>
+                                                                    <th className="py-2.5 px-3.5">Reason / Justification</th>
+                                                                    <th className="py-2.5 px-3.5">Authorized By</th>
+                                                                    <th className="py-2.5 px-3.5 text-right">Amount Deducted</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="divide-y divide-slate-100">
+                                                                {payoutsList.map((p, idx) => (
+                                                                    <tr key={p.id || idx} className="hover:bg-slate-50/50">
+                                                                        <td className="py-2.5 px-3.5 font-mono text-slate-500">{p.timestamp}</td>
+                                                                        <td className="py-2.5 px-3.5 font-medium text-slate-800">{p.reason}</td>
+                                                                        <td className="py-2.5 px-3.5 text-slate-500">{p.cashier || currentUser?.name || 'Cashier'}</td>
+                                                                        <td className="py-2.5 px-3.5 text-right font-outfit font-bold text-amber-800 tabular-nums">
+                                                                            -₱{(parseFloat(p.amount) || 0).toFixed(2)}
+                                                                        </td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     );
@@ -22753,9 +23951,219 @@
                         </div>
                     )}
 
-                    {/* SUB-TAB 6: SHIFT SALES REPORT MODULE */}
+                    {/* SUB-TAB 6: SHIFT SALES REPORT & Z-READ SUMMARY MODULE */}
                     {currentTab === 'sales_report' && (
                         <div className="flex-1 p-6 space-y-6 overflow-y-auto">
+                            {/* ACTIVE CASHIER SESSION RECONCILIATION & Z-READING EXECUTIVE BANNER */}
+                            {(() => {
+                                const floatAmt = parseFloat(cashierShift?.openingFloat) || 1500.00;
+                                const activeOrders = recentOrders.filter(o => o.status !== 'VOIDED' && o.status !== 'REFUNDED');
+                                const grandTotal = activeOrders.reduce((sum, o) => sum + (parseFloat(o.total || o.final_amount || o.total_amount || 0) || 0), 0);
+
+                                const cashOrders = recentOrders.filter(o => (o.paymentMethod || o.payment_method || '').toUpperCase() === 'CASH' && o.status !== 'VOIDED' && o.status !== 'REFUNDED');
+                                const cashSales = cashOrders.reduce((sum, o) => sum + (parseFloat(o.total || o.final_amount || o.total_amount || 0) || 0), 0);
+
+                                const rfidOrders = recentOrders.filter(o => (o.paymentMethod || o.payment_method || '').toUpperCase() === 'RFID' && o.status !== 'VOIDED' && o.status !== 'REFUNDED');
+                                const rfidSales = rfidOrders.reduce((sum, o) => sum + (parseFloat(o.total || o.final_amount || o.total_amount || 0) || 0), 0);
+
+                                const payLaterOrders = recentOrders.filter(o => (o.paymentMethod || o.payment_method || '').toUpperCase().includes('PAY_LATER') && o.status !== 'VOIDED' && o.status !== 'REFUNDED');
+                                const payLaterSales = payLaterOrders.reduce((sum, o) => sum + (parseFloat(o.total || o.final_amount || o.total_amount || 0) || 0), 0);
+
+                                const payrollOrders = recentOrders.filter(o => ((o.paymentMethod || o.payment_method || '').toUpperCase().includes('SALARY') || (o.paymentMethod || o.payment_method || '').toUpperCase().includes('PAYROLL')) && o.status !== 'VOIDED' && o.status !== 'REFUNDED');
+                                const payrollSales = payrollOrders.reduce((sum, o) => sum + (parseFloat(o.total || o.final_amount || o.total_amount || 0) || 0), 0);
+
+                                const payoutsList = cashierShift?.cashPayouts || [];
+                                const totalPayouts = payoutsList.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+                                const expectedCashInDrawer = floatAmt + cashSales - totalPayouts;
+                                const actualCounted = actualCashCountedInput !== '' ? parseFloat(actualCashCountedInput) : (cashierShift?.actualCashCounted !== null && cashierShift?.actualCashCounted !== undefined ? parseFloat(cashierShift.actualCashCounted) : null);
+                                const variance = actualCounted !== null ? (actualCounted - expectedCashInDrawer) : 0;
+                                const isShiftOpen = cashierShift?.status !== 'CLOSED';
+
+                                const handleEndShiftAndPrint = () => {
+                                    const finalCounted = actualCounted !== null ? actualCounted : expectedCashInDrawer;
+                                    const finalVariance = finalCounted - expectedCashInDrawer;
+                                    const archiveItem = {
+                                        id: cashierShift.id || ('SHIFT-' + Date.now()),
+                                        cashierId: cashierShift.cashierId || currentUser?.id || 'cashier-01',
+                                        cashierName: cashierShift.cashierName || currentUser?.name || 'Cashier',
+                                        status: 'CLOSED',
+                                        openedAt: cashierShift.openedAt,
+                                        closedAt: new Date().toISOString(),
+                                        openingFloat: floatAmt,
+                                        cashSales: cashSales,
+                                        cashPayouts: payoutsList,
+                                        totalPayouts: totalPayouts,
+                                        expectedCash: expectedCashInDrawer,
+                                        actualCounted: finalCounted,
+                                        variance: finalVariance,
+                                        totalOrders: activeOrders.length,
+                                        totalRevenue: grandTotal,
+                                        breakdown: {
+                                            cash: { count: cashOrders.length, amount: cashSales },
+                                            rfid: { count: rfidOrders.length, amount: rfidSales },
+                                            payLater: { count: payLaterOrders.length, amount: payLaterSales },
+                                            payroll: { count: payrollOrders.length, amount: payrollSales }
+                                        }
+                                    };
+                                    try {
+                                        const prevArchives = JSON.parse(localStorage.getItem('novalunch_shift_archives') || '[]');
+                                        localStorage.setItem('novalunch_shift_archives', JSON.stringify([archiveItem, ...prevArchives]));
+                                    } catch (e) { }
+
+                                    updateCashierShift({
+                                        ...cashierShift,
+                                        status: 'CLOSED',
+                                        closedAt: archiveItem.closedAt,
+                                        actualCashCounted: finalCounted
+                                    });
+
+                                    showToast("Shift ended and archived. Launching Z-Read Print...", "success");
+                                    window.print();
+                                };
+
+                                return (
+                                    <div className="enterprise-card p-6 sm:p-7 rounded-3xl bg-slate-950 text-white space-y-6 shadow-md border border-slate-800">
+                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-5">
+                                            <div className="flex items-center gap-3.5">
+                                                <div className="w-10 h-10 rounded-2xl bg-slate-800 text-amber-400 flex items-center justify-center shadow-xs shrink-0">
+                                                    <Icon.BarChart2 className="w-5 h-5" />
+                                                </div>
+                                                <div>
+                                                    <div className="flex items-center gap-2.5">
+                                                        <h3 className="font-outfit text-xl font-bold text-white tracking-tight">Active Shift Reconciliation & Z-Reading</h3>
+                                                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
+                                                            isShiftOpen ? 'bg-emerald-950 text-emerald-300 border-emerald-800' : 'bg-slate-800 text-slate-400 border-slate-700'
+                                                        }`}>
+                                                            <span className={`w-1.5 h-1.5 rounded-full ${isShiftOpen ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`}></span>
+                                                            {isShiftOpen ? 'Shift Active' : 'Shift Closed'}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-xs text-slate-400 font-normal mt-0.5">
+                                                        Terminal #01 • Cashier: {currentUser?.name || cashierShift?.cashierName || 'Elena Rostova'} • Started: {new Date(cashierShift?.openedAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-2.5 flex-wrap">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => window.print()}
+                                                    className="h-9 px-3.5 bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs rounded-xl shadow-2xs transition-all active:scale-98 flex items-center gap-1.5 cursor-pointer"
+                                                >
+                                                    <Icon.Printer className="w-3.5 h-3.5 text-slate-300" />
+                                                    <span>Print Slip</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleEndShiftAndPrint}
+                                                    className="h-9 px-4 bg-[#7B1E22] hover:bg-[#681418] text-white font-semibold text-xs rounded-xl shadow-xs transition-all active:scale-98 flex items-center gap-2 cursor-pointer"
+                                                >
+                                                    <Icon.Lock className="w-3.5 h-3.5 text-amber-300" />
+                                                    <span>End Shift & Print Summary</span>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* 4-WAY PAYMENT METHOD BREAKDOWN */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                            {/* CASH */}
+                                            <div className="p-4 bg-slate-900/90 rounded-2xl border border-slate-800/90 space-y-1">
+                                                <div className="flex justify-between items-center text-xs text-slate-400 font-medium">
+                                                    <span>Cash Tenders</span>
+                                                    <span className="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded">{cashOrders.length} orders</span>
+                                                </div>
+                                                <div className="font-outfit text-2xl font-bold text-white tabular-nums">
+                                                    ₱{cashSales.toFixed(2)}
+                                                </div>
+                                            </div>
+
+                                            {/* RFID */}
+                                            <div className="p-4 bg-slate-900/90 rounded-2xl border border-slate-800/90 space-y-1">
+                                                <div className="flex justify-between items-center text-xs text-slate-400 font-medium">
+                                                    <span>RFID E-Wallet</span>
+                                                    <span className="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded">{rfidOrders.length} orders</span>
+                                                </div>
+                                                <div className="font-outfit text-2xl font-bold text-white tabular-nums">
+                                                    ₱{rfidSales.toFixed(2)}
+                                                </div>
+                                            </div>
+
+                                            {/* PAY LATER */}
+                                            <div className="p-4 bg-slate-900/90 rounded-2xl border border-slate-800/90 space-y-1">
+                                                <div className="flex justify-between items-center text-xs text-slate-400 font-medium">
+                                                    <span>Pay Later Tabs</span>
+                                                    <span className="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded">{payLaterOrders.length} orders</span>
+                                                </div>
+                                                <div className="font-outfit text-2xl font-bold text-white tabular-nums">
+                                                    ₱{payLaterSales.toFixed(2)}
+                                                </div>
+                                            </div>
+
+                                            {/* PAYROLL */}
+                                            <div className="p-4 bg-slate-900/90 rounded-2xl border border-slate-800/90 space-y-1">
+                                                <div className="flex justify-between items-center text-xs text-slate-400 font-medium">
+                                                    <span>Payroll Deductions</span>
+                                                    <span className="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded">{payrollOrders.length} orders</span>
+                                                </div>
+                                                <div className="font-outfit text-2xl font-bold text-white tabular-nums">
+                                                    ₱{payrollSales.toFixed(2)}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* CASH RECONCILIATION EXPECTED VS ACTUAL WITH LIVE INDICATOR */}
+                                        <div className="p-5 bg-slate-900 rounded-2xl border border-slate-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                                            <div className="space-y-1">
+                                                <div className="text-xs text-slate-400">Total Shift Gross Volume</div>
+                                                <div className="font-outfit text-3xl font-bold text-white tabular-nums">
+                                                    ₱{grandTotal.toFixed(2)}
+                                                    <span className="text-xs font-normal text-slate-400 ml-2">({activeOrders.length} total orders)</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex flex-wrap items-center gap-5">
+                                                <div className="space-y-0.5 md:text-right">
+                                                    <div className="text-[11px] text-slate-400">Expected Drawer Cash</div>
+                                                    <div className="font-outfit text-xl font-bold text-emerald-400 tabular-nums">
+                                                        ₱{expectedCashInDrawer.toFixed(2)}
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-0.5 md:text-right">
+                                                    <div className="text-[11px] text-slate-400">Actual Counted</div>
+                                                    <div className="font-outfit text-xl font-bold text-white tabular-nums">
+                                                        {actualCounted !== null ? `₱${actualCounted.toFixed(2)}` : 'Not Counted'}
+                                                    </div>
+                                                </div>
+
+                                                <div>
+                                                    {actualCounted === null ? (
+                                                        <span className="px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-800 text-slate-300 border border-slate-700">
+                                                            Pending Count
+                                                        </span>
+                                                    ) : Math.abs(variance) < 0.01 ? (
+                                                        <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-950 text-emerald-300 border border-emerald-700 flex items-center gap-1.5">
+                                                            <Icon.CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                                            <span>Balanced (₱0.00)</span>
+                                                        </span>
+                                                    ) : variance > 0 ? (
+                                                        <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-blue-950 text-blue-300 border border-blue-700 flex items-center gap-1.5">
+                                                            <Icon.TrendingUp className="w-3.5 h-3.5 text-blue-400" />
+                                                            <span>Over +₱{variance.toFixed(2)}</span>
+                                                        </span>
+                                                    ) : (
+                                                        <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-rose-950 text-rose-300 border border-rose-700 flex items-center gap-1.5">
+                                                            <Icon.AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+                                                            <span>Short -₱{Math.abs(variance).toFixed(2)}</span>
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
                             <PortalErrorBoundary viewName="Shift Sales Report">
                                 <SalesReportView
                                     role="CASHIER"
@@ -23580,6 +24988,160 @@
                             }
                         }}
                     />
+
+                    {/* MODAL: OPEN / ADJUST CASH DRAWER FLOAT */}
+                    <CustomModal
+                        isOpen={openDrawerModalOpen}
+                        onClose={() => setOpenDrawerModalOpen(false)}
+                        title="Open / Adjust Cash Drawer Float"
+                        subtitle="Configure starting cash float for active shift session"
+                        icon={Icon.DollarSign}
+                        iconBg="bg-emerald-50 text-emerald-700 border-emerald-200"
+                        size="md"
+                    >
+                        <form onSubmit={(e) => {
+                            e.preventDefault();
+                            const floatVal = parseFloat(openingFloatInput);
+                            if (isNaN(floatVal) || floatVal < 0) {
+                                showToast("Please enter a valid positive float amount.", "error");
+                                return;
+                            }
+                            const updated = {
+                                ...cashierShift,
+                                status: 'OPEN',
+                                openingFloat: floatVal,
+                                openedAt: cashierShift.status === 'CLOSED' ? new Date().toISOString() : cashierShift.openedAt,
+                                closedAt: null
+                            };
+                            updateCashierShift(updated);
+                            setOpenDrawerModalOpen(false);
+                            showToast(`Drawer float set to ₱${floatVal.toFixed(2)}`, "success");
+                        }} className="space-y-4">
+                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2">
+                                <span className="text-xs text-slate-500 font-medium">Standard Institutional Float Presets:</span>
+                                <div className="flex gap-2">
+                                    {[1000, 1500, 2000, 2500].map(amt => (
+                                        <button
+                                            key={amt}
+                                            type="button"
+                                            onClick={() => setOpeningFloatInput(String(amt))}
+                                            className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                                                parseFloat(openingFloatInput) === amt
+                                                    ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                                                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                                            }`}
+                                        >
+                                            ₱{amt.toLocaleString()}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Opening Float Amount (₱)</label>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    required
+                                    value={openingFloatInput}
+                                    onChange={(e) => setOpeningFloatInput(e.target.value)}
+                                    placeholder="1500.00"
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-lg font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#7B1E22]/20 focus:border-[#7B1E22]"
+                                />
+                            </div>
+
+                            <div className="flex justify-end gap-2.5 pt-2 border-t border-slate-100">
+                                <ActionButton variant="secondary" onClick={() => setOpenDrawerModalOpen(false)} className="py-2 px-4">
+                                    Cancel
+                                </ActionButton>
+                                <button
+                                    type="submit"
+                                    className="h-10 px-5 rounded-xl bg-[#7B1E22] hover:bg-[#681418] text-white text-xs font-semibold shadow-xs transition-all active:scale-98 cursor-pointer"
+                                >
+                                    Confirm Opening Float
+                                </button>
+                            </div>
+                        </form>
+                    </CustomModal>
+
+                    {/* MODAL: RECORD CASH PAYOUT / EXPENSE */}
+                    <CustomModal
+                        isOpen={cashPayoutModalOpen}
+                        onClose={() => setCashPayoutModalOpen(false)}
+                        title="Record Cash Payout / Expense"
+                        subtitle="Log petty cash, change replenishment, or supplier payout from drawer"
+                        icon={Icon.MinusCircle}
+                        iconBg="bg-amber-50 text-amber-700 border-amber-200"
+                        size="md"
+                    >
+                        <form onSubmit={(e) => {
+                            e.preventDefault();
+                            const amt = parseFloat(cashPayoutAmountInput);
+                            if (isNaN(amt) || amt <= 0) {
+                                showToast("Please enter a valid payout amount.", "error");
+                                return;
+                            }
+                            if (!cashPayoutReasonInput.trim()) {
+                                showToast("Please enter a justification or reason for this payout.", "error");
+                                return;
+                            }
+                            const newPayout = {
+                                id: 'PAYOUT-' + Date.now(),
+                                amount: amt,
+                                reason: cashPayoutReasonInput.trim(),
+                                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                                cashier: currentUser?.name || 'Cashier'
+                            };
+                            const updated = {
+                                ...cashierShift,
+                                cashPayouts: [...(cashierShift.cashPayouts || []), newPayout]
+                            };
+                            updateCashierShift(updated);
+                            setCashPayoutModalOpen(false);
+                            setCashPayoutAmountInput('');
+                            setCashPayoutReasonInput('');
+                            showToast(`Logged payout of ₱${amt.toFixed(2)}`, "info");
+                        }} className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Payout Amount (₱)</label>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0.01"
+                                    required
+                                    value={cashPayoutAmountInput}
+                                    onChange={(e) => setCashPayoutAmountInput(e.target.value)}
+                                    placeholder="0.00"
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-base font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Reason / Justification</label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={cashPayoutReasonInput}
+                                    onChange={(e) => setCashPayoutReasonInput(e.target.value)}
+                                    placeholder="e.g. Bread delivery replenishment, ice purchase, change fund"
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                                />
+                            </div>
+
+                            <div className="flex justify-end gap-2.5 pt-2 border-t border-slate-100">
+                                <ActionButton variant="secondary" onClick={() => setCashPayoutModalOpen(false)} className="py-2 px-4">
+                                    Cancel
+                                </ActionButton>
+                                <button
+                                    type="submit"
+                                    className="h-10 px-5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold shadow-xs transition-all active:scale-98 cursor-pointer"
+                                >
+                                    Log Payout & Deduct from Drawer
+                                </button>
+                            </div>
+                        </form>
+                    </CustomModal>
                 </div>
             );
         }
@@ -24239,6 +25801,45 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
         }
 
         function AdminView({ gcashQueue, menuCatalog, registeredUsers, setRegisteredUsers = () => { }, recentOrders = [], setRecentOrders = () => { }, refundsList = [], setRefundsList = () => { }, inventoryBatches = [], setInventoryBatches = () => { }, preorders = [], onUnarchivePreorder, onApproveTopup, onRejectTopup, onAddProduct, onUpdateProduct, onArchiveProduct, onAddNewStudent, onBatchAddStudents, onUpdateStudent, onArchiveStudent, onSettleDebt = null, activeTab = 'command', setActiveTab, onSignOut, onSelectRoleQuick, isCloudConnected, onRefreshCloud, notifications = [], onMarkNotifRead, onMarkAllNotifRead, onDeleteNotif, onClearReadNotifs, onActionClick, onRespondLinkRequest, onOpenCommandPalette, onOpenMobileSidebar, onExportMenuCSV, onExportStudentsCSV, onUnarchiveStudent, onUnarchiveProduct, onRestoreOrder, onRestoreBatch, onRestoreTopup, onPurgeItem, rawIngredients = [], setRawIngredients, setMenuCatalog = () => { }, kdsOrders = [], setKdsOrders, showToast = () => { }, isLoading = false, isSyncing = false }) {
+            // ── LIVE AUDIT LOG STATE & DISPATCHER ──────────────────────────────────
+            const [auditLogs, setAuditLogs] = useState(() => {
+                try {
+                    const stored = localStorage.getItem('novalunch_audit_logs');
+                    if (stored) return JSON.parse(stored);
+                } catch (_) {}
+                return [
+                    { id: 'LOG-881', date: '2026-07-30 14:10:02', user: 'Admin System', action: 'Approved GCash Reload ₱500.00 for Joshua Lupisan', type: 'topup' },
+                    { id: 'LOG-880', date: '2026-07-30 13:45:19', user: 'Cashier Elena', action: 'Completed POS Order ORD-2026-4412 (₱125.00)', type: 'order' },
+                    { id: 'LOG-879', date: '2026-07-30 11:20:00', user: 'Admin System', action: 'Updated Menu Price: Beef Pares -> ₱90.00', type: 'menu' }
+                ];
+            });
+
+            const logAuditAction = React.useCallback((action, user = 'Admin System', type = 'general') => {
+                const entry = {
+                    id: 'LOG-' + Date.now(),
+                    date: new Date().toLocaleString('en-PH', { hour12: false }).replace(',', ''),
+                    user,
+                    action,
+                    type
+                };
+                setAuditLogs(prev => {
+                    const next = [entry, ...prev].slice(0, 200);
+                    try { localStorage.setItem('novalunch_audit_logs', JSON.stringify(next)); } catch (_) {}
+                    return next;
+                });
+                // Also persist to Supabase audit_logs table if connected
+                if (window.CanteenDB && window.CanteenDB.logAuditEvent) {
+                    window.CanteenDB.logAuditEvent({ action, actor: user, event_type: type }).catch(() => {});
+                }
+            }, []);
+
+            // ── ADMIN MANUAL PARENT-STUDENT LINK STATE ─────────────────────────────
+            const [linkParentModalOpen, setLinkParentModalOpen] = useState(false);
+            const [linkParentUser, setLinkParentUser] = useState(null); // the parent being linked
+            const [linkParentStudentId, setLinkParentStudentId] = useState('');
+            const [linkParentError, setLinkParentError] = useState('');
+            const [isLinkingParent, setIsLinkingParent] = useState(false);
+
             const [bulkStudentModalOpen, setBulkStudentModalOpen] = useState(false);
             const [addStudentModalOpen, setAddStudentModalOpen] = useState(false);
             const [editAccountModalOpen, setEditAccountModalOpen] = useState(false);
@@ -24441,6 +26042,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                             if (window.CanteenDB && candidate.id) {
                                 window.CanteenDB.updateProductAiLabel(candidate.id, cls.label).catch(err => console.warn("AI sync error", err));
                             }
+                            logAuditAction(`Auto-Assigned AI class "${cls.label}" to menu item "${candidate.name}"`, 'Admin System', 'ai_vision');
                             boundCount++;
                         }
                     }
@@ -24464,6 +26066,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                     if (window.CanteenDB && candidate.id) {
                         window.CanteenDB.updateProductAiLabel(candidate.id, clsLabel).catch(err => console.warn("AI sync error", err));
                     }
+                    logAuditAction(`AI class "${clsLabel}" auto-matched and bound to "${candidate.name}"`, 'Admin System', 'ai_vision');
                     showToast(`Successfully bound AI class "${clsLabel}" to "${candidate.name}"!`, "success");
                 } else {
                     showToast(`No unassigned matching menu item found for class "${clsLabel}".`, "info");
@@ -24478,7 +26081,70 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                         window.CanteenDB.updateProductAiLabel(prod.id, '').catch(err => console.warn("AI unlink sync error", err));
                     }
                 });
+                logAuditAction(`Unlinked AI class "${clsLabel}" from menu item`, 'Admin System', 'ai_vision');
                 showToast(`Unlinked AI class "${clsLabel}" from menu item(s).`, "info");
+            };
+
+            // ── ADMIN MANUAL PARENT-STUDENT LINK HANDLER ─────────────────────────
+            const handleManualLinkParentStudent = async () => {
+                if (!linkParentUser) return;
+                const inputId = linkParentStudentId.trim();
+                if (!inputId) { setLinkParentError('Please enter a Student ID.'); return; }
+
+                // Resolve target student by studentId OR name
+                const student = registeredUsers.find(u =>
+                    (u.role || '').toLowerCase() === 'student' &&
+                    (u.studentId === inputId || u.id === inputId || (u.name && u.name.toLowerCase().includes(inputId.toLowerCase())))
+                );
+                if (!student) { setLinkParentError(`No active student found with ID or name "${inputId}".`); return; }
+
+                setIsLinkingParent(true);
+                setLinkParentError('');
+
+                // 1. Write to Supabase parent_student_links
+                if (window.CanteenDB) {
+                    try {
+                        await window.supabaseClient
+                            .from('parent_student_links')
+                            .upsert({
+                                parent_id: linkParentUser.id,
+                                student_id: student.id,
+                                status: 'ACTIVE',
+                                created_at: new Date().toISOString()
+                            }, { onConflict: 'parent_id,student_id' });
+                    } catch (e) {
+                        console.warn('[Admin Link] Supabase upsert notice:', e);
+                    }
+                }
+
+                // 2. Update localStorage novalunch_parent_student_links cache
+                try {
+                    const existing = JSON.parse(localStorage.getItem('novalunch_parent_student_links') || '[]');
+                    const deduped = existing.filter(l => !(l.parent_id === linkParentUser.id && l.student_id === student.id));
+                    deduped.unshift({ parent_id: linkParentUser.id, student_id: student.id, status: 'ACTIVE', created_at: new Date().toISOString() });
+                    localStorage.setItem('novalunch_parent_student_links', JSON.stringify(deduped));
+                } catch (_) {}
+
+                // 3. Optimistic UI: update parent's guardianship field in registeredUsers
+                setRegisteredUsers(prev => prev.map(u => {
+                    if (u.id === linkParentUser.id) {
+                        return { ...u, guardian: student.name, linkedStudentName: student.name, linked_student_id: student.id };
+                    }
+                    return u;
+                }));
+
+                // 4. Fire audit log
+                logAuditAction(
+                    `Manually linked parent "${linkParentUser.name}" to student "${student.name}" (ID: ${student.studentId || student.id})`,
+                    'Admin System',
+                    'user_link'
+                );
+
+                showToast(`Linked ${linkParentUser.name} to student ${student.name}!`, 'success');
+                setIsLinkingParent(false);
+                setLinkParentModalOpen(false);
+                setLinkParentStudentId('');
+                setLinkParentUser(null);
             };
 
             // Unified Account Edit Form State (Human-Centric & Adaptive across all roles)
@@ -25435,11 +27101,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                 setProdName(''); setProdPrice(''); setProdImg(''); setProdCalories('0'); setProdProtein('0g'); setProdAllergens([]); setProdAiLabel(''); setAddProductError('');
             };
 
-            const auditLogs = [
-                { id: 'LOG-881', date: '2026-07-30 14:10:02', user: 'Admin System', action: 'Approved GCash Reload ₱500.00 for Joshua Lupisan' },
-                { id: 'LOG-880', date: '2026-07-30 13:45:19', user: 'Cashier Elena', action: 'Completed POS Order ORD-2026-4412 (₱125.00)' },
-                { id: 'LOG-879', date: '2026-07-30 11:20:00', user: 'Admin System', action: 'Updated Menu Price: Beef Pares -> ₱90.00' }
-            ];
+            // auditLogs is now reactive state (declared above); see logAuditAction dispatcher
 
             return (
                 <div className="lg:pl-72 pl-0 min-h-screen bg-[#F8FAFC] text-slate-800 pb-12 transition-all">
@@ -26734,6 +28396,14 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                                             </td>
                                                             <td className="py-3.5 px-3 text-right">
                                                                 <div className="flex items-center justify-end gap-1">
+                                                                    <Tooltip text="Manually link this parent to a student" position="top">
+                                                                        <button
+                                                                            onClick={() => { setLinkParentUser(user); setLinkParentStudentId(''); setLinkParentError(''); setLinkParentModalOpen(true); }}
+                                                                            className="text-indigo-700 hover:text-indigo-900 hover:bg-indigo-50 px-2 py-1 rounded-lg font-bold flex items-center gap-1 transition-all btn-press text-[11px] cursor-pointer"
+                                                                        >
+                                                                            <Icon.Link className="w-3 h-3" /> Link
+                                                                        </button>
+                                                                    </Tooltip>
                                                                     <Tooltip text="Edit parent contact & wards" position="top">
                                                                         <button
                                                                             onClick={() => openEditAccount(user)}
@@ -26885,6 +28555,47 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                 )}
                             </section>
                         )}
+
+                        {/* MODAL: ADMIN MANUAL PARENT-STUDENT LINK */}
+                        <CustomModal
+                            isOpen={linkParentModalOpen}
+                            onClose={() => { setLinkParentModalOpen(false); setLinkParentError(''); }}
+                            title="Link Student to Parent"
+                            subtitle={linkParentUser ? `Linking guardian: ${linkParentUser.name}` : ''}
+                            icon={Icon.HeartHandshake}
+                            size="sm"
+                        >
+                            <div className="space-y-4">
+                                <div className="p-3.5 bg-indigo-50 rounded-xl border border-indigo-100 text-xs text-indigo-900">
+                                    <div className="font-bold mb-0.5">Guardian Account</div>
+                                    <div className="font-mono text-indigo-700">{linkParentUser?.name} — {linkParentUser?.email}</div>
+                                    <div className="text-[11px] text-indigo-600 mt-1">This will upsert a record in <span className="font-mono">parent_student_links</span> and update the local cache so the parent portal reflects the link immediately.</div>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-700 mb-1">Student ID or Name</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. SJC-1001 or Maria Santos"
+                                        value={linkParentStudentId}
+                                        onChange={e => { setLinkParentStudentId(e.target.value); setLinkParentError(''); }}
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-900 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-300 outline-none transition-all"
+                                        autoFocus
+                                    />
+                                    {linkParentError && <p className="text-rose-600 text-[11px] font-semibold mt-1.5 flex items-center gap-1"><Icon.AlertTriangle className="w-3 h-3" />{linkParentError}</p>}
+                                </div>
+                                <div className="flex gap-2 pt-1">
+                                    <ActionButton variant="secondary" onClick={() => setLinkParentModalOpen(false)} className="flex-1 py-2">Cancel</ActionButton>
+                                    <ActionButton
+                                        variant="primary"
+                                        onClick={handleManualLinkParentStudent}
+                                        disabled={isLinkingParent || !linkParentStudentId.trim()}
+                                        className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700"
+                                    >
+                                        {isLinkingParent ? 'Linking...' : 'Confirm Link'}
+                                    </ActionButton>
+                                </div>
+                            </div>
+                        </CustomModal>
 
                         {/* TAB 3: CONSOLIDATED MENU & STOCK INVENTORY ENGINE */}
                         {(activeTab === 'inventory' || activeTab === 'ingredients') && (
@@ -27132,6 +28843,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                     refundsList={refundsList}
                                     setRefundsList={setRefundsList}
                                     showToast={showToast}
+                                    logAuditAction={logAuditAction}
                                 />
                             </PortalErrorBoundary>
                         )}
@@ -27614,6 +29326,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                                 if (window.CanteenDB && prod.id) {
                                                     window.CanteenDB.updateProductAiLabel(prod.id, cleanClass).catch(err => console.warn("AI label cloud sync error", err));
                                                 }
+                                                logAuditAction(`Manually bound AI class "${cleanClass}" to menu item "${prod.name}" (₱${prod.price.toFixed(2)})`, 'Admin System', 'ai_vision');
                                                 showToast(`Successfully bound AI class "${cleanClass}" to menu item "${prod.name}" (₱${prod.price.toFixed(2)})!`, "success");
                                             }
                                             setLinkAiModalOpen(false);
@@ -32951,6 +34664,12 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                     type: 'financial'
                 };
                 setNotifications(prev => [newNotif, ...prev]);
+                // Persist audit log entry for Admin Activity Log
+                try {
+                    const _al = JSON.parse(localStorage.getItem('novalunch_audit_logs') || '[]');
+                    _al.unshift({ id: 'LOG-' + Date.now(), date: new Date().toLocaleString('en-PH', { hour12: false }).replace(',',''), user: 'Admin System', action: `Approved ₱${queueItem.amount.toFixed(2)} GCash reload for ${queueItem.student} (Ref: ${queueItem.refNo})`, type: 'topup' });
+                    localStorage.setItem('novalunch_audit_logs', JSON.stringify(_al.slice(0, 200)));
+                } catch(_){}
                 showToast(`Approved ₱${queueItem.amount.toFixed(2)} top-up for ${queueItem.student}!`);
 
                 // 3. Cloud Database Sync with Rollback on Exception
@@ -33012,6 +34731,12 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                     type: 'warning'
                 };
                 setNotifications(prev => [newNotif, ...prev]);
+                // Persist audit log entry for Admin Activity Log
+                try {
+                    const _al = JSON.parse(localStorage.getItem('novalunch_audit_logs') || '[]');
+                    _al.unshift({ id: 'LOG-' + Date.now(), date: new Date().toLocaleString('en-PH', { hour12: false }).replace(',',''), user: 'Admin System', action: `Rejected GCash reload ${queueItem.refNo} for ${queueItem.student} — Reason: ${rejectionReason}`, type: 'topup' });
+                    localStorage.setItem('novalunch_audit_logs', JSON.stringify(_al.slice(0, 200)));
+                } catch(_){}
                 showToast(`Rejected top-up submission ${queueItem.refNo}`, "warning");
 
                 try {

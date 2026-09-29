@@ -519,8 +519,10 @@ class DatabaseManager:
                                     by_id[st_id]["id"] = p.get("id")
                                     by_id[st_id]["balance"] = bal
                                     by_id[st_id]["daily_limit"] = dlim
-                                    if p.get("rfid_uid"):
-                                        by_id[st_id]["rfid_uid"] = p.get("rfid_uid")
+                                    # Always sync rfid_uid from cloud. If Supabase returns null/empty,
+                                    # clear the local cache so unlinked/reassigned badges are
+                                    # immediately treated as unrecognized by the kiosk lookup.
+                                    by_id[st_id]["rfid_uid"] = p.get("rfid_uid") or ""
                                 if st_id not in by_id:
                                     by_id[st_id] = {
                                         "id": p.get("id"),
@@ -747,9 +749,20 @@ class OfflineSyncWorker(threading.Thread):
                 matched_st = next((s for s in local_students if s.get("student_id_number") == student_id or s.get("rfid_uid") == student_id or s.get("id") == student_id), None)
                 user_uuid = matched_st.get("id") if (matched_st and str(matched_st.get("id", "")).count("-") == 4) else None
 
-                # Format payment_method to match DB check constraint: ('rfid', 'wallet', 'cash', 'online', 'pay_later')
-                pm = str(pay_method or 'rfid').strip().lower()
-                if pm not in ('rfid', 'wallet', 'cash', 'online', 'pay_later'):
+                # Normalize payment_method to match Postgres check constraint exactly.
+                # Accepted values: 'rfid', 'cash', 'pay_later', 'payroll'
+                # 'rfid' and 'card'/'wallet'/'online' are mapped to their canonical form.
+                _raw_pm = str(pay_method or 'rfid').strip().lower()
+                if _raw_pm in ('rfid', 'card', 'wallet', 'online'):
+                    pm = 'rfid'
+                elif _raw_pm == 'cash':
+                    pm = 'cash'
+                elif _raw_pm in ('pay_later', 'paylater', 'credit', 'emergency'):
+                    pm = 'pay_later'
+                elif _raw_pm in ('payroll', 'salary', 'salary_deduction'):
+                    pm = 'payroll'
+                else:
+                    print(f"[EDGE SYNC] Unknown payment_method '{_raw_pm}' for tx {tx_id} — defaulting to 'rfid'")
                     pm = 'rfid'
 
                 order_payload = {
@@ -843,12 +856,24 @@ class OfflineSyncWorker(threading.Thread):
                     except Exception:
                         pass
                     if http_err.code == 409 or "duplicate key" in err_body or "unique constraint" in err_body:
+                        # Already exists in cloud — mark as synced
                         c.execute("UPDATE pending_transactions SET sync_status = 'SYNCED' WHERE transaction_id = ?", (tx_id,))
                         conn.commit()
-                        print(f"[EDGE SYNC] ☁️ Transaction already exists in cloud: {tx_id}")
+                        print(f"[EDGE SYNC] ☁️ Transaction already exists in cloud (409): {tx_id}")
+                    elif http_err.code == 400 and ("23514" in err_body or "check_violation" in err_body or "violates check constraint" in err_body):
+                        # Postgres check constraint violation (e.g. invalid payment_method value).
+                        # Mark as PERMANENTLY_FAILED so it is never retried in an infinite loop.
+                        print(f"[EDGE SYNC ERROR] Check-constraint violation (23514) on {tx_id}. Marking PERMANENTLY_FAILED. Body: {err_body}")
+                        c.execute("UPDATE pending_transactions SET sync_status = 'PERMANENTLY_FAILED' WHERE transaction_id = ?", (tx_id,))
+                        conn.commit()
+                    elif http_err.code == 400:
+                        # Other 400 errors (e.g. bad payload, schema mismatch) — log explicitly
+                        print(f"[EDGE SYNC ERROR] HTTP 400 for tx {tx_id}. Will not retry until fixed. Body: {err_body}")
+                        c.execute("UPDATE pending_transactions SET sync_status = 'PERMANENTLY_FAILED' WHERE transaction_id = ?", (tx_id,))
+                        conn.commit()
                     else:
-                        print(f"[EDGE SYNC NOTICE] Offline sync pending connection for {tx_id}: {http_err} {err_body}")
-                        break
+                        print(f"[EDGE SYNC NOTICE] Offline sync pending connection for {tx_id} (HTTP {http_err.code}): {err_body}")
+                        break  # Transient network / 5xx — pause sweep
                 except Exception as sync_err:
                     print(f"[EDGE SYNC NOTICE] Offline sync pending connection for {tx_id}: {sync_err}")
                     break  # Pause sweep if network is unreachable
@@ -1490,7 +1515,7 @@ class KioskHTTPRequestHandler(BaseHTTPRequestHandler):
             parsed = urllib.parse.urlparse(self.path)
             path = parsed.path
 
-            if path in ["/api/kiosk/status", "/api/scan_tray"]:
+            if path in ["/api/kiosk/status", "/api/kiosk/live", "/api/scan_tray"]:
                 self._send_cors_headers(200, "application/json")
                 self.end_headers()
             elif path in ["/api/camera/frame.jpg", "/api/camera/frame_clean.jpg", "/api/camera/frame_annotated.jpg"]:
@@ -1516,7 +1541,7 @@ class KioskHTTPRequestHandler(BaseHTTPRequestHandler):
             parsed = urllib.parse.urlparse(self.path)
             path = parsed.path
 
-            if path in ["/api/kiosk/status", "/api/scan_tray"]:
+            if path in ["/api/kiosk/status", "/api/kiosk/live", "/api/scan_tray"]:
                 self._send_cors_headers(200, "application/json")
                 self.end_headers()
                 if _GLOBAL_KIOSK_REF is not None:
@@ -1526,6 +1551,8 @@ class KioskHTTPRequestHandler(BaseHTTPRequestHandler):
                         "status": "SUCCESS",
                         "kiosk_state": "IDLE",
                         "student": None,
+                        "active_student": None,
+                        "cart_items": [],
                         "cart": [],
                         "total_amount": 0.0,
                         "timestamp": time.time()
@@ -1889,6 +1916,10 @@ class NovaLunchKioskGUI:
         self.rfid_anti_passback_cache = {}
         self.last_rfid_tap_timestamp = 0
 
+        # Pay Later Double-Tap State (Wave 3: Non-Touch RFID-only confirmation)
+        self.awaiting_pay_later_confirm = False   # True = waiting for 2nd RFID tap within 5s
+        self.pay_later_timer = 0.0               # Timestamp of 1st tap that triggered Pay Later prompt
+
         # Subsystems
         self.camera_thread = CameraThread(cam_index=cam_index)
         self.camera_thread.start()
@@ -1913,7 +1944,16 @@ class NovaLunchKioskGUI:
         return getattr(self.camera_thread, 'menu_catalog_by_ai_label', {})
 
     def get_live_kiosk_data(self):
-        """Returns JSON-serializable snapshot of live kiosk state for Cashier POS."""
+        """Returns JSON-serializable snapshot of live kiosk state for Cashier POS.
+
+        Standardized payload (Wave 3 spec):
+          - `cart_items`: Normalized list with id/name/price/quantity fields for Cashier Order Tally.
+          - `cart`:       Raw internal cart_items list (backward compatibility).
+          - `active_student`: Top-level student field alias.
+          - `total_amount`: Rounded float total.
+          - `kiosk_state`: Human-readable state string.
+          - `status`:     Always 'SUCCESS' when kiosk is alive.
+        """
         detections = []
         ai_engine = "YOLOv8 Engine"
         fps = 60
@@ -1922,21 +1962,40 @@ class NovaLunchKioskGUI:
             ai_engine, fps, _ = self.camera_thread.get_ai_status()
 
         is_active_session = self.current_state not in [STATE_IDLE, STATE_SETTLEMENT, STATE_ERROR] and self.active_student is not None
+        raw_cart = list(self.cart_items) if is_active_session else []
+
+        # Standardized cart_items payload: id / name / price / quantity
+        normalized_cart_items = [
+            {
+                "id":       item.get("id") or item.get("product_id") or item.get("name"),
+                "name":     item.get("name", "Unknown Item"),
+                "price":    float(item.get("price", 0.0)),
+                "quantity": int(item.get("qty", 1))
+            }
+            for item in raw_cart
+        ] if raw_cart else []
+
         return {
             "status": "SUCCESS",
             "kiosk_state": STATE_NAMES.get(self.current_state, "UNKNOWN"),
             "current_state_id": self.current_state,
+            "active_student": self.active_student if is_active_session else None,
             "student": self.active_student if is_active_session else None,
-            "cart": list(self.cart_items) if is_active_session else [],
+            # Standardized normalized cart for Cashier Order Tally rendering
+            "cart_items": normalized_cart_items,
+            # Raw cart preserved for backward compatibility with legacy polling
+            "cart": raw_cart,
             "detections": detections if is_active_session else [],
             "ai_engine": ai_engine,
             "camera_online": True,
             "fps": fps,
             "total_amount": round(self.total_amount, 2) if is_active_session else 0.0,
-            "items_count": sum(i.get("qty", 1) for i in self.cart_items) if is_active_session else 0,
+            "items_count": len(normalized_cart_items) if normalized_cart_items else 0,
             "countdown_remaining": round(self.countdown_remaining, 1) if is_active_session else 0.0,
             "status_message": self.status_message,
             "preorders_count": len(self.active_preorders) if is_active_session else 0,
+            # Pay Later double-tap pending state for CFD display
+            "awaiting_pay_later_confirm": getattr(self, 'awaiting_pay_later_confirm', False),
             "timestamp": time.time()
         }
 
@@ -2126,20 +2185,24 @@ class NovaLunchKioskGUI:
         self.notify_pos_update()
 
     def execute_pay_later_checkout(self):
+        """Zero-Touch Pay Later Settlement triggered by double-tap RFID (Wave 3)."""
         if not self.active_student or self.total_amount <= 0:
             return
 
+        # Always clear any pending double-tap state on entry
+        self.awaiting_pay_later_confirm = False
+
         # Check if Pay Later is permitted for this student
         if self.active_student.get("pay_later_allowance") is False or self.active_student.get("pay_later_pre_authorized") is False:
-            self.status_message = "🚫 PAY LATER DISABLED — PARENT/ADMIN PERMISSION REQUIRED"
+            self.status_message = "PAY LATER DISABLED — PARENT/ADMIN PERMISSION REQUIRED"
             speak_text("Pay later is disabled for this account. Please settle with cash or card reload.")
             self.notify_pos_update()
             return
 
-        # Check ₱1,000 credit ceiling
+        # Check P1,000 credit ceiling
         cur_liability = float(self.active_student.get("pay_later_balance", 0.0) or self.active_student.get("credit_liability", 0.0))
         if cur_liability + self.total_amount > 1000.0:
-            self.status_message = "🚫 PAY LATER CEILING REACHED (₱1,000 MAX) — SETTLEMENT REQUIRED"
+            self.status_message = "PAY LATER CEILING REACHED (P1,000 MAX) — SETTLEMENT REQUIRED"
             speak_text("Credit limit exceeded. Please settle account balance at cashier.")
             self.notify_pos_update()
             return
@@ -2147,16 +2210,18 @@ class NovaLunchKioskGUI:
         # Check 5x Pay Later limit per student
         current_pay_later_count = self.active_student.get("pay_later_count", 0)
         if current_pay_later_count >= 5:
-            self.status_message = "🚫 PAY LATER LIMIT REACHED (5/5 USED) — DEBT CLEARANCE REQUIRED"
+            self.status_message = "PAY LATER LIMIT REACHED (5/5 USED) — DEBT CLEARANCE REQUIRED"
             speak_text("Pay later limit reached. Please settle existing balance at cashier.")
+            self.notify_pos_update()
             return
 
         student_id = str(self.active_student.get("id", "") or self.active_student.get("student_id_number", "STU"))
         st_name = self.active_student.get("name", "Student")
         tx_id = f"TXN_PAYLATER_{int(time.time())}_{student_id.replace('-', '')}"
+        settled_amount = self.total_amount
 
         self.active_student["pay_later_count"] = current_pay_later_count + 1
-        self.active_student["pay_later_balance"] = cur_liability + self.total_amount
+        self.active_student["pay_later_balance"] = cur_liability + settled_amount
 
         # Persist updated pay-later count & liability to accounts cache
         students = self.db_manager.load_accounts()
@@ -2168,9 +2233,9 @@ class NovaLunchKioskGUI:
                 break
         self.db_manager.save_accounts(students)
 
-        self.db_manager.record_transaction(tx_id, student_id, self.cart_items, self.total_amount, self.latest_tray_image, payment_method="pay_later")
+        self.db_manager.record_transaction(tx_id, student_id, self.cart_items, settled_amount, self.latest_tray_image, payment_method="pay_later")
 
-        # Step 2: Deduct product stock for each cart item after successful pay-later
+        # Deduct product stock for each cart item after successful pay-later
         for item in self.cart_items:
             prod_id = item.get("product_id") or item.get("id") or item.get("name")
             qty = int(item.get("qty", 1))
@@ -2178,7 +2243,7 @@ class NovaLunchKioskGUI:
                 self.db_manager.deduct_product_stock(prod_id, qty)
 
         pay_later_count = self.active_student['pay_later_count']
-        self.status_message = f"SAFETY NET APPROVED: P{self.total_amount:.2f} Charged to Pay Later ({st_name}) [{pay_later_count}/5]"
+        self.status_message = f"SAFETY NET APPROVED: P{settled_amount:.2f} Charged to Pay Later ({st_name}) [{pay_later_count}/5]"
         if self.sounds.get("success"):
             try:
                 self.sounds["success"].play()
@@ -2186,25 +2251,28 @@ class NovaLunchKioskGUI:
                 pass
         speak_text(f"Safety net approved. Charged to pay later. Thank you {st_name.split()[0]}!")
 
-        # Explicitly reset cart and session data before settlement transition
+        # Wave 3 Task 3: Immediately wipe cart internals and broadcast empty payload
+        # so Cashier Order Tally drawer clears in real-time before settlement screen shows.
         self.cart_items = []
         self.total_amount = 0.0
         self.active_student = None
         self.detection_history.clear()
         self.last_detection_hash = ""
+        self.notify_pos_update()          # Broadcast empty cart to POS immediately
         self.transition_to_state(STATE_SETTLEMENT)
-        self.notify_pos_update()
 
     def execute_rfid_checkout(self):
         """Hardened 2-Tap RFID Settlement: Deducts balance, records transaction, and settles order."""
         if not self.cart_items or self.total_amount <= 0.0:
-            self.status_message = "⚠️ EMPTY TRAY — Place meal items on platform before tapping card."
+            self.status_message = "EMPTY TRAY — Place meal items on platform before tapping card."
             self.notify_pos_update()
             return
 
         if not self.active_student:
             return
 
+        # Clear any pending Pay Later confirmation state
+        self.awaiting_pay_later_confirm = False
         self.cart_manual_override_lock = False
         amt = self.total_amount
         student_id = str(self.active_student.get("id") or self.active_student.get("student_id_number") or "STU-2026")
@@ -2212,7 +2280,7 @@ class NovaLunchKioskGUI:
         curr_bal = float(self.active_student.get("balance", 0.0))
 
         if curr_bal < amt:
-            self.status_message = f"⚠️ INSUFFICIENT BALANCE (Req ₱{amt:.2f}, Bal ₱{curr_bal:.2f}) — USE PAY LATER"
+            self.status_message = f"INSUFFICIENT BALANCE (Req P{amt:.2f}, Bal P{curr_bal:.2f}) — USE PAY LATER"
             speak_text(f"Insufficient balance for {st_name.split()[0]}. Please use pay later at cashier.")
             self.notify_pos_update()
             return
@@ -2229,7 +2297,7 @@ class NovaLunchKioskGUI:
             self.latest_tray_image, payment_method="rfid"
         )
 
-        # Step 2: Deduct product stock for each cart item after successful payment
+        # Deduct product stock for each cart item after successful payment
         for item in self.cart_items:
             prod_id = item.get("product_id") or item.get("id") or item.get("name")
             qty = int(item.get("qty", 1))
@@ -2245,14 +2313,15 @@ class NovaLunchKioskGUI:
 
         speak_text(f"Payment approved for {int(amt)} pesos. Thank you {st_name.split()[0]}!")
 
-        # Explicitly reset cart and session data before settlement transition
+        # Wave 3 Task 3: Immediately wipe cart internals and broadcast empty payload
+        # so Cashier Order Tally drawer clears in real-time before settlement screen shows.
         self.cart_items = []
         self.total_amount = 0.0
         self.active_student = None
         self.detection_history.clear()
         self.last_detection_hash = ""
+        self.notify_pos_update()          # Broadcast empty cart to POS immediately
         self.transition_to_state(STATE_SETTLEMENT)
-        self.notify_pos_update()
 
     def handle_rfid_tap(self, scanned_uid=None):
         now = time.time()
@@ -2263,7 +2332,9 @@ class NovaLunchKioskGUI:
                 return  # Hardware debounce
             self.rfid_anti_passback_cache[clean] = now
 
-            # Tap-2 Settlement: Only allow settlement when payment confirmation state and tapped RFID matches active student
+            # ── Tap-2 Settlement (STATE_PAYMENT_CONFIRMATION) ──────────────────────
+            # The student taps their card at the payment confirmation step.
+            # Wave 3: If awaiting_pay_later_confirm is True, this is the confirming 2nd tap.
             if self.current_state == STATE_PAYMENT_CONFIRMATION and self.active_student:
                 active_uid = str(self.active_student.get("rfidUid") or self.active_student.get("rfid_uid") or "").strip()
                 active_id = str(self.active_student.get("id") or self.active_student.get("student_id_number") or "").strip()
@@ -2279,10 +2350,61 @@ class NovaLunchKioskGUI:
                         is_match = True
 
                 if is_match:
-                    self.execute_rfid_checkout()
-                    return
+                    # Wave 3: Double-tap Pay Later confirmation path
+                    if getattr(self, 'awaiting_pay_later_confirm', False):
+                        self.awaiting_pay_later_confirm = False
+                        self.execute_pay_later_checkout()
+                        return
+
+                    # Standard path: check balance and decide wallet deduct vs Pay Later prompt
+                    curr_bal = float(self.active_student.get("balance", 0.0))
+                    amt = self.total_amount
+
+                    if curr_bal >= amt:
+                        # Sufficient balance — proceed with standard RFID settlement
+                        self.execute_rfid_checkout()
+                        return
+                    else:
+                        # Insufficient balance — check Pay Later authorization
+                        safety_net_ok = (
+                            self.active_student.get("safety_net_enabled")
+                            or self.active_student.get("allow_pay_later")
+                            or self.active_student.get("pay_later_allowance") is not False
+                            or self.active_student.get("pay_later_pre_authorized") is not False
+                        )
+                        cur_liability = float(
+                            self.active_student.get("pay_later_balance", 0.0)
+                            or self.active_student.get("credit_liability", 0.0)
+                        )
+                        credit_room = 1000.0 - cur_liability
+                        pay_later_count = self.active_student.get("pay_later_count", 0)
+
+                        if safety_net_ok and credit_room >= amt and pay_later_count < 5:
+                            # First tap: Arm the Pay Later double-tap flow
+                            self.awaiting_pay_later_confirm = True
+                            self.pay_later_timer = now
+                            self.status_message = (
+                                f"Low Wallet Balance (P{curr_bal:.2f}) — "
+                                f"Safety Net Available: P{credit_room:.2f}. "
+                                f"Tap Student ID again within 5s to use Pay Later."
+                            )
+                            speak_text(
+                                f"Low balance. Tap I D again within 5 seconds to charge to Pay Later."
+                            )
+                            self.notify_pos_update()
+                        else:
+                            # Not authorized — display error and reset
+                            self.status_message = (
+                                f"Insufficient Balance (P{curr_bal:.2f}). Please see cashier."
+                            )
+                            speak_text("Insufficient balance. Please see the cashier for assistance.")
+                            self.notify_pos_update()
+                            # Reset to IDLE after 3 seconds via main loop timer
+                            self.awaiting_pay_later_confirm = False
+                            self.state_timer = now - 20.0  # Fast-expire session TTL
+                        return
                 else:
-                    self.status_message = "⚠️ TRANSACTION IN PROGRESS — PLEASE TAP WITH THE SAME CARD TO CONFIRM"
+                    self.status_message = "TRANSACTION IN PROGRESS — PLEASE TAP WITH THE SAME CARD TO CONFIRM"
                     self.notify_pos_update()
                     return
 
@@ -2996,10 +3118,21 @@ class NovaLunchKioskGUI:
 
             # Auto-transitions & Live Scanned Food Summary Sync
             now = time.time()
+
+            # ── Wave 3 Task 2: Pay Later double-tap 5-second timeout ──────────────
+            if getattr(self, 'awaiting_pay_later_confirm', False):
+                if now - getattr(self, 'pay_later_timer', now) >= 5.0:
+                    # 5s window expired without second tap — cancel Pay Later, reset to IDLE
+                    self.awaiting_pay_later_confirm = False
+                    print("[KIOSK] Pay Later 5s confirmation window expired. Returning to IDLE.")
+                    speak_text("Pay Later confirmation expired. Please tap your card to try again.")
+                    self.transition_to_state(STATE_IDLE)
+
             if self.current_state in [STATE_GREET, STATE_SCANNING, STATE_STABILITY_COUNTDOWN, STATE_PAYMENT_CONFIRMATION]:
                 session_ttl = 45.0 if self.cart_items else 20.0
                 if now - self.state_timer >= session_ttl:
                     print(f"[KIOSK] Inactivity timeout expired ({session_ttl}s). Resetting to IDLE.")
+                    self.awaiting_pay_later_confirm = False
                     self.transition_to_state(STATE_IDLE)
 
             if self.current_state == STATE_IDLE:
@@ -3012,10 +3145,14 @@ class NovaLunchKioskGUI:
                 self.transition_to_state(STATE_IDLE)
 
             elif self.current_state in [STATE_GREET, STATE_SCANNING]:
-                # 10-second scanner timeout: if STATE_SCANNING with 0 cart items for 10+ seconds, reset to IDLE
+                # Wave 3 Task 4: 10-second idle scanner timeout polish
+                # If STATE_SCANNING with 0 cart items for 10+ seconds, announce & reset to IDLE
                 if self.current_state == STATE_SCANNING and len(self.cart_items) == 0 and (now - self.state_timer >= 10.0):
                     print("[KIOSK] 10-second scanner timeout: no items detected. Returning to IDLE.")
-                    speak_text("No items detected. Session timed out. Please tap your card to try again.")
+                    speak_text("No items detected. Session timed out.")
+                    self.cart_items = []
+                    self.active_student = None
+                    self.notify_pos_update()    # Broadcast empty cart before reset
                     self.transition_to_state(STATE_IDLE)
                 elif not self.cart_manual_override_lock:
                     live_items = self.camera_thread.get_latest_detections()

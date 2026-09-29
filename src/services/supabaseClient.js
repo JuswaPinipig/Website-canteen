@@ -2210,7 +2210,10 @@
             const cleanCode = isJwt ? rawInput : rawInput.replace(/[^A-Za-z0-9]/g, '').toUpperCase().trim();
 
             const session = this.loadLocal('novalunch_user_session', null) || this.loadLocal('novalunch_current_parent', null);
-            const parentId = parentUserId || session?.id || session?.userId || '02e0f6ca-ae0c-432e-8745-02b53adcd2f4';
+            const parentId = parentUserId || session?.id || session?.userId;
+            if (!parentId) {
+                throw new Error("Guardian session not found. Please sign in before linking a student.");
+            }
 
             const nowTs = Math.floor(Date.now() / 1000);
             let tokenRecord = null;
