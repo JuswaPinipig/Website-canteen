@@ -1781,17 +1781,40 @@
         });
 
         // Accelerated, non-overlapping Text-To-Speech (Web Speech API)
+        let _lastWebSpokenText = '';
+        let _lastWebSpokenTime = 0;
+        let _ttsCancelTimeout = null;
+        let _activeUtterance = null;
+
         const speakWebText = (text) => {
-            if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-                try {
-                    window.speechSynthesis.cancel(); // Cancel any active speech to prevent overlapping voices
-                    const utterance = new SpeechSynthesisUtterance(text);
-                    utterance.rate = 1.3; // Speak 30% faster for crisp announcements
-                    utterance.pitch = 1.0;
-                    window.speechSynthesis.speak(utterance);
-                } catch (e) {
-                    console.log('[WebSpeech Error]', e);
-                }
+            if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+            const clean = String(text || '').trim();
+            if (!clean) return;
+
+            const now = Date.now();
+            // Deduplication guard: ignore identical prompt within 0.8s
+            if (clean === _lastWebSpokenText && (now - _lastWebSpokenTime < 800)) return;
+            _lastWebSpokenText = clean;
+            _lastWebSpokenTime = now;
+
+            try {
+                if (_ttsCancelTimeout) clearTimeout(_ttsCancelTimeout);
+                window.speechSynthesis.cancel(); // Cancel any active speech to prevent overlapping voices
+                _ttsCancelTimeout = setTimeout(() => {
+                    try {
+                        const utterance = new SpeechSynthesisUtterance(clean);
+                        utterance.rate = 1.25; // Speak crisp announcements
+                        utterance.pitch = 1.0;
+                        utterance.onend = () => { _activeUtterance = null; };
+                        utterance.onerror = () => { _activeUtterance = null; };
+                        _activeUtterance = utterance;
+                        window.speechSynthesis.speak(utterance);
+                    } catch (err) {
+                        console.warn('[WebSpeech Error]', err);
+                    }
+                }, 25);
+            } catch (e) {
+                console.warn('[WebSpeech Error]', e);
             }
         };
 
@@ -21791,6 +21814,7 @@
             const [rfidScanResult, setRfidScanResult] = useState(null);  // matched student
             const [rfidScanError, setRfidScanError] = useState('');
             const [rfidLookupMode, setRfidLookupMode] = useState('scan');  // 'scan' | 'manual'
+            const kioskStatusRef = useRef({ online: false });
 
             // Global Hardware 125kHz USB RFID Reader Keystroke Wedge Handler
             useEffect(() => {
@@ -21882,11 +21906,16 @@
                                 setSelectedStudent(matched);
                                 setRfidScanResult(matched);
                                 setRfidModalOpen(false);
-                                speakWebText(`RFID card verified for ${matched.name}.`);
+                                // Suppress Web POS voice announcement if hardware Kiosk is active to prevent dual speech overlap
+                                if (!kioskStatusRef.current?.online) {
+                                    speakWebText(`RFID card verified for ${matched.name}.`);
+                                }
                             } else {
                                 setRfidScanError(`Unregistered 125kHz Card UID: "${rawScanned}"`);
                                 setRfidModalOpen(true);
-                                speakWebText(`Warning! Unregistered RFID card.`);
+                                if (!kioskStatusRef.current?.online) {
+                                    speakWebText(`Warning! Unregistered RFID card.`);
+                                }
                             }
                         }
                         rfidBuffer = '';
@@ -22099,6 +22128,7 @@
                 countdown: 0,
                 lastSyncTime: null
             });
+            kioskStatusRef.current = kioskStatus;
             const [autoMirrorKiosk, setAutoMirrorKiosk] = useState(true);
 
             // Real-Time Direct Hardware Camera Stream & Health Heartbeat

@@ -1725,24 +1725,125 @@ class CameraThread(threading.Thread):
 # ==============================================================================
 # AUDIO & SPEECH ANNOUNCEMENT ENGINE (SYNTHESIZED & PLATFORM TTS)
 # ==============================================================================
-def speak_text(text):
+_tts_lock = threading.Lock()
+_current_tts_process = None
+_tts_generation = 0
+_last_spoken_text = ""
+_last_spoken_time = 0.0
+
+def stop_active_speech():
+    """Immediately stops and cancels any currently active speech announcement to prevent overlap."""
+    global _current_tts_process, _tts_generation
+    proc = None
+    with _tts_lock:
+        _tts_generation += 1
+        if _current_tts_process is not None:
+            proc = _current_tts_process
+            _current_tts_process = None
+
+    if proc is not None:
+        try:
+            if proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=0.15)
+                except Exception:
+                    proc.kill()
+        except Exception:
+            pass
+
+    # On macOS, kill any lingering 'say' processes to guarantee clean voice cut-off
+    try:
+        import platform, subprocess
+        if platform.system() == "Darwin":
+            subprocess.run(["killall", "say"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=0.2)
+    except Exception:
+        pass
+
+def speak_text(text, interrupt=True):
+    """
+    Speaks the given text using the platform TTS engine.
+    Guarantees ZERO voice overlap:
+    If a previous utterance is currently speaking, it is cleanly stopped
+    before starting the new announcement.
+    """
+    global _last_spoken_text, _last_spoken_time, _current_tts_process, _tts_generation
     if not text:
         return
-    def _run_tts():
+
+    clean_text = str(text).replace("'", "").replace('"', "").strip()
+    if not clean_text:
+        return
+
+    now = time.time()
+    # Deduplication guard: ignore identical prompt within 0.8s (prevents key bounce / double-announce)
+    if clean_text == _last_spoken_text and (now - _last_spoken_time < 0.8):
+        return
+    _last_spoken_text = clean_text
+    _last_spoken_time = now
+
+    if interrupt:
+        stop_active_speech()
+
+    with _tts_lock:
+        _tts_generation += 1
+        my_generation = _tts_generation
+
+    def _run_tts(gen, msg):
+        global _current_tts_process
+        with _tts_lock:
+            if gen != _tts_generation:
+                return
+
+        proc = None
         try:
             import subprocess, platform
             sys_os = platform.system()
-            clean_text = str(text).replace("'", "").replace('"', "")
             if sys_os == "Darwin":
-                subprocess.run(["say", "-r", "190", clean_text], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4)
+                proc = subprocess.Popen(
+                    ["say", "-r", "190", msg],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
             elif sys_os == "Linux":
-                subprocess.run(["espeak", "-s", "160", clean_text], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4)
+                proc = subprocess.Popen(
+                    ["espeak", "-s", "160", msg],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
             elif sys_os == "Windows":
-                ps_script = f"Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('{clean_text}')"
-                subprocess.run(["powershell", "-NoProfile", "-Command", ps_script], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4)
+                ps_script = f"Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('{msg}')"
+                proc = subprocess.Popen(
+                    ["powershell", "-NoProfile", "-Command", ps_script],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+        except Exception:
+            proc = None
+
+        if proc is None:
+            return
+
+        with _tts_lock:
+            if gen != _tts_generation:
+                try:
+                    proc.terminate()
+                    proc.kill()
+                except Exception:
+                    pass
+                return
+            _current_tts_process = proc
+
+        try:
+            proc.wait(timeout=6.0)
         except Exception:
             pass
-    t = threading.Thread(target=_run_tts, daemon=True)
+        finally:
+            with _tts_lock:
+                if _current_tts_process is proc:
+                    _current_tts_process = None
+
+    t = threading.Thread(target=_run_tts, args=(my_generation, clean_text), daemon=True)
     t.start()
 
 def create_synthesized_sounds():
@@ -2297,9 +2398,9 @@ class NovaLunchKioskGUI:
         self.rfid_anti_passback_cache = {}
         self.last_rfid_tap_timestamp = 0
 
-        # Pay Later Double-Tap State (Wave 3: Non-Touch RFID-only confirmation)
-        self.awaiting_pay_later_confirm = False   # True = waiting for 2nd RFID tap within 5s
-        self.pay_later_timer = 0.0               # Timestamp of 1st tap that triggered Pay Later prompt
+        # Pay Later State (Strict 3-Tap Flow without 5-second countdown timer)
+        self.awaiting_pay_later_confirm = False   # True = waiting for RFID tap confirmation (no timer)
+        self.pay_later_timer = 0.0
 
         # Subsystems
         self.camera_thread = CameraThread(cam_index=cam_index)
@@ -2345,6 +2446,12 @@ class NovaLunchKioskGUI:
 
     def speak_text(self, text):
         speak_text(text)
+
+    def speak_prompt(self, text):
+        speak_text(text)
+
+    def stop_speech(self):
+        stop_active_speech()
 
     def fetch_student_by_rfid(self, rfid_uid):
         try:
@@ -2695,6 +2802,7 @@ class NovaLunchKioskGUI:
         self.state_timer = time.time()
 
         if new_state == STATE_IDLE:
+            stop_active_speech()
             self.active_student = None
             self.active_preorders = []
             self.cart_items = []
@@ -2706,6 +2814,7 @@ class NovaLunchKioskGUI:
             self.stable_start_time = 0.0
             self.last_detection_hash = ""
             self.cart_manual_override_lock = False
+            self.awaiting_pay_later_confirm = False
             self.error_message = None
             self.status_message = "Welcome to NovaLunch! Tap Student RFID Card to begin."
 
@@ -2760,7 +2869,12 @@ class NovaLunchKioskGUI:
             else:
                 self.cart_items = []
                 self.total_amount = 0.0
-                self.status_message = "⚠️ No items detected on counter. Please place food on the scanning platform."
+                st_name = (self.active_student or {}).get("name")
+                if st_name:
+                    bal = float(self.active_student.get("balance", 0.0) or self.active_student.get("wallet_balance", 0.0) or 0.0)
+                    self.status_message = f"Welcome {st_name}! Balance: ₱{bal:.2f}. Place food on platform."
+                else:
+                    self.status_message = "⚠️ No items detected on counter. Please place food on the scanning platform."
 
             # Save snapshot
             try:
@@ -3102,10 +3216,22 @@ class NovaLunchKioskGUI:
                 return  # Hardware debounce
             self.rfid_anti_passback_cache[clean] = now
 
-            # ── Tap-2 Settlement (STATE_PAYMENT_CONFIRMATION) ──────────────────────
-            # The student taps their card at the payment confirmation step.
-            # Wave 3: If awaiting_pay_later_confirm is True, this is the confirming 2nd tap.
-            if self.current_state == STATE_PAYMENT_CONFIRMATION and self.active_student:
+            # ── Payment Settlement Tap (Tap 2 / Tap 3) ───────────────────────────
+            # Active student is set, cart has items, and student taps card to pay or confirm Pay Later.
+            is_payment_tap = (
+                self.active_student is not None
+                and (
+                    self.current_state == STATE_PAYMENT_CONFIRMATION
+                    or (self.current_state in [STATE_SCANNING, STATE_STABILITY_COUNTDOWN] and len(self.cart_items) > 0 and self.total_amount > 0)
+                )
+            )
+
+            if is_payment_tap:
+                # Ensure cart is locked and state is in STATE_PAYMENT_CONFIRMATION
+                if self.current_state != STATE_PAYMENT_CONFIRMATION:
+                    self.cart_manual_override_lock = True
+                    self.transition_to_state(STATE_PAYMENT_CONFIRMATION)
+
                 active_uid = str(self.active_student.get("rfidUid") or self.active_student.get("rfid_uid") or "").strip()
                 active_id = str(self.active_student.get("id") or self.active_student.get("student_id_number") or "").strip()
 
@@ -3120,51 +3246,65 @@ class NovaLunchKioskGUI:
                         logger.warning(f"[RFID] Unregistered card tapped: {clean}")
                         self.state = STATE_ERROR
                         self.status_message = f"⚠️ Unregistered RFID Card ({clean}). Please register card at office."
-                        self.speak_text("Unregistered card. Please register at the canteen office.")
+                        self.speak_prompt("Unregistered card. Please register at the canteen office.")
                         self.notify_pos_update()
                         return
                     if scanned_student and (scanned_student.get("id") == self.active_student.get("id") or scanned_student.get("student_id_number") == self.active_student.get("student_id_number")):
                         is_match = True
 
                 if is_match:
-                    # Wave 3: Double-tap Pay Later confirmation path
-                    if getattr(self, 'awaiting_pay_later_confirm', False):
-                        self.awaiting_pay_later_confirm = False
-                        self.execute_pay_later_checkout()
-                        return
-
-                    # Standard path: check balance and decide wallet deduct vs Pay Later prompt
                     curr_bal = float(self.active_student.get("balance", 0.0) or self.active_student.get("wallet_balance", 0.0) or 0.0)
-                    amt = self.total_amount
 
-                    if curr_bal >= amt:
+                    if curr_bal >= self.total_amount:
                         # Sufficient balance — proceed with standard RFID settlement
+                        self.awaiting_pay_later_confirm = False
                         self.execute_rfid_checkout()
                         return
                     else:
-                        # Insufficient balance — check Pay Later authorization
-                        liability = float(self.active_student.get('credit_liability', self.active_student.get('pay_later_balance', 0.0)) or 0.0)
-                        limit = float(self.active_student.get('max_credit_limit', self.active_student.get('credit_limit', 300.0)) or 300.0)
+                        # Insufficient balance — check Pay Later eligibility
+                        credit_liability = float(self.active_student.get('credit_liability', self.active_student.get('pay_later_balance', 0.0)) or 0.0)
+                        credit_limit = float(self.active_student.get('max_credit_limit', self.active_student.get('credit_limit', 300.0)) or 300.0)
+                        projected_debt = credit_liability + self.total_amount
                         allow_pay_later = (
                             self.active_student.get('allow_pay_later', True) is not False
                             and self.active_student.get('pay_later_allowance', True) is not False
                         )
+                        current_pay_later_count = int(self.active_student.get("pay_later_count", 0) or 0)
 
-                        if allow_pay_later and (liability + amt <= limit):
-                            # Initiate the 5-second double-tap confirmation countdown
-                            self.awaiting_pay_later_confirm = True
-                            self.pay_later_timer = now
-                            self.status_message = f"Insufficient Balance (₱{curr_bal:.2f}). Tap again within 5s for Pay Later emergency meal."
-                            self.speak_text("Insufficient wallet balance. Tap card again within five seconds to charge via Pay Later.")
-                            self.notify_pos_update()
+                        if allow_pay_later and projected_debt <= credit_limit and current_pay_later_count < 5:
+                            if not getattr(self, 'awaiting_pay_later_confirm', False):
+                                # First tap with insufficient funds (Tap 2): enter persistent confirmation without timer
+                                self.awaiting_pay_later_confirm = True
+                                self.status_message = (
+                                    f"Insufficient balance (₱{curr_bal:.2f}). "
+                                    f"Tap your RFID card again to charge ₱{self.total_amount:.2f} to Pay Later emergency balance."
+                                )
+                                # Spoken prompt without timer
+                                self.speak_prompt("Insufficient balance. Tap your RFID card again to confirm Pay Later.")
+                                self.notify_pos_update()
+                                return
+                            else:
+                                # Second tap (Tap 3): student confirmed intent to use Pay Later
+                                self.awaiting_pay_later_confirm = False
+                                self.execute_pay_later_checkout()
+                                return
                         else:
-                            self.status_message = "Pay Later Credit Limit Exceeded."
-                            self.speak_text("Credit limit reached. Emergency meal unavailable.")
+                            # Exceeded credit ceiling or disabled
+                            if not allow_pay_later:
+                                self.status_message = "Pay Later is disabled for this student account."
+                                self.speak_prompt("Pay later is disabled for this account.")
+                            elif current_pay_later_count >= 5:
+                                self.status_message = "Pay Later emergency limit (5 meals) reached."
+                                self.speak_prompt("Pay later meal limit reached. Please reload your account.")
+                            else:
+                                self.status_message = f"Credit limit exceeded (Limit: ₱{credit_limit:.2f}, Balance: ₱{curr_bal:.2f})."
+                                self.speak_prompt("Credit limit reached. Please reload your account.")
                             self.awaiting_pay_later_confirm = False
                             self.notify_pos_update()
-                        return
+                            return
                 else:
                     self.status_message = "TRANSACTION IN PROGRESS — PLEASE TAP WITH THE SAME CARD TO CONFIRM"
+                    self.speak_prompt("Transaction in progress. Please tap with the same student card.")
                     self.notify_pos_update()
                     return
 
@@ -3177,36 +3317,37 @@ class NovaLunchKioskGUI:
             if self.current_state in [STATE_SCANNING, STATE_STABILITY_COUNTDOWN] and not self.cart_items:
                 self.transition_to_state(STATE_SCANNING)
                 self.status_message = "⚠️ No items detected on counter. Please place food on the scanning platform."
-                speak_text("No items detected on counter. Please place your food on the scanning platform.")
+                self.speak_prompt("No items detected on counter. Please place your food on the scanning platform.")
                 self.notify_pos_update()
                 return
 
-            # Hardened RFID resolution: SQLite cache first, live Supabase cloud
-            # fallback second (which UPSERTs the profile for instant future taps).
-            # Returns None on an unregistered card — NEVER a default/mock student.
+            # ── Tap 1 (Identify & Start): Hardware RFID resolution ────────────────
             student = self.fetch_student_by_rfid(clean)
             if not student or not student.get('id'):
                 logger.warning(f"[RFID] Unregistered card tapped: {clean}")
                 self.state = STATE_ERROR
                 self.status_message = f"⚠️ Unregistered RFID Card ({clean}). Please register card at office."
-                self.speak_text("Unregistered card. Please register at the canteen office.")
+                self.speak_prompt("Unregistered card. Please register at the canteen office.")
                 self.notify_pos_update()
                 return
 
             self.active_student = student
             self.cart_manual_override_lock = False
+            self.awaiting_pay_later_confirm = False
             bal = float(student.get("balance", 0.0) or student.get("wallet_balance", 0.0) or 0.0)
             student.setdefault("wallet_balance", bal)
-            if bal <= 0:
-                self.status_message = f"⚠️ Low/Zero Balance (₱{bal:.2f}). You may use Pay Later at Cashier."
-            else:
-                self.status_message = f"Welcome {student.get('name', 'Student')}! Balance: ₱{bal:.2f}"
+            st_name = student.get('name', 'Student')
 
             self.active_preorders = self.db_manager.get_active_preorders(student.get("id"), student.get("name"))
             if self.active_preorders:
                 self.transition_to_state(STATE_PREORDER_ANNOUNCEMENT)
             else:
-                self.transition_to_state(STATE_GREET)
+                self.transition_to_state(STATE_SCANNING)
+                if bal <= 0:
+                    self.status_message = f"Welcome {st_name}! Low/Zero Balance (₱{bal:.2f}). Place food on platform."
+                else:
+                    self.status_message = f"Welcome {st_name}! Balance: ₱{bal:.2f}. Place food on platform."
+                self.speak_prompt(f"Welcome {str(st_name).split()[0]}! Balance is {int(bal)} pesos. Please place your food on the scanning platform.")
             self.notify_pos_update()
             return
 
@@ -3427,6 +3568,16 @@ class NovaLunchKioskGUI:
         self.screen.blit(num_surf, (cx - num_surf.get_width() // 2, cy - num_surf.get_height() // 2))
 
     def render_payment_confirmation_banner(self, video_area):
+        if getattr(self, 'awaiting_pay_later_confirm', False):
+            banner = pygame.Rect(video_area.centerx - 270, video_area.centery - 45, 540, 90)
+            pygame.draw.rect(self.screen, COLOR_AMBER_BG, banner, border_radius=16)
+            pygame.draw.rect(self.screen, COLOR_GOLD_ACCENT, banner, width=2, border_radius=16)
+            t1 = self.font_large.render("⚠️ INSUFFICIENT WALLET BALANCE", True, COLOR_MAROON_DARK)
+            t2 = self.font_subtitle_bold.render("Tap RFID Card Again to Confirm Pay Later", True, COLOR_MAROON_HEADER)
+            self.screen.blit(t1, (banner.centerx - t1.get_width() // 2, banner.y + 14))
+            self.screen.blit(t2, (banner.centerx - t2.get_width() // 2, banner.y + 50))
+            return
+
         banner = pygame.Rect(video_area.centerx - 230, video_area.centery - 40, 460, 80)
         pygame.draw.rect(self.screen, COLOR_EMERALD_BG, banner, border_radius=16)
         pygame.draw.rect(self.screen, COLOR_EMERALD, banner, width=2, border_radius=16)
@@ -3657,7 +3808,9 @@ class NovaLunchKioskGUI:
 
     def render_action_banner(self):
         banner_rect = pygame.Rect(775, 565, 460, 56)
-        if self.current_state == STATE_IDLE:
+        if getattr(self, 'awaiting_pay_later_confirm', False):
+            bg, txt, fg = COLOR_GOLD_ACCENT, "Insufficient Balance — Tap RFID Card Again to Confirm Pay Later", COLOR_MAROON_DARK
+        elif self.current_state == STATE_IDLE:
             bg, txt, fg = COLOR_CARD_ALT, "Tap Student RFID Card to begin...", COLOR_TEXT_MUTED
         elif self.current_state in [STATE_GREET, STATE_SCANNING] and len(self.cart_items) == 0:
             bg, txt, fg = COLOR_MAROON_HEADER, "AI Overhead Vision Scanning Active...", COLOR_WHITE
@@ -3672,7 +3825,7 @@ class NovaLunchKioskGUI:
         elif self.current_state == STATE_SETTLEMENT:
             bg, txt, fg = COLOR_EMERALD, "✓ Payment Confirmed — Please Claim Your Order!", COLOR_WHITE
         else:
-            bg, txt, fg = COLOR_ROSE_ALERT, "⚡ Insufficient Balance — Press [P] for Pay Later", COLOR_WHITE
+            bg, txt, fg = COLOR_ROSE_ALERT, "⚡ Insufficient Balance — Tap RFID Card to Confirm Pay Later", COLOR_WHITE
 
         self.pay_later_btn_rect = banner_rect
         pygame.draw.rect(self.screen, bg, banner_rect, border_radius=12)
@@ -3808,13 +3961,17 @@ class NovaLunchKioskGUI:
 
         # Instruction prompt
         prompt_y = tot_y + 56
-        if has_balance:
+        if getattr(self, 'awaiting_pay_later_confirm', False):
+            prompt_bg = COLOR_GOLD_ACCENT
+            prompt_txt = "Insufficient Balance — Tap RFID Card Again to Confirm Pay Later"
+            prompt_fg = COLOR_MAROON_DARK
+        elif has_balance:
             prompt_bg = COLOR_EMERALD
             prompt_txt = "👆  TAP YOUR RFID CARD NOW TO CONFIRM"
             prompt_fg = COLOR_WHITE
         else:
             prompt_bg = COLOR_GOLD_ACCENT
-            prompt_txt = "⚠️  BALANCE LOW — PRESS [P] FOR PAY LATER"
+            prompt_txt = "⚠️  BALANCE LOW — TAP RFID CARD TO USE PAY LATER"
             prompt_fg = COLOR_MAROON_DARK
 
         btn_rect = pygame.Rect(card_x + 28, prompt_y, card_w - 56, 46)
@@ -3916,17 +4073,19 @@ class NovaLunchKioskGUI:
             # Auto-transitions & Live Scanned Food Summary Sync
             now = time.time()
 
-            # ── Wave 3 Task 2: Pay Later double-tap 5-second timeout ──────────────
+            # Pay Later Persistent Confirmation Mode (5-Second Timer Permanently Removed)
+            # The prompt stays persistent until confirmed by Tap 3, cleared from tray,
+            # or the 60-second session inactivity timeout expires.
             if getattr(self, 'awaiting_pay_later_confirm', False):
-                if now - getattr(self, 'pay_later_timer', now) >= 5.0:
-                    # 5s window expired without second tap — cancel Pay Later, reset to IDLE
+                if not self.cart_items:
+                    # Tray was cleared by student
+                    print("[KIOSK] Tray cleared during Pay Later confirmation. Resetting Pay Later mode.")
                     self.awaiting_pay_later_confirm = False
-                    print("[KIOSK] Pay Later 5s confirmation window expired. Returning to IDLE.")
-                    speak_text("Pay Later confirmation expired. Please tap your card to try again.")
-                    self.transition_to_state(STATE_IDLE)
+                    if self.current_state == STATE_PAYMENT_CONFIRMATION:
+                        self.transition_to_state(STATE_SCANNING)
 
             if self.current_state in [STATE_GREET, STATE_SCANNING, STATE_STABILITY_COUNTDOWN, STATE_PAYMENT_CONFIRMATION]:
-                session_ttl = 45.0 if self.cart_items else 20.0
+                session_ttl = 60.0 if getattr(self, 'awaiting_pay_later_confirm', False) else (45.0 if self.cart_items else 20.0)
                 if now - self.state_timer >= session_ttl:
                     print(f"[KIOSK] Inactivity timeout expired ({session_ttl}s). Resetting to IDLE.")
                     self.awaiting_pay_later_confirm = False
