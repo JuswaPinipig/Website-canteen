@@ -61,7 +61,13 @@
                 if (typeof window !== 'undefined' && window.localStorage) {
                     const item = window.localStorage.getItem(key);
                     if (item !== null && item !== undefined && item !== "undefined") {
-                        return JSON.parse(item);
+                        const parsed = JSON.parse(item);
+                        if (parsed !== null && parsed !== undefined) {
+                            if (Array.isArray(defaultValue) && !Array.isArray(parsed)) {
+                                return defaultValue;
+                            }
+                            return parsed;
+                        }
                     }
                 }
             } catch (e) {
@@ -128,10 +134,10 @@
 
             if (cloudProducts && cloudProducts.length > 0) {
                 const existing = cached || [];
-                const cloudIds = new Set(cloudProducts.map(cp => cp.id));
-                const cloudNames = new Set(cloudProducts.map(cp => (cp.name || '').toLowerCase()));
-                const localOnly = existing.filter(lp => !cloudIds.has(lp.id) && !cloudNames.has((lp.name || '').toLowerCase()));
-                const merged = [...cloudProducts, ...localOnly].map(p => ({
+                const cloudIds = new Set((cloudProducts || []).map(cp => cp.id));
+                const cloudNames = new Set((cloudProducts || []).map(cp => (cp.name || '').toLowerCase()));
+                const localOnly = (existing || []).filter(lp => !cloudIds.has(lp.id) && !cloudNames.has((lp.name || '').toLowerCase()));
+                const merged = [...(cloudProducts || []), ...localOnly].map(p => ({
                     ...p,
                     ai_label: p.ai_label !== undefined ? p.ai_label : (p.aiLabel || null),
                     aiLabel: p.ai_label !== undefined ? p.ai_label : (p.aiLabel || null)
@@ -156,9 +162,9 @@
         async updateProductAiLabel(productId, aiLabel) {
             const cleanLabel = (aiLabel && aiLabel !== 'NONE') ? String(aiLabel).trim() : null;
             // Update local cache immediately
-            const currentProducts = this.loadLocal('novalunch_products_catalog', []);
+            const currentProducts = this.loadLocal('novalunch_products_catalog', []) || [];
             let targetProduct = null;
-            const updatedLocal = currentProducts.map(p => {
+            const updatedLocal = (currentProducts || []).map(p => {
                 if (p.id === productId || (p.name && productId && p.name.toLowerCase() === String(productId).toLowerCase())) {
                     targetProduct = { ...p, ai_label: cleanLabel, aiLabel: cleanLabel };
                     return targetProduct;
@@ -250,8 +256,8 @@
             createdProduct.ai_label = createdProduct.ai_label !== undefined ? createdProduct.ai_label : cleanAiLabel;
 
             // Update local cache
-            const currentProducts = this.loadLocal('novalunch_products_catalog', []);
-            this.saveLocal('novalunch_products_catalog', [createdProduct, ...currentProducts.filter(p => p.id !== createdProduct.id)]);
+            const currentProducts = this.loadLocal('novalunch_products_catalog', []) || [];
+            this.saveLocal('novalunch_products_catalog', [createdProduct, ...(currentProducts || []).filter(p => p.id !== createdProduct.id)]);
 
             // Push to Edge Kiosk (:8085)
             try {
@@ -313,9 +319,9 @@
             }
 
             // 1. Always update local cache immediately (and upgrade ID if resolved)
-            const currentProducts = this.loadLocal('novalunch_products_catalog', []);
+            const currentProducts = this.loadLocal('novalunch_products_catalog', []) || [];
             let fullUpdatedProd = null;
-            const updatedLocal = currentProducts.map(p => {
+            const updatedLocal = (currentProducts || []).map(p => {
                 if (p.id === productId || (targetUUID && p.id === targetUUID) || (p.name && updatePayload.name && p.name.toLowerCase() === updatePayload.name.toLowerCase())) {
                     fullUpdatedProd = {
                         ...p,
@@ -388,18 +394,84 @@
         },
 
         async decrementProductStock(productId, qty = 1) {
-            const currentProducts = this.loadLocal('novalunch_products_catalog', []);
-            const prod = currentProducts.find(p => p.id === productId || p.name === productId);
-            const currentStock = prod ? Number(prod.stock ?? prod.stock_quantity ?? 50) : 50;
-            const newStock = Math.max(0, currentStock - Number(qty || 1));
-            return await this.updateProduct(prod ? prod.id : productId, { stock: newStock });
+            const cleanQty = Math.max(1, parseInt(qty) || 1);
+            const currentProducts = this.loadLocal('novalunch_products_catalog', []) || [];
+
+            // 1. Resolve the row. Legacy mock ids ("p4") and product names are mapped onto
+            //    the cloud UUID first, so the local mirror below can match the same row.
+            const rawId = (productId && typeof productId === 'object') ? (productId.id || productId.name) : productId;
+            const nameMatch = (currentProducts || []).find(p =>
+                typeof productId === 'object' ? (p.id === productId.id || p.name === productId.name) : (p.name === productId)
+            );
+            let targetUUID = this.isUUID(rawId) ? rawId : (KNOWN_MOCK_PRODUCT_UUIDS[rawId] || null);
+            if (!targetUUID && supabase && (nameMatch?.name || rawId)) {
+                try {
+                    const searchName = String(nameMatch?.name || rawId).trim();
+                    const { data: matched } = await supabase.from('products').select('id, stock, stock_quantity').ilike('name', searchName).maybeSingle();
+                    if (matched && matched.id) targetUUID = matched.id;
+                } catch (e) { }
+            }
+
+            const localProd = (currentProducts || []).find(p =>
+                p.id === rawId ||
+                (targetUUID && p.id === targetUUID) ||
+                (p.name && (p.name === productId || (nameMatch && p.name === nameMatch.name)))
+            );
+
+            // 2. Mirror the decrement into the local catalog cache immediately (offline-safe).
+            let cachedStock = null;
+            if (localProd) {
+                cachedStock = Math.max(0, Number(localProd.stock ?? localProd.stock_quantity ?? 0) - cleanQty);
+                const updated = (currentProducts || []).map(p => {
+                    const isMatch = p.id === localProd.id || (localProd.name && p.name && p.name.toLowerCase() === localProd.name.toLowerCase());
+                    return isMatch ? { ...p, stock: cachedStock, stock_quantity: cachedStock } : p;
+                });
+                this.saveLocal('novalunch_products_catalog', updated);
+                if (typeof CanteenCache !== 'undefined' && CanteenCache.set) {
+                    CanteenCache.set('products_catalog', updated);
+                }
+            }
+
+            // 3. Cloud layer: atomic RPC first, read-modify-write as fallback. The
+            //    products_stock_sync trigger mirrors `stock` → `stock_quantity` and
+            //    recomputes availability server-side, so only `stock` is written.
+            if (!supabase || !targetUUID) {
+                return { success: cachedStock !== null, newStock: cachedStock };
+            }
+            try {
+                const { data, error } = await supabase.rpc('fn_deduct_stock_fifo', { p_product_id: targetUUID, p_quantity: cleanQty });
+                if (!error && data !== null && data !== undefined) {
+                    const rpcStock = (data && typeof data === 'object' && 'remaining' in data) ? Number(data.remaining) : null;
+                    return { success: true, newStock: rpcStock !== null && !Number.isNaN(rpcStock) ? rpcStock : cachedStock, via: 'rpc' };
+                }
+            } catch (e) {
+                console.warn("[CanteenDB] fn_deduct_stock_fifo notice, using read-modify-write:", e);
+            }
+            try {
+                const { data: prod, error: readErr } = await supabase
+                    .from('products')
+                    .select('stock')
+                    .eq('id', targetUUID)
+                    .maybeSingle();
+                if (readErr) throw readErr;
+                if (prod) {
+                    const newStock = Math.max(0, Number(prod.stock || 0) - cleanQty);
+                    const { error: writeErr } = await supabase.from('products').update({ stock: newStock }).eq('id', targetUUID);
+                    if (writeErr) throw writeErr;
+                    return { success: true, newStock, via: 'read-modify-write' };
+                }
+                console.warn(`[CanteenDB] Stock decrement skipped: product ${targetUUID} not found in cloud catalog.`);
+            } catch (err) {
+                console.error('[CanteenDB] Stock decrement error:', err);
+            }
+            return { success: false, newStock: cachedStock };
         },
 
         async deleteProduct(productId) {
             let targetUUID = this.isUUID(productId) ? productId : (KNOWN_MOCK_PRODUCT_UUIDS[productId] || null);
             // Always update local cache
-            const currentProducts = this.loadLocal('novalunch_products_catalog', []);
-            const updatedLocal = currentProducts.filter(p => p.id !== productId && p.id !== targetUUID && p.name !== productId);
+            const currentProducts = this.loadLocal('novalunch_products_catalog', []) || [];
+            const updatedLocal = (currentProducts || []).filter(p => p.id !== productId && p.id !== targetUUID && p.name !== productId);
             this.saveLocal('novalunch_products_catalog', updatedLocal);
 
             if (targetUUID) {
@@ -422,8 +494,8 @@
         async deleteUser(userId) {
             let targetUUID = this.isUUID(userId) ? userId : (KNOWN_MOCK_USER_UUIDS[userId] || null);
             // Always update local cache
-            const currentUsers = this.loadLocal('novalunch_registered_users', []);
-            const updatedLocal = currentUsers.filter(u => u.id !== userId && u.id !== targetUUID);
+            const currentUsers = this.loadLocal('novalunch_registered_users', []) || [];
+            const updatedLocal = (currentUsers || []).filter(u => u.id !== userId && u.id !== targetUUID);
             this.saveLocal('novalunch_registered_users', updatedLocal);
 
             if (targetUUID) {
@@ -478,9 +550,13 @@
             }
         },
 
-        async deductCartStockFifo(cartItems) {
+        async deductCartStockFifo(cartItems, options = {}) {
             if (!cartItems || !cartItems.length) return { success: true };
-            const cleanItems = cartItems.map(item => {
+            // `skipCloud: true` restricts this call to the local catalog + FIFO batch
+            // layers, for callers that already apply the authoritative per-line cloud
+            // decrement through decrementProductStock().
+            const skipCloud = Boolean(options && options.skipCloud);
+            const cleanItems = (cartItems || []).map(item => {
                 let id = item.id || item.product_id;
                 if (id && !this.isUUID(id)) {
                     id = KNOWN_MOCK_PRODUCT_UUIDS[id] || id;
@@ -493,9 +569,9 @@
             });
 
             // 1. Deduct immediately from local products catalog
-            const localProds = this.loadLocal('novalunch_products_catalog', []);
-            const updatedProds = localProds.map(p => {
-                const match = cleanItems.find(i => (i.id && (i.id === p.id)) || (i.name && p.name && i.name.toLowerCase() === p.name.toLowerCase()));
+            const localProds = this.loadLocal('novalunch_products_catalog', []) || [];
+            const updatedProds = (localProds || []).map(p => {
+                const match = (cleanItems || []).find(i => (i.id && (i.id === p.id)) || (i.name && p.name && i.name.toLowerCase() === p.name.toLowerCase()));
                 if (match) {
                     return { ...p, stock: Math.max(0, (p.stock || 0) - match.qty) };
                 }
@@ -507,9 +583,10 @@
             }
 
             // 2. Deduct FIFO remaining from local batches
-            const localBatches = this.loadLocal('novalunch_inventory_batches', []);
+            const localBatches = this.loadLocal('novalunch_inventory_batches', []) || [];
             if (localBatches && localBatches.length > 0) {
-                let batchCopy = JSON.parse(JSON.stringify(localBatches));
+                let batchCopy = [];
+                try { batchCopy = JSON.parse(JSON.stringify(localBatches)); } catch(e) { batchCopy = [...(localBatches || [])]; }
                 for (const item of cleanItems) {
                     let rem = item.qty;
                     for (let b of batchCopy) {
@@ -530,6 +607,8 @@
                 }
             }
 
+            if (skipCloud) return { success: true, layers: ['local_catalog', 'local_batches'] };
+
             // If all items are valid UUIDs, attempt RPC
             const allUUIDs = cleanItems.every(i => this.isUUID(i.id));
             if (supabase && allUUIDs) {
@@ -542,12 +621,12 @@
             }
 
             // Fallback: Deduct items individually
-            return await Promise.all(cleanItems.map(i => this.deductStockFifo(i.id, i.qty, i.name)));
+            return await Promise.all((cleanItems || []).map(i => this.deductStockFifo(i.id, i.qty, i.name)));
         },
 
         async restoreCartStockFifo(cartItems) {
             if (!cartItems || !cartItems.length) return { success: true };
-            const cleanItems = cartItems.map(item => {
+            const cleanItems = (cartItems || []).map(item => {
                 let id = item.id || item.product_id;
                 if (id && !this.isUUID(id)) {
                     id = KNOWN_MOCK_PRODUCT_UUIDS[id] || id;
@@ -560,9 +639,9 @@
             });
 
             // 1. Restore local products catalog stock
-            const localProds = this.loadLocal('novalunch_products_catalog', []);
-            const updatedProds = localProds.map(p => {
-                const match = cleanItems.find(i => (i.id && (i.id === p.id)) || (i.name && p.name && i.name.toLowerCase() === p.name.toLowerCase()));
+            const localProds = this.loadLocal('novalunch_products_catalog', []) || [];
+            const updatedProds = (localProds || []).map(p => {
+                const match = (cleanItems || []).find(i => (i.id && (i.id === p.id)) || (i.name && p.name && i.name.toLowerCase() === p.name.toLowerCase()));
                 if (match) {
                     return { ...p, stock: (p.stock || 0) + match.qty };
                 }
@@ -574,9 +653,10 @@
             }
 
             // 2. Restore local inventory batch quantities
-            const localBatches = this.loadLocal('novalunch_inventory_batches', []);
+            const localBatches = this.loadLocal('novalunch_inventory_batches', []) || [];
             if (localBatches && localBatches.length > 0) {
-                let batchCopy = JSON.parse(JSON.stringify(localBatches));
+                let batchCopy = [];
+                try { batchCopy = JSON.parse(JSON.stringify(localBatches)); } catch(e) { batchCopy = [...(localBatches || [])]; }
                 for (const item of cleanItems) {
                     let rem = item.qty;
                     for (let b of batchCopy) {
@@ -746,8 +826,8 @@
                 }
             }
             // Local fallback for demo / non-UUID or offline
-            const users = this.loadLocal('novalunch_registered_users', []);
-            const matched = users.find(u => u.id === userId || u.studentId === userId || (u.email && u.email.toLowerCase() === String(userId).toLowerCase()) || (u.name && u.name.toLowerCase() === String(userId).toLowerCase()));
+            const users = this.loadLocal('novalunch_registered_users', []) || [];
+            const matched = (users || []).find(u => u.id === userId || u.studentId === userId || (u.email && u.email.toLowerCase() === String(userId).toLowerCase()) || (u.name && u.name.toLowerCase() === String(userId).toLowerCase()));
             if (matched) {
                 return {
                     user_id: matched.id,
@@ -768,8 +848,8 @@
             if (!cleanAmount || cleanAmount <= 0) throw new Error('Deduction amount must be a positive number.');
 
             // Read local balance for non-UUID / demo student fallback
-            const users = this.loadLocal('novalunch_registered_users', []);
-            const localUser = users.find(u => u.id === userId || u.studentId === userId || (u.email && u.email.toLowerCase() === String(userId).toLowerCase()) || (u.name && u.name.toLowerCase() === String(userId).toLowerCase()));
+            const users = this.loadLocal('novalunch_registered_users', []) || [];
+            const localUser = (users || []).find(u => u.id === userId || u.studentId === userId || (u.email && u.email.toLowerCase() === String(userId).toLowerCase()) || (u.name && u.name.toLowerCase() === String(userId).toLowerCase()));
             const localBal = localUser ? (typeof localUser.balance === 'number' ? localUser.balance : (parseFloat(localUser.balance) || 0)) : 0;
 
             let targetUUID = userId;
@@ -794,7 +874,7 @@
                 }
 
                 const newBal = typeof data === 'number' ? data : (data.new_balance ?? data);
-                const updated = users.map(u => (u.id === userId || u.id === targetUUID || u.studentId === userId) ? { ...u, balance: newBal } : u);
+                const updated = (users || []).map(u => (u.id === userId || u.id === targetUUID || u.studentId === userId) ? { ...u, balance: newBal } : u);
                 this.saveLocal('novalunch_registered_users', updated);
                 if (typeof CanteenCache !== 'undefined' && CanteenCache.set) CanteenCache.set('registered_users', updated);
                 await supabase.from('profiles').update({ balance: newBal, updated_at: new Date().toISOString() }).eq('id', targetUUID).catch(() => {});
@@ -804,10 +884,10 @@
             // Local fallback only if Supabase is completely unavailable (pure offline demo mode)
             if (!supabase) {
                 if (localBal < cleanAmount) {
-                    throw new Error(`INSUFFICIENT_FUNDS: Required ₱${cleanAmount.toFixed(2)}, Available ₱${localBal.toFixed(2)}`);
+                    throw new Error(`INSUFFICIENT_FUNDS: Required ₱${(Number(cleanAmount) || 0).toFixed(2)}, Available ₱${(Number(localBal) || 0).toFixed(2)}`);
                 }
-                const newBal = parseFloat((localBal - cleanAmount).toFixed(2));
-                const updated = users.map(u => (u.id === userId || u.studentId === userId) ? { ...u, balance: newBal } : u);
+                const newBal = parseFloat(((Number(localBal) || 0) - (Number(cleanAmount) || 0)).toFixed(2));
+                const updated = (users || []).map(u => (u.id === userId || u.studentId === userId) ? { ...u, balance: newBal } : u);
                 this.saveLocal('novalunch_registered_users', updated);
                 if (typeof CanteenCache !== 'undefined' && CanteenCache.set) CanteenCache.set('registered_users', updated);
                 return { success: true, new_balance: newBal };
@@ -825,15 +905,15 @@
             if (!cleanAmount || cleanAmount <= 0) throw new Error('Credit amount must be a positive number.');
 
             // 1. Always update local registered users cache immediately
-            const users = this.loadLocal('novalunch_registered_users', []);
+            const users = this.loadLocal('novalunch_registered_users', []) || [];
             let updatedLocalBal = 0;
-            const updatedUsers = users.map(u => {
+            const updatedUsers = (users || []).map(u => {
                 const isMatch = u.id === userId || u.studentId === userId || 
                                (u.email && u.email.toLowerCase() === String(userId).toLowerCase()) ||
                                (u.name && u.name.toLowerCase() === String(userId).toLowerCase());
                 if (isMatch) {
                     const curBal = typeof u.balance === 'number' ? u.balance : (parseFloat(u.balance) || 0);
-                    const newBal = parseFloat((curBal + cleanAmount).toFixed(2));
+                    const newBal = parseFloat(((Number(curBal) || 0) + (Number(cleanAmount) || 0)).toFixed(2));
                     updatedLocalBal = newBal;
                     return { ...u, balance: newBal };
                 }
@@ -846,7 +926,7 @@
             if (!this.isUUID(targetUUID)) {
                 targetUUID = KNOWN_MOCK_USER_UUIDS[targetUUID] || null;
                 if (!targetUUID) {
-                    const match = users.find(u => u.id === userId || u.studentId === userId || (u.email && u.email.toLowerCase() === String(userId).toLowerCase()) || (u.name && u.name.toLowerCase() === String(userId).toLowerCase()));
+                    const match = (users || []).find(u => u.id === userId || u.studentId === userId || (u.email && u.email.toLowerCase() === String(userId).toLowerCase()) || (u.name && u.name.toLowerCase() === String(userId).toLowerCase()));
                     if (match && this.isUUID(match.id)) targetUUID = match.id;
                 }
             }
@@ -872,7 +952,7 @@
                         .from('wallets').select('balance').eq('user_id', targetUUID).maybeSingle();
 
                     const currentBal = walletData ? (parseFloat(walletData.balance) || 0) : (updatedLocalBal - cleanAmount);
-                    const newBalance = parseFloat((currentBal + cleanAmount).toFixed(2));
+                    const newBalance = parseFloat(((Number(currentBal) || 0) + (Number(cleanAmount) || 0)).toFixed(2));
 
                     await supabase.from('wallets')
                         .upsert({ user_id: targetUUID, balance: newBalance, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
@@ -1276,10 +1356,10 @@
             }
 
             if (items && items.length > 0) {
-                const formattedItems = items.map(item => {
-                    const unitPrice = parseFloat(item.unit_price || item.price) || 0;
-                    const qty = parseInt(item.quantity || item.qty) || 1;
-                    const totalPrice = parseFloat((unitPrice * qty).toFixed(2));
+                const formattedItems = (items || []).map(item => {
+                    const unitPrice = parseFloat(item?.unit_price || item?.price) || 0;
+                    const qty = parseInt(item?.quantity || item?.qty) || 1;
+                    const totalPrice = parseFloat(((Number(unitPrice) || 0) * (Number(qty) || 0)).toFixed(2));
                     let pId = item.product_id || item.id;
                     if (pId && !this.isUUID(pId)) {
                         pId = KNOWN_MOCK_PRODUCT_UUIDS[pId] || null;
@@ -1319,7 +1399,7 @@
                 status: cleanHeader.order_status,
                 items: items || []
             };
-            const updatedRecent = [fullLocalRecord, ...localOrders.filter(o => o.id !== order.id && o.order_number !== cleanHeader.order_number)];
+            const updatedRecent = [fullLocalRecord, ...(localOrders || []).filter(o => o.id !== order.id && o.order_number !== cleanHeader.order_number)];
             this.saveLocal('novalunch_recent_orders', updatedRecent);
             if (typeof CanteenCache !== 'undefined' && CanteenCache.set) {
                 CanteenCache.set('recent_orders', updatedRecent);
@@ -1811,10 +1891,18 @@
                 'first_name', 'last_name', 'employee_id', 'weekly_limit', 'monthly_allowance',
                 'credit_liability', 'credit_limit', 'pay_later_count', 'pay_later_pre_authorized',
                 'max_daily_calories', 'allergen_mode', 'allergies', 'restricted_categories',
-                'manager_pin', 'accumulated_salary_deduction', 'updated_at'
+                'manager_pin', 'accumulated_salary_deduction', 'balance', 'wallet_balance', 'updated_at'
             ]);
 
             const profileFields = {};
+            if (updatePayload.balance !== undefined) {
+                profileFields.balance = parseFloat(updatePayload.balance) || 0.0;
+                profileFields.wallet_balance = parseFloat(updatePayload.balance) || 0.0;
+            }
+            if (updatePayload.wallet_balance !== undefined) {
+                profileFields.balance = parseFloat(updatePayload.wallet_balance) || 0.0;
+                profileFields.wallet_balance = parseFloat(updatePayload.wallet_balance) || 0.0;
+            }
             if (updatePayload.name !== undefined) profileFields.full_name = updatePayload.name;
             if (updatePayload.full_name !== undefined) profileFields.full_name = updatePayload.full_name;
             if (updatePayload.studentId !== undefined) profileFields.student_id_number = updatePayload.studentId;
@@ -3911,10 +3999,26 @@
         window.CanteenDB = CanteenDB;
         CanteenDB.supabase = supabase;
         window.supabaseClient = supabase;
-        if (window.supabase && typeof window.supabase.from !== 'function') {
-            window.supabase.from = (...args) => supabase.from(...args);
-            window.supabase.rpc = (...args) => supabase.rpc(...args);
-            window.supabase.auth = supabase.auth;
+        if (supabase) {
+            if (window.supabase) {
+                if (typeof window.supabase.from !== 'function') {
+                    window.supabase.from = (...args) => supabase.from(...args);
+                }
+                if (typeof window.supabase.table !== 'function') {
+                    window.supabase.table = (...args) => (supabase.table ? supabase.table(...args) : supabase.from(...args));
+                }
+                if (typeof window.supabase.channel !== 'function') {
+                    window.supabase.channel = (...args) => supabase.channel(...args);
+                }
+                if (typeof window.supabase.rpc !== 'function') {
+                    window.supabase.rpc = (...args) => supabase.rpc(...args);
+                }
+                if (!window.supabase.auth) {
+                    window.supabase.auth = supabase.auth;
+                }
+            } else {
+                window.supabase = supabase;
+            }
         }
     }
 })(typeof window !== 'undefined' ? window : this);
