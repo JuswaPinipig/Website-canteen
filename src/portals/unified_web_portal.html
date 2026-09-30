@@ -19784,7 +19784,7 @@
             const [customerPage, setCustomerPage] = useState(1);
             const customersPerPage = 5;
 
-            const isGuestSelected = selectedStudent && (selectedStudent.id === 'GUEST' || selectedStudent.isGuest);
+            const isGuestSelected = Boolean(selectedStudent && (selectedStudent?.id === 'GUEST' || selectedStudent?.isGuest));
 
             useEffect(() => {
                 if (isOpen) {
@@ -19917,7 +19917,7 @@
                                         <span className="font-semibold text-slate-900">
                                             {isGuestSelected
                                                 ? (modalGuestName.trim() || guestCustomerName.trim() ? `Guest (${modalGuestName.trim() || guestCustomerName.trim()})` : 'Walk-in Guest')
-                                                : selectedStudent.name}
+                                                : (selectedStudent?.name || selectedStudent?.full_name)}
                                         </span>
                                     </div>
                                 ) : (
@@ -20106,7 +20106,7 @@
                                 ) : (
                                     <div className="space-y-2">
                                         {paginatedUsers.map(user => {
-                                            const isSelected = selectedStudent && selectedStudent.id === user.id;
+                                            const isSelected = Boolean(selectedStudent && selectedStudent?.id === user.id);
                                             const roleLower = (user.role || 'student').toLowerCase();
                                             const roleConfig = roleBadges[roleLower] || roleBadges.student;
                                             const isStaffOrTeacher = roleLower === 'teacher' || roleLower === 'staff' || roleLower === 'cashier' || roleLower === 'admin' || user.salaryDeductionEligible;
@@ -21197,70 +21197,73 @@
 
             const isStudentAccount = Boolean(
                 selectedStudent &&
-                !selectedStudent.isGuest &&
-                selectedStudent.id !== 'GUEST' &&
-                ((selectedStudent.role || '').toLowerCase() === 'student' || (!selectedStudent.role && selectedStudent.studentId && !selectedStudent.employeeId))
+                !selectedStudent?.isGuest &&
+                selectedStudent?.id !== 'GUEST' &&
+                (((selectedStudent?.role || '').toLowerCase() === 'student') || (!selectedStudent?.role && selectedStudent?.studentId && !selectedStudent?.employeeId))
             );
 
             const isStaffOrTeacher = Boolean(
                 selectedStudent &&
-                !selectedStudent.isGuest &&
-                selectedStudent.id !== 'GUEST' &&
-                ['teacher', 'staff', 'cashier', 'admin', 'faculty'].includes((selectedStudent.role || '').toLowerCase())
+                !selectedStudent?.isGuest &&
+                selectedStudent?.id !== 'GUEST' &&
+                ['teacher', 'staff', 'cashier', 'admin', 'faculty'].includes((selectedStudent?.role || '').toLowerCase())
             );
 
             // ── Auto-Sync selectedStudent balance whenever registeredUsers updates ──
             // Prevents stale snapshot display after counter/kiosk checkout deductions.
             useEffect(() => {
-                if (!selectedStudent) return;
+                if (!selectedStudent || !selectedStudent?.id) return;
                 const fresh = (registeredUsers || []).find(
-                    u => String(u.id) === String(selectedStudent.id) ||
-                         String(u.rfidUid) === String(selectedStudent.rfid_uid) ||
-                         String(u.studentId) === String(selectedStudent.studentId)
+                    u => String(u.id) === String(selectedStudent?.id) ||
+                         ((selectedStudent?.rfid_uid || selectedStudent?.rfidUid) && String(u.rfid_uid || u.rfidUid) === String(selectedStudent?.rfid_uid || selectedStudent?.rfidUid)) ||
+                         (selectedStudent?.studentId && String(u.studentId || u.student_id_number) === String(selectedStudent?.studentId))
                 );
                 if (fresh) {
                     const freshBalance = Number(fresh.balance ?? fresh.wallet_balance ?? 0);
-                    const currentSelectedBalance = Number(selectedStudent.balance ?? selectedStudent.wallet_balance ?? 0);
+                    const currentSelectedBalance = Number(selectedStudent?.balance ?? selectedStudent?.wallet_balance ?? 0);
                     if (freshBalance !== currentSelectedBalance) {
-                        setSelectedStudent(prev => ({
+                        setSelectedStudent(prev => prev ? ({
                             ...prev,
                             ...fresh,
                             balance: freshBalance,
                             wallet_balance: freshBalance
-                        }));
+                        }) : null);
                     }
                 }
-            }, [registeredUsers, selectedStudent.id, selectedStudent.rfid_uid, selectedStudent.studentId]);
+            }, [registeredUsers]);
 
             // ── Real-Time canteen:balance-deducted Window Event Listener ──
             // Dispatched by kiosk SSE settlement and root transaction handler so the
             // cashier badge displays the post-deduction balance instantly.
             useEffect(() => {
                 const handleBalanceDeducted = (ev) => {
+                    if (!selectedStudent) return;
                     const detail = ev?.detail || {};
                     const newBalance = Number(detail.newBalance ?? 0);
-                    if (!selectedStudent || isNaN(newBalance)) return;
+                    if (isNaN(newBalance)) return;
 
-                    const detailId = String(detail.studentId || '').trim();
-                    const detailRfid = String(detail.rfidUid || '').trim();
-                    const detailName = String(detail.studentName || '').toLowerCase().trim();
+                    const detailId = String(detail.studentId || detail.id || '').trim();
+                    const detailRfid = String(detail.rfidUid || detail.rfid_uid || '').trim();
+                    const detailName = String(detail.studentName || detail.name || '').toLowerCase().trim();
 
-                    const isMatch =
-                        (detailId && (
-                            String(selectedStudent.id) === detailId ||
-                            String(selectedStudent.studentId) === detailId ||
-                            String(selectedStudent.student_id_number) === detailId
-                        )) ||
-                        (detailRfid && String(selectedStudent.rfidUid) === detailRfid) ||
-                        (detailName && detailName.length > 0 &&
-                            String(selectedStudent.name || '').toLowerCase() === detailName);
+                    const matchesId = detailId && (
+                        String(selectedStudent?.id) === detailId ||
+                        String(selectedStudent?.studentId) === detailId ||
+                        String(selectedStudent?.student_id_number) === detailId ||
+                        String(selectedStudent?.student_id) === detailId
+                    );
+                    const matchesRfid = detailRfid && (
+                        ((selectedStudent?.rfid_uid || selectedStudent?.rfidUid) && String(selectedStudent?.rfid_uid || selectedStudent?.rfidUid) === detailRfid)
+                    );
+                    const matchesName = detailName && detailName.length > 0 &&
+                        String(selectedStudent?.name || selectedStudent?.full_name || '').toLowerCase() === detailName;
 
-                    if (isMatch) {
-                        setSelectedStudent(prev => ({
+                    if (matchesId || matchesRfid || matchesName) {
+                        setSelectedStudent(prev => prev ? ({
                             ...prev,
                             balance: newBalance,
                             wallet_balance: newBalance
-                        }));
+                        }) : null);
                     }
                 };
                 window.addEventListener('canteen:balance-deducted', handleBalanceDeducted);
@@ -21609,10 +21612,11 @@
             const activeCustomerProfile = useMemo(() => {
                 if (!selectedStudent) return null;
                 const fresh = (registeredUsers || []).find(u =>
-                    (selectedStudent.id && u.id === selectedStudent.id) ||
-                    (selectedStudent.studentId && (u.studentId === selectedStudent.studentId || u.student_id_number === selectedStudent.studentId)) ||
-                    (selectedStudent.rfidUid && u.rfidUid === selectedStudent.rfidUid) ||
-                    (selectedStudent.name && u.name.toLowerCase() === selectedStudent.name.toLowerCase())
+                    (selectedStudent?.id && u.id === selectedStudent?.id) ||
+                    (selectedStudent?.studentId && (u.studentId === selectedStudent?.studentId || u.student_id_number === selectedStudent?.studentId)) ||
+                    (selectedStudent?.rfidUid && u.rfidUid === selectedStudent?.rfidUid) ||
+                    (selectedStudent?.rfid_uid && (u.rfid_uid === selectedStudent?.rfid_uid || u.rfidUid === selectedStudent?.rfid_uid)) ||
+                    (selectedStudent?.name && u.name && u.name.toLowerCase() === selectedStudent?.name?.toLowerCase())
                 );
                 return fresh ? { ...selectedStudent, ...fresh } : selectedStudent;
             }, [selectedStudent, registeredUsers]);
@@ -21655,10 +21659,10 @@
             const isPayLater5OrdersExceeded = customerPayLaterCount >= 5;
             const isPayLaterCeilingExceeded = projectedTotalDebt > PAY_LATER_CEILING;
 
-            const isGuestCustomer = selectedStudent && (selectedStudent.isGuest || selectedStudent.id === 'GUEST');
-            const customerHasLinkedParent = selectedStudent && !isGuestCustomer && isStudentAccount
+            const isGuestCustomer = Boolean(selectedStudent && (selectedStudent?.isGuest || selectedStudent?.id === 'GUEST'));
+            const customerHasLinkedParent = Boolean(selectedStudent && !isGuestCustomer && isStudentAccount
                 ? checkStudentHasLinkedParent(selectedStudent, parentStudentLinks, registeredUsers)
-                : false;
+                : false);
             const isPayLaterDisallowed = isPayLater5OrdersExceeded || isPayLaterCeilingExceeded || (isStudentAccount && !customerHasLinkedParent && !isStaffOrTeacher);
 
             const currentStudentBalance = activeCustomerProfile ? (parseFloat(activeCustomerProfile.balance) || 0) : 0;
@@ -21674,11 +21678,11 @@
 
             // FIX: globalDefaultDailyCalories replaces magic || 1800 fallback — value comes from canteen_settings DB
             const effectiveDailyCalorieLimit = (!isGuestCustomer && (selectedStudent?.maxDailyCalories || selectedStudent?.max_daily_calories)) || globalDefaultDailyCalories;
-            const isCalorieOverflow = selectedStudent && !isGuestCustomer && ((selectedStudent.dailyCaloriesSpent || selectedStudent.daily_calories_spent || 0) + cartCalories > effectiveDailyCalorieLimit);
+            const isCalorieOverflow = Boolean(selectedStudent && !isGuestCustomer && ((selectedStudent?.dailyCaloriesSpent || selectedStudent?.daily_calories_spent || 0) + cartCalories > effectiveDailyCalorieLimit));
 
-            const restrictedAllergensFound = selectedStudent && !isGuestCustomer && selectedStudent.allergies && selectedStudent.allergies.length > 0 ? posCart.filter(cartItem => {
+            const restrictedAllergensFound = (selectedStudent && !isGuestCustomer && selectedStudent?.allergies && selectedStudent?.allergies?.length > 0) ? posCart.filter(cartItem => {
                 const menuItem = menuCatalog.find(m => m.id === cartItem.id);
-                return menuItem && menuItem.allergens && menuItem.allergens.some(alg => selectedStudent.allergies.includes(alg));
+                return menuItem && menuItem.allergens && menuItem.allergens.some(alg => selectedStudent?.allergies?.includes(alg));
             }) : [];
 
             const studentRestrictedCats = selectedStudent?.restricted_categories || selectedStudent?.restrictedCategories || [];
@@ -22237,7 +22241,7 @@
                     ].join(' | ');
 
                     if (isHardBlockMode) {
-                        return showToast(`STRICT DIETARY BLOCK: Customer ${selectedStudent.name} has a hard lock on restricted items (${conflictDesc || 'Restricted Diet'}). Checkout prohibited!`, "danger");
+                        return showToast(`STRICT DIETARY BLOCK: Customer ${selectedStudent?.name || selectedStudent?.full_name || 'Customer'} has a hard lock on restricted items (${conflictDesc || 'Restricted Diet'}). Checkout prohibited!`, "danger");
                     } else if (!isBypass) {
                         setManagerPinModalOpen(true);
                         return;
@@ -22247,8 +22251,8 @@
                 // Compute today's settled orders for student spending limit validation (Fix [VULN-06])
                 const todayDateStr = new Date().toDateString();
                 const studentSettledToday = (selectedStudent && !isGuestCustomer) ? (recentOrders || []).filter(o => {
-                    const match = (o.user_id && o.user_id === selectedStudent.id) || 
-                                  (o.studentId && o.studentId === (selectedStudent.studentId || selectedStudent.student_id));
+                    const match = (o.user_id && o.user_id === selectedStudent?.id) || 
+                                  (o.studentId && o.studentId === (selectedStudent?.studentId || selectedStudent?.student_id));
                     const oDate = o.created_at ? new Date(o.created_at) : (o.timestamp ? new Date(o.timestamp) : null);
                     return match && oDate && oDate.toDateString() === todayDateStr && o.status !== 'VOIDED' && o.status !== 'CANCELLED';
                 }) : [];
@@ -22273,8 +22277,8 @@
                     }
 
                     // Enforce parent policy: Check if Pay Later is permitted to bypass daily spending cap
-                    const allowCapBypass = selectedStudent && selectedStudent.allowPayLaterOverrideDailyCap !== false && selectedStudent.allow_pay_later_override_daily_cap !== false;
-                    const studentDailyCap = selectedStudent ? parseFloat(selectedStudent.daily_limit || selectedStudent.dailyCap || globalDailySpendingDefault) : 200.0;
+                    const allowCapBypass = selectedStudent && selectedStudent?.allowPayLaterOverrideDailyCap !== false && selectedStudent?.allow_pay_later_override_daily_cap !== false;
+                    const studentDailyCap = selectedStudent ? parseFloat(selectedStudent?.daily_limit || selectedStudent?.dailyCap || globalDailySpendingDefault) : 200.0;
                     if (!allowCapBypass && (currentDailySpent + netTotal) > studentDailyCap && !isBypass) {
                         setManagerPinModalOpen(true);
                         return;
@@ -22283,7 +22287,7 @@
 
                 // Dynamic Salary Deduction Validation for Faculty & Canteen Staff
                 if (paymentMethod === 'salary_deduction') {
-                    if (!selectedStudent || isGuestCustomer || (selectedStudent.role !== 'Teacher' && selectedStudent.role !== 'Cashier' && selectedStudent.role !== 'Staff' && !selectedStudent.salaryDeductionEligible)) {
+                    if (!selectedStudent || isGuestCustomer || (selectedStudent?.role !== 'Teacher' && selectedStudent?.role !== 'Cashier' && selectedStudent?.role !== 'Staff' && !selectedStudent?.salaryDeductionEligible)) {
                         return showToast("Salary Deduction is available exclusively for Faculty, Teachers, and Canteen Staff members.", "danger");
                     }
                 }
@@ -22294,7 +22298,7 @@
                         return showToast("RFID payment requires an institutional account (Student/Staff/Teacher). Please select Cash or GCash for Walk-in Guest.", "warning");
                     }
                     // FIX: globalDailySpendingDefault replaces hardcoded 200.0 — value comes from canteen_settings.daily_spending_default
-                    const dailyCap = parseFloat(selectedStudent.daily_limit || selectedStudent.dailyCap || globalDailySpendingDefault);
+                    const dailyCap = parseFloat(selectedStudent?.daily_limit || selectedStudent?.dailyCap || globalDailySpendingDefault);
                     if ((currentDailySpent + netTotal) > dailyCap && !isBypass) {
                         setManagerPinModalOpen(true);
                         return;
@@ -22304,17 +22308,17 @@
                 // Log governance override if manager PIN bypass was used
                 if (isBypass && selectedStudent && !isGuestCustomer && window.CanteenDB) {
                     const overrideType = hasDietaryConflict ? 'DIETARY_OVERRIDE' : (paymentMethod === 'pay_later' ? 'PAY_LATER_CEILING_OVERRIDE' : 'DAILY_SPENDING_CAP_OVERRIDE');
-                    window.CanteenDB.logGovernanceOverride(selectedStudent.id, null, overrideType, "Manager PIN override authorized at POS register", true).catch(e => console.warn("Governance override log error:", e));
+                    window.CanteenDB.logGovernanceOverride(selectedStudent?.id, null, overrideType, "Manager PIN override authorized at POS register", true).catch(e => console.warn("Governance override log error:", e));
                 }
 
                 try {
                     setIsProcessingCheckout(true);
 
                     const orderCustomerName = (selectedStudent && !isGuestCustomer)
-                        ? selectedStudent.name
+                        ? (selectedStudent?.name || selectedStudent?.full_name || 'Customer')
                         : (guestCustomerName && guestCustomerName.trim() ? `Guest: ${guestCustomerName.trim()}` : (paymentMethod === 'rfid' ? "RFID Student" : "Walk-in Guest"));
                     const orderCustomerId = (selectedStudent && !isGuestCustomer)
-                        ? (selectedStudent.studentId || selectedStudent.student_id_number || selectedStudent.id || "N/A")
+                        ? (selectedStudent?.studentId || selectedStudent?.student_id_number || selectedStudent?.id || "N/A")
                         : (guestCustomerName && guestCustomerName.trim() ? "GUEST" : "N/A");
                     const generatedOrderNo = `ORD-2026-${Math.floor(1000 + Math.random() * 9000)}`;
 
@@ -22327,8 +22331,8 @@
                         userName: orderCustomerName,
                         studentId: orderCustomerId,
                         customer_id: orderCustomerId,
-                        user_id: (selectedStudent && !isGuestCustomer) ? selectedStudent.id : null,
-                        rfidUid: (selectedStudent && !isGuestCustomer) ? (selectedStudent.rfidUid || "N/A") : "N/A",
+                        user_id: (selectedStudent && !isGuestCustomer) ? selectedStudent?.id : null,
+                        rfidUid: (selectedStudent && !isGuestCustomer) ? (selectedStudent?.rfidUid || selectedStudent?.rfid_uid || "N/A") : "N/A",
                         items: [...posCart],
                         subtotal: cartSubtotal,
                         discountAmount: discountAmount,
@@ -22345,10 +22349,10 @@
 
                     if (paymentMethod === 'rfid' && selectedStudent && !isGuestCustomer) {
                         // ── Safe Financial Fallbacks (null/undefined-proof) ──
-                        const currentBalance = Number(selectedStudent.balance ?? selectedStudent.wallet_balance ?? 0);
+                        const currentBalance = Number(selectedStudent?.balance ?? selectedStudent?.wallet_balance ?? 0);
                         const newBalance = Math.max(0, currentBalance - netTotal);
-                        const studentDailyCap = Number(selectedStudent.daily_limit || selectedStudent.dailyCap || selectedStudent.daily_spending_cap || globalDailySpendingDefault || 200.00);
-                        const currentDailySpent = Number(selectedStudent.dailySpent || selectedStudent.daily_calories_spent || 0);
+                        const studentDailyCap = Number(selectedStudent?.daily_limit || selectedStudent?.dailyCap || selectedStudent?.daily_spending_cap || globalDailySpendingDefault || 200.00);
+                        const currentDailySpent = Number(selectedStudent?.dailySpent || selectedStudent?.daily_calories_spent || 0);
                         const currentCapRemaining = Math.max(0, studentDailyCap - currentDailySpent);
                         const newCapRemaining = Math.max(0, currentCapRemaining - netTotal);
                         selectedStudent.balance = newBalance;
@@ -22911,172 +22915,187 @@
                                             )}
                                         </div>
 
-                                        {/* CLICKING SELECT CUSTOMER OPENS CUSTOM SELECTION MODAL */}
-                                        <button
-                                            type="button"
-                                            onClick={() => setCustomerModalOpen(true)}
-                                            className={`w-full border rounded-xl px-3.5 py-2.5 text-xs flex items-center justify-between shadow-2xs transition-all cursor-pointer text-left group active:scale-[0.99] ${selectedStudent
-                                                    ? isGuestCustomer
-                                                        ? 'bg-amber-50/70 border-amber-300 hover:border-amber-400'
-                                                        : 'bg-white border-[#7B1E22]/30 hover:border-[#7B1E22]'
-                                                    : 'bg-white border-slate-200/80 hover:border-slate-300'
-                                                }`}
-                                            title="Click to search and select customer account (Students, Staff, Teachers, Parents, Guest)"
-                                        >
-                                            <span className="truncate">
-                                                {selectedStudent ? (
-                                                    isGuestCustomer ? (
-                                                        <span className="inline-flex items-center gap-2 font-semibold text-amber-900 truncate">
-                                                            <Icon.UserCheck className="w-4 h-4 text-amber-600 shrink-0" />
-                                                            <span className="truncate">{guestCustomerName.trim() ? `Guest: ${guestCustomerName.trim()}` : 'Walk-in Guest'}</span>
-                                                            <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full border border-amber-200 shrink-0">Guest</span>
-                                                        </span>
-                                                    ) : (
-                                                        <span className="inline-flex items-center gap-2 font-semibold text-slate-900 truncate">
-                                                            <Icon.User className="w-4 h-4 text-[#7B1E22] shrink-0" />
-                                                            <span className="truncate">{selectedStudent.name}</span>
-                                                            <span className="text-[10px] font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full border border-slate-200 shrink-0">{selectedStudent.role || 'Member'}</span>
-                                                        </span>
-                                                    )
-                                                ) : (
-                                                    <span className="flex items-center gap-2 text-slate-400 font-medium">
-                                                        <Icon.User className="w-4 h-4 text-slate-400 shrink-0" />
-                                                        <span>Select Customer</span>
-                                                    </span>
-                                                )}
-                                            </span>
-                                            <Icon.ChevronDown className="w-4 h-4 text-slate-400 group-hover:text-slate-600 shrink-0 transition-colors" />
-                                        </button>
-
-                                        {/* WALK-IN GUEST CONFIGURATION BLOCK */}
-                                        {isGuestCustomer && (
-                                            <div className="space-y-2 pt-1.5 border-t border-amber-200/60 animate-in fade-in duration-150">
-                                                <div className="space-y-1">
-                                                    <div className="flex items-center justify-between text-[11px]">
-                                                        <label htmlFor="cashier-guest-name-field" className="font-bold text-slate-700 flex items-center gap-1">
-                                                            <Icon.UserPlus className="w-3.5 h-3.5 text-amber-600" />
-                                                            <span>Guest Name <span className="text-slate-400 font-normal">(Optional)</span></span>
-                                                        </label>
-                                                        {guestCustomerName && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => setGuestCustomerName('')}
-                                                                className="text-[10px] font-semibold text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
-                                                            >
-                                                                Clear Name
-                                                            </button>
+                                        {selectedStudent ? (
+                                            <>
+                                                {/* CLICKING SELECT CUSTOMER OPENS CUSTOM SELECTION MODAL */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setCustomerModalOpen(true)}
+                                                    className={`w-full border rounded-xl px-3.5 py-2.5 text-xs flex items-center justify-between shadow-2xs transition-all cursor-pointer text-left group active:scale-[0.99] ${
+                                                        isGuestCustomer
+                                                            ? 'bg-amber-50/70 border-amber-300 hover:border-amber-400'
+                                                            : 'bg-white border-[#7B1E22]/30 hover:border-[#7B1E22]'
+                                                    }`}
+                                                    title="Click to search and select customer account (Students, Staff, Teachers, Parents, Guest)"
+                                                >
+                                                    <span className="truncate">
+                                                        {isGuestCustomer ? (
+                                                            <span className="inline-flex items-center gap-2 font-semibold text-amber-900 truncate">
+                                                                <Icon.UserCheck className="w-4 h-4 text-amber-600 shrink-0" />
+                                                                <span className="truncate">{guestCustomerName.trim() ? `Guest: ${guestCustomerName.trim()}` : 'Walk-in Guest'}</span>
+                                                                <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full border border-amber-200 shrink-0">Guest</span>
+                                                            </span>
+                                                        ) : (
+                                                            <span className="inline-flex items-center gap-2 font-semibold text-slate-900 truncate">
+                                                                <Icon.User className="w-4 h-4 text-[#7B1E22] shrink-0" />
+                                                                <span className="truncate">{selectedStudent?.name || selectedStudent?.full_name}</span>
+                                                                <span className="text-[10px] font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full border border-slate-200 shrink-0">{selectedStudent?.role || 'Member'}</span>
+                                                            </span>
                                                         )}
-                                                    </div>
-                                                    <div className="relative">
-                                                        <input
-                                                            id="cashier-guest-name-field"
-                                                            type="text"
-                                                            value={guestCustomerName}
-                                                            onChange={(e) => setGuestCustomerName(e.target.value)}
-                                                            placeholder="Guest name (e.g. Maria Santos)..."
-                                                            className="w-full bg-white border border-amber-300/80 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-amber-500/30 focus:border-amber-400 transition-all shadow-2xs"
-                                                        />
-                                                    </div>
-                                                </div>
-
-                                                <div className="flex items-center justify-between text-xs text-amber-900 bg-amber-50/70 rounded-xl px-2.5 py-1.5 border border-amber-200/60">
-                                                    <span className="flex items-center gap-1 font-medium text-[11px]">
-                                                        <Icon.DollarSign className="w-3.5 h-3.5 text-amber-700 shrink-0" /> Cash / Direct Counter
                                                     </span>
-                                                    <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-md border border-amber-200/80 truncate max-w-[140px]">
-                                                        {guestCustomerName.trim() ? `Guest: ${guestCustomerName.trim()}` : 'Anonymous Sale'}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        )}
+                                                    <Icon.ChevronDown className="w-4 h-4 text-slate-400 group-hover:text-slate-600 shrink-0 transition-colors" />
+                                                </button>
 
-                                        {/* BALANCE & PAY LATER DETAILS */}
-                                        {selectedStudent && !isGuestCustomer && (
-                                            <div className="pt-2 border-t border-slate-100 flex flex-col gap-2 animate-in fade-in duration-150">
-                                                {(selectedStudent.role === 'Teacher' || selectedStudent.role === 'Cashier' || selectedStudent.role === 'Staff' || selectedStudent.salaryDeductionEligible) ? (
-                                                    <div className="flex items-center justify-between bg-indigo-50/90 rounded-xl border border-indigo-200/90 px-2.5 py-1.5">
-                                                        <div>
-                                                            <div className="text-[8px] text-indigo-800 uppercase font-bold tracking-wider">Salary Deduction</div>
-                                                            <div className="font-outfit font-bold text-sm text-indigo-900 tabular-nums">₱{(selectedStudent.accumulatedSalaryDeduction || 0).toFixed(2)}</div>
-                                                        </div>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => generateSalaryDeductionPDF(selectedStudent, selectedStudent.salaryDeductions || [])}
-                                                            className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold transition-all shadow-2xs flex items-center gap-1 cursor-pointer"
-                                                            title="Download Official Payroll Salary Deduction PDF Statement"
-                                                        >
-                                                            <Icon.FileText className="w-3 h-3" /> PDF Statement
-                                                        </button>
+                                                {/* ACTIVE CUSTOMER ID & BALANCE ROW */}
+                                                {!isGuestCustomer && (
+                                                    <div className="flex justify-between items-center px-1 text-xs">
+                                                        <span className="text-[11px] text-slate-500 font-medium">ID: {selectedStudent?.id || selectedStudent?.studentId || selectedStudent?.student_id || 'N/A'}</span>
+                                                        <span className="text-xs font-bold text-emerald-600 font-mono">
+                                                            Balance: ₱{Number(selectedStudent?.balance ?? selectedStudent?.wallet_balance ?? 0).toFixed(2)}
+                                                        </span>
                                                     </div>
-                                                ) : (
-                                                    <>
-                                                        <div className="grid grid-cols-2 gap-2">
-                                                            {/* RFID Balance Card */}
-                                                            <div className="p-3 bg-emerald-50/70 border border-emerald-200/60 rounded-2xl flex flex-col justify-between shadow-2xs">
-                                                                <div className="text-[11px] font-medium text-emerald-800 flex items-center justify-between">
-                                                                    <span>RFID Balance</span>
-                                                                    <Icon.CreditCard className="w-3.5 h-3.5 text-emerald-600 opacity-80" />
-                                                                </div>
-                                                                <div className="font-outfit font-bold text-base text-emerald-950 tabular-nums mt-1">
-                                                                    ₱{(activeCustomerProfile?.balance || 0).toFixed(2)}
-                                                                </div>
+                                                )}
+
+                                                {/* WALK-IN GUEST CONFIGURATION BLOCK */}
+                                                {isGuestCustomer && (
+                                                    <div className="space-y-2 pt-1.5 border-t border-amber-200/60 animate-in fade-in duration-150">
+                                                        <div className="space-y-1">
+                                                            <div className="flex items-center justify-between text-[11px]">
+                                                                <label htmlFor="cashier-guest-name-field" className="font-bold text-slate-700 flex items-center gap-1">
+                                                                    <Icon.UserPlus className="w-3.5 h-3.5 text-amber-600" />
+                                                                    <span>Guest Name <span className="text-slate-400 font-normal">(Optional)</span></span>
+                                                                </label>
+                                                                {guestCustomerName && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setGuestCustomerName('')}
+                                                                        className="text-[10px] font-semibold text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                                                                    >
+                                                                        Clear Name
+                                                                    </button>
+                                                                )}
                                                             </div>
-
-                                                            {/* Accurate Pay Later Usage Card */}
-                                                            <div className={`p-3 rounded-2xl border flex flex-col justify-between shadow-2xs ${
-                                                                customerPayLaterCount >= 5 || customerCreditLiability >= 500
-                                                                    ? 'bg-rose-50/80 border-rose-200/80 text-rose-900'
-                                                                    : customerCreditLiability > 0
-                                                                        ? 'bg-amber-50/70 border-amber-200/70 text-amber-900'
-                                                                        : 'bg-slate-50/90 border-slate-200/70 text-slate-800'
-                                                            }`}>
-                                                                <div className="text-[11px] font-medium flex items-center justify-between">
-                                                                    <span>Pay Later</span>
-                                                                    <span className={`text-[9.5px] font-semibold px-1.5 py-0.2 rounded-full ${
-                                                                        customerPayLaterCount >= 5 || customerCreditLiability >= 500
-                                                                            ? 'bg-rose-200/80 text-rose-800'
-                                                                            : customerCreditLiability > 0
-                                                                                ? 'bg-amber-200/80 text-amber-900'
-                                                                                : 'bg-slate-200/70 text-slate-600'
-                                                                    }`}>
-                                                                        {customerPayLaterCount >= 5 ? 'Limit Reached' : `${customerPayLaterUsesLeft} Left`}
-                                                                    </span>
-                                                                </div>
-                                                                <div className="font-outfit font-bold text-base tabular-nums mt-1">
-                                                                    {customerPayLaterCount} of 5 Used
-                                                                </div>
+                                                            <div className="relative">
+                                                                <input
+                                                                    id="cashier-guest-name-field"
+                                                                    type="text"
+                                                                    value={guestCustomerName}
+                                                                    onChange={(e) => setGuestCustomerName(e.target.value)}
+                                                                    placeholder="Guest name (e.g. Maria Santos)..."
+                                                                    className="w-full bg-white border border-amber-300/80 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-amber-500/30 focus:border-amber-400 transition-all shadow-2xs"
+                                                                />
                                                             </div>
                                                         </div>
 
-                                                        {/* Outstanding Debt Settlement Row (Minimalist Apple Style) */}
-                                                        {customerCreditLiability > 0 && (
-                                                            <div className="p-3 bg-amber-50/90 border border-amber-200/80 rounded-2xl flex items-center justify-between shadow-2xs">
-                                                                <div className="flex items-center gap-2.5">
-                                                                    <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-900 flex items-center justify-center shrink-0">
-                                                                        <Icon.Clock className="w-4 h-4 stroke-[2.2]" />
-                                                                    </div>
-                                                                    <div>
-                                                                        <div className="text-[10.5px] text-amber-800 font-medium">Outstanding Tab</div>
-                                                                        <div className="font-outfit font-bold text-sm text-[#7B1E22] tabular-nums">
-                                                                            ₱{customerCreditLiability.toFixed(2)}
-                                                                        </div>
-                                                                    </div>
+                                                        <div className="flex items-center justify-between text-xs text-amber-900 bg-amber-50/70 rounded-xl px-2.5 py-1.5 border border-amber-200/60">
+                                                            <span className="flex items-center gap-1 font-medium text-[11px]">
+                                                                <Icon.DollarSign className="w-3.5 h-3.5 text-amber-700 shrink-0" /> Cash / Direct Counter
+                                                            </span>
+                                                            <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-md border border-amber-200/80 truncate max-w-[140px]">
+                                                                {guestCustomerName.trim() ? `Guest: ${guestCustomerName.trim()}` : 'Anonymous Sale'}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* BALANCE & PAY LATER DETAILS */}
+                                                {!isGuestCustomer && (
+                                                    <div className="pt-2 border-t border-slate-100 flex flex-col gap-2 animate-in fade-in duration-150">
+                                                        {(selectedStudent?.role === 'Teacher' || selectedStudent?.role === 'Cashier' || selectedStudent?.role === 'Staff' || selectedStudent?.salaryDeductionEligible) ? (
+                                                            <div className="flex items-center justify-between bg-indigo-50/90 rounded-xl border border-indigo-200/90 px-2.5 py-1.5">
+                                                                <div>
+                                                                    <div className="text-[8px] text-indigo-800 uppercase font-bold tracking-wider">Salary Deduction</div>
+                                                                    <div className="font-outfit font-bold text-sm text-indigo-900 tabular-nums">₱{(selectedStudent?.accumulatedSalaryDeduction || 0).toFixed(2)}</div>
                                                                 </div>
                                                                 <button
                                                                     type="button"
-                                                                    onClick={() => {
-                                                                        setSettleAmountInput(customerCreditLiability.toFixed(2));
-                                                                        setSettleError('');
-                                                                        setSettleModalOpen(true);
-                                                                    }}
-                                                                    className="h-8 px-3.5 bg-[#7B1E22] hover:bg-[#631418] text-white rounded-full text-xs font-semibold shadow-2xs transition-all active:scale-95 cursor-pointer flex items-center gap-1"
+                                                                    onClick={() => generateSalaryDeductionPDF(selectedStudent, selectedStudent?.salaryDeductions || [])}
+                                                                    className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold transition-all shadow-2xs flex items-center gap-1 cursor-pointer"
+                                                                    title="Download Official Payroll Salary Deduction PDF Statement"
                                                                 >
-                                                                    <span>Settle Tab</span>
+                                                                    <Icon.FileText className="w-3 h-3" /> PDF Statement
                                                                 </button>
                                                             </div>
+                                                        ) : (
+                                                            <>
+                                                                <div className="grid grid-cols-2 gap-2">
+                                                                    {/* RFID Balance Card */}
+                                                                    <div className="p-3 bg-emerald-50/70 border border-emerald-200/60 rounded-2xl flex flex-col justify-between shadow-2xs">
+                                                                        <div className="text-[11px] font-medium text-emerald-800 flex items-center justify-between">
+                                                                            <span>RFID Balance</span>
+                                                                            <Icon.CreditCard className="w-3.5 h-3.5 text-emerald-600 opacity-80" />
+                                                                        </div>
+                                                                        <div className="font-outfit font-bold text-base text-emerald-950 tabular-nums mt-1">
+                                                                            ₱{Number(activeCustomerProfile?.balance ?? selectedStudent?.balance ?? selectedStudent?.wallet_balance ?? 0).toFixed(2)}
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* Accurate Pay Later Usage Card */}
+                                                                    <div className={`p-3 rounded-2xl border flex flex-col justify-between shadow-2xs ${
+                                                                        customerPayLaterCount >= 5 || customerCreditLiability >= 500
+                                                                            ? 'bg-rose-50/80 border-rose-200/80 text-rose-900'
+                                                                            : customerCreditLiability > 0
+                                                                                ? 'bg-amber-50/70 border-amber-200/70 text-amber-900'
+                                                                                : 'bg-slate-50/90 border-slate-200/70 text-slate-800'
+                                                                    }`}>
+                                                                        <div className="text-[11px] font-medium flex items-center justify-between">
+                                                                            <span>Pay Later</span>
+                                                                            <span className={`text-[9.5px] font-semibold px-1.5 py-0.2 rounded-full ${
+                                                                                customerPayLaterCount >= 5 || customerCreditLiability >= 500
+                                                                                    ? 'bg-rose-200/80 text-rose-800'
+                                                                                    : customerCreditLiability > 0
+                                                                                        ? 'bg-amber-200/80 text-amber-900'
+                                                                                        : 'bg-slate-200/70 text-slate-600'
+                                                                            }`}>
+                                                                                {customerPayLaterCount >= 5 ? 'Limit Reached' : `${customerPayLaterUsesLeft} Left`}
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="font-outfit font-bold text-base tabular-nums mt-1">
+                                                                            {customerPayLaterCount} of 5 Used
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Outstanding Debt Settlement Row (Minimalist Apple Style) */}
+                                                                {customerCreditLiability > 0 && (
+                                                                    <div className="p-3 bg-amber-50/90 border border-amber-200/80 rounded-2xl flex items-center justify-between shadow-2xs">
+                                                                        <div className="flex items-center gap-2.5">
+                                                                            <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-900 flex items-center justify-center shrink-0">
+                                                                                <Icon.Clock className="w-4 h-4 stroke-[2.2]" />
+                                                                            </div>
+                                                                            <div>
+                                                                                <div className="text-[10.5px] text-amber-800 font-medium">Outstanding Tab</div>
+                                                                                <div className="font-outfit font-bold text-sm text-[#7B1E22] tabular-nums">
+                                                                                    ₱{customerCreditLiability.toFixed(2)}
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                setSettleAmountInput(customerCreditLiability.toFixed(2));
+                                                                                setSettleError('');
+                                                                                setSettleModalOpen(true);
+                                                                            }}
+                                                                            className="h-8 px-3.5 bg-[#7B1E22] hover:bg-[#631418] text-white rounded-full text-xs font-semibold shadow-2xs transition-all active:scale-95 cursor-pointer flex items-center gap-1"
+                                                                        >
+                                                                            <span>Settle Tab</span>
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                            </>
                                                         )}
-                                                    </>
+                                                    </div>
                                                 )}
+                                            </>
+                                        ) : (
+                                            <div
+                                                onClick={() => setCustomerModalOpen(true)}
+                                                className="p-4 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-center text-xs text-slate-400 cursor-pointer hover:bg-slate-100/60 hover:border-slate-300 transition-colors"
+                                                title="Click to search or scan customer"
+                                            >
+                                                <span>No customer card tapped</span>
+                                                <p className="text-[10px] text-slate-400 mt-0.5">Scan an RFID badge or search student</p>
                                             </div>
                                         )}
                                     </div>
@@ -24607,7 +24626,7 @@
                                     <Icon.AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" /> Pay Later Balance Notice
                                 </div>
                                 <p className="text-slate-700 leading-relaxed">
-                                    Student <strong className="text-slate-900">{selectedStudent ? selectedStudent.name : 'Customer'}</strong> currently has
+                                    Student <strong className="text-slate-900">{selectedStudent ? (selectedStudent?.name || selectedStudent?.full_name) : 'Customer'}</strong> currently has
                                     <strong className="text-slate-900"> ₱{(pendingPayLaterData?.currentLiability || 0).toFixed(2)}</strong> in unpaid Pay Later charges.
                                 </p>
                                 <p className="text-slate-700 leading-relaxed">
@@ -24663,9 +24682,9 @@
                                     <Icon.AlertCircle className="w-4 h-4 text-rose-600 shrink-0" /> Limit Warning / Override Required
                                 </div>
                                 {hasDietaryConflict ? (
-                                    <p>Customer <strong>{selectedStudent ? selectedStudent.name : 'Customer'}</strong> has dietary / category restrictions: <strong>{[...(restrictedAllergensFound.map(i => `Allergen in ${i.name}`)), ...(restrictedCategoriesFound.map(i => `Restricted Category: ${menuCatalog.find(m => m.id === i.id)?.category || i.category || i.name}`)), ...(isCalorieOverflow ? ['Calorie Overflow'] : [])].join(', ')}</strong>. Manager PIN override required to proceed.</p>
+                                    <p>Customer <strong>{selectedStudent ? (selectedStudent?.name || selectedStudent?.full_name) : 'Customer'}</strong> has dietary / category restrictions: <strong>{[...(restrictedAllergensFound.map(i => `Allergen in ${i.name}`)), ...(restrictedCategoriesFound.map(i => `Restricted Category: ${menuCatalog.find(m => m.id === i.id)?.category || i.category || i.name}`)), ...(isCalorieOverflow ? ['Calorie Overflow'] : [])].join(', ')}</strong>. Manager PIN override required to proceed.</p>
                                 ) : (
-                                    <p>Student <strong>{selectedStudent ? selectedStudent.name : 'Customer'}</strong> current credit liability is <strong>₱{(selectedStudent?.creditLiability || 0).toFixed(2)}</strong>. Adding this order (₱{posTotal.toFixed(2)}) exceeds the authorized limit of <strong>₱{(selectedStudent?.credit_limit || selectedStudent?.creditLimit || globalPayLaterCap || 500).toFixed(2)}</strong>!</p>
+                                    <p>Student <strong>{selectedStudent ? (selectedStudent?.name || selectedStudent?.full_name) : 'Customer'}</strong> current credit liability is <strong>₱{(selectedStudent?.creditLiability || 0).toFixed(2)}</strong>. Adding this order (₱{posTotal.toFixed(2)}) exceeds the authorized limit of <strong>₱{(selectedStudent?.credit_limit || selectedStudent?.creditLimit || globalPayLaterCap || 500).toFixed(2)}</strong>!</p>
                                 )}
                             </div>
 
