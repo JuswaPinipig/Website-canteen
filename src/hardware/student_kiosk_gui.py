@@ -3728,7 +3728,7 @@ class NovaLunchKioskGUI:
     def render_rfid_confirm_overlay(self):
         """Full-screen overlay prompting student to tap RFID to confirm payment."""
         # Semi-transparent dark backdrop over left/right panels
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT - 84 - 42), pygame.SRCALPHA)
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT - 84), pygame.SRCALPHA)
         overlay.fill((10, 10, 20, 195))
         self.screen.blit(overlay, (0, 84))
 
@@ -3743,7 +3743,7 @@ class NovaLunchKioskGUI:
         # Center card
         card_w, card_h = 680, 370
         card_x = (SCREEN_WIDTH - card_w) // 2
-        card_y = 84 + ((SCREEN_HEIGHT - 84 - 42 - card_h) // 2)
+        card_y = 84 + ((SCREEN_HEIGHT - 84 - card_h) // 2)
         card_rect = pygame.Rect(card_x, card_y, card_w, card_h)
 
         # Card shadow (simple drop)
@@ -3823,14 +3823,8 @@ class NovaLunchKioskGUI:
         self.screen.blit(p_surf, (btn_rect.centerx - p_surf.get_width() // 2, btn_rect.centery - p_surf.get_height() // 2))
 
     def render_footer(self):
-        footer_rect = pygame.Rect(0, 678, SCREEN_WIDTH, 42)
-        pygame.draw.rect(self.screen, COLOR_MAROON_HEADER, footer_rect)
-        pygame.draw.line(self.screen, COLOR_GOLD_ACCENT, (0, 678), (SCREEN_WIDTH, 678), 1)
-
-        msg = self.font_footer.render(f"STATUS: {self.status_message} | REAL-TIME POS SERVER: ACTIVE (PORT {HTTP_PORT})", True, COLOR_WHITE)
-        self.screen.blit(msg, (24, 690))
-        shortcuts = self.font_subtitle_bold.render("[SHORTCUTS: 1-4 | C: CAM 0/1 | P: PAY LATER | W: SWAP AI | SPACE | R: RESET]", True, COLOR_GOLD_LIGHT)
-        self.screen.blit(shortcuts, (SCREEN_WIDTH - shortcuts.get_width() - 24, 690))
+        # Developer debug shortcuts footer bar removed for clean, production-grade presentation
+        pass
 
     # ==========================================================================
     # MAIN APPLICATION LOOP
