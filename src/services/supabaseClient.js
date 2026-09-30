@@ -506,7 +506,7 @@
             if (targetUUID) {
                 if (supabase) {
                     try {
-                        await supabase.from('wallets').delete().eq('user_id', targetUUID).catch(() => { });
+                        await supabase.from('wallets').delete().eq('user_id', targetUUID);
                         const { error } = await supabase.from('profiles').delete().eq('id', targetUUID);
                         if (error) console.warn("Supabase deleteUser warning:", error);
                     } catch (e) {
@@ -882,7 +882,16 @@
                 const updated = (users || []).map(u => (u.id === userId || u.id === targetUUID || u.studentId === userId) ? { ...u, balance: newBal } : u);
                 this.saveLocal('novalunch_registered_users', updated);
                 if (typeof CanteenCache !== 'undefined' && CanteenCache.set) CanteenCache.set('registered_users', updated);
-                await supabase.from('profiles').update({ balance: newBal, updated_at: new Date().toISOString() }).eq('id', targetUUID).catch(() => {});
+                try {
+                    const { data: updateData, error: updateError } = await supabase
+                        .from('profiles')
+                        .update({ balance: newBal, wallet_balance: newBal, updated_at: new Date().toISOString() })
+                        .eq('id', targetUUID);
+                    if (updateError) throw updateError;
+                } catch (e) {
+                    console.error('[CanteenDB] Cloud balance deduction error:', e);
+                    throw e;
+                }
                 return { success: true, new_balance: newBal };
             }
 
@@ -944,7 +953,15 @@
                     });
                     if (!error && data !== null) {
                         const finalBal = typeof data === 'number' ? data : (data.new_balance || (updatedLocalBal || cleanAmount));
-                        await supabase.from('profiles').update({ balance: finalBal, updated_at: new Date().toISOString() }).eq('id', targetUUID).catch(() => {});
+                        try {
+                            const { data: pData, error: pErr } = await supabase
+                                .from('profiles')
+                                .update({ balance: finalBal, wallet_balance: finalBal, updated_at: new Date().toISOString() })
+                                .eq('id', targetUUID);
+                            if (pErr) throw pErr;
+                        } catch (e) {
+                            console.error('[CanteenDB] Cloud balance credit error:', e);
+                        }
                         return finalBal;
                     }
                 } catch (rpcErr) {
@@ -961,7 +978,15 @@
 
                     await supabase.from('wallets')
                         .upsert({ user_id: targetUUID, balance: newBalance, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
-                    await supabase.from('profiles').update({ balance: newBalance, updated_at: new Date().toISOString() }).eq('id', targetUUID).catch(() => {});
+                    try {
+                        const { data: pData, error: pErr } = await supabase
+                            .from('profiles')
+                            .update({ balance: newBalance, wallet_balance: newBalance, updated_at: new Date().toISOString() })
+                            .eq('id', targetUUID);
+                        if (pErr) throw pErr;
+                    } catch (e) {
+                        console.error('[CanteenDB] Cloud balance credit error:', e);
+                    }
                     return newBalance;
                 } catch (wErr) {
                     console.warn('[CanteenDB] Cloud credit wallet error:', wErr);
@@ -3476,7 +3501,11 @@
                 created_at: new Date().toISOString()
             };
             if (supabase) {
-                await supabase.from('audit_logs').insert([auditPayload]).catch(e => console.warn("Audit log warning:", e));
+                try {
+                    await supabase.from('audit_logs').insert([auditPayload]);
+                } catch (e) {
+                    console.warn("Audit log warning:", e);
+                }
             } else {
                 await this._postREST('audit_logs', auditPayload).catch(e => console.warn("REST Audit log warning:", e));
             }
@@ -3512,7 +3541,11 @@
                 created_at: new Date().toISOString()
             };
             if (supabase) {
-                await supabase.from('governance_overrides').insert([payload]).catch(e => console.warn("Governance override log error:", e));
+                try {
+                    await supabase.from('governance_overrides').insert([payload]);
+                } catch (e) {
+                    console.warn("Governance override log error:", e);
+                }
             } else {
                 await this._postREST('governance_overrides', payload).catch(e => console.warn("REST Governance override log error:", e));
             }
@@ -3563,7 +3596,9 @@
         async logCameraHeartbeat(terminalId, status = 'ACTIVE', fps = 30) {
             const payload = { terminal_id: terminalId, status, details: { fps, timestamp: new Date().toISOString() } };
             if (supabase) {
-                await supabase.from('system_audit_logs').insert([{ actor_id: null, actor_name: terminalId, actor_role: 'HARDWARE_CAMERA', action_type: 'CAMERA_HEARTBEAT', details: payload.details }]).catch(e => { });
+                try {
+                    await supabase.from('system_audit_logs').insert([{ actor_id: null, actor_name: terminalId, actor_role: 'HARDWARE_CAMERA', action_type: 'CAMERA_HEARTBEAT', details: payload.details }]);
+                } catch (e) { }
             }
         },
 
@@ -3873,7 +3908,11 @@
                 created_at: new Date().toISOString()
             };
             if (supabase) {
-                await supabase.from('system_audit_logs').insert([payload]).catch(e => console.warn("System audit log error:", e));
+                try {
+                    await supabase.from('system_audit_logs').insert([payload]);
+                } catch (e) {
+                    console.warn("System audit log error:", e);
+                }
             } else {
                 await this._postREST('system_audit_logs', payload).catch(e => console.warn("REST System audit log error:", e));
             }

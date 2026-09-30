@@ -21541,6 +21541,92 @@
 
             // Modals
             const [aiModalOpen, setAiModalOpen] = useState(false);
+
+            // Purely dynamic wallet deduction handler
+            const deductStudentWallet = async (studentId, amountToDeduct) => {
+                if (!studentId) return { success: false, error: "Missing studentId" };
+                const chargeAmount = Number(amountToDeduct) || 0;
+                if (chargeAmount <= 0) return { success: false, error: "Invalid deduction amount" };
+
+                try {
+                    // Ensure window.supabase has client attached
+                    const sb = (typeof window !== 'undefined' && window.supabase && typeof window.supabase.from === 'function')
+                        ? window.supabase
+                        : (typeof window !== 'undefined' && window.supabaseClient ? window.supabaseClient : (window.CanteenDB && window.CanteenDB.getClient ? window.CanteenDB.getClient() : null) || window.supabase);
+                    if (!window.supabase || typeof window.supabase.from !== 'function') {
+                        window.supabase = sb;
+                    }
+
+                    // 1. Fetch real-time balance directly from the database to prevent race conditions
+                    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(studentId));
+                    let query = window.supabase
+                        .from('profiles')
+                        .select('id, balance, wallet_balance');
+
+                    if (isUuid) {
+                        query = query.or(`id.eq.${studentId},rfid_uid.eq.${studentId}`);
+                    } else {
+                        query = query.or(`rfid_uid.eq.${studentId},student_id.eq.${studentId}`);
+                    }
+
+                    const { data: profile, error: fetchErr } = await query.maybeSingle();
+
+                    if (fetchErr) throw fetchErr;
+                    if (!profile) throw new Error("Student profile not found in database");
+
+                    const currentBal = Number(profile.balance ?? profile.wallet_balance ?? 0);
+                    const newBal = Math.max(0, parseFloat((currentBal - chargeAmount).toFixed(2)));
+
+                    // 2. Await the update query directly (DO NOT chain .catch to .eq)
+                    const { error: updateErr } = await window.supabase
+                        .from('profiles')
+                        .update({
+                            balance: newBal,
+                            wallet_balance: newBal,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('id', profile.id);
+
+                    if (updateErr) throw updateErr;
+
+                    // Also sync wallets table if present
+                    try {
+                        await window.supabase
+                            .from('wallets')
+                            .update({
+                                balance: newBal,
+                                updated_at: new Date().toISOString()
+                            })
+                            .eq('user_id', profile.id);
+                    } catch (wErr) { }
+
+                    // 3. Reactively update the active student in local state
+                    if (typeof setSelectedStudent === 'function') {
+                        setSelectedStudent(prev => prev ? { ...prev, balance: newBal, wallet_balance: newBal } : null);
+                    }
+                    if (typeof setRegisteredUsers === 'function') {
+                        setRegisteredUsers(prev => (prev || []).map(u => 
+                            (u.id === profile.id || u.rfid_uid === studentId || u.rfidUid === studentId) 
+                                ? { ...u, balance: newBal, wallet_balance: newBal } 
+                                : u
+                        ));
+                    }
+
+                    // 4. Dispatch the balance deduction event for all open tabs
+                    window.dispatchEvent(new CustomEvent('canteen:balance-deducted', {
+                        detail: { studentId: profile.id, newBalance: newBal }
+                    }));
+
+                    return { success: true, newBalance: newBal };
+                } catch (err) {
+                    console.error('[WALLET DEDUCT ERROR]', err);
+                    return { success: false, error: err.message || 'Transaction failed' };
+                }
+            };
+
+            if (typeof window !== 'undefined') {
+                window.deductStudentWallet = deductStudentWallet;
+            }
             const [rfidModalOpen, setRfidModalOpen] = useState(false);
             const [receiptModalOpen, setReceiptModalOpen] = useState(false);
             const [shiftModalOpen, setShiftModalOpen] = useState(false);
@@ -22614,10 +22700,22 @@
                         status: 'COMPLETED'
                     };
 
-                    if (paymentMethod === 'rfid' && selectedStudent && !isGuestCustomer) {
+                    const isWalletOrRfid = ['rfid', 'wallet', 'rfid tap', 'rfid_tap', 'e-wallet'].includes(String(paymentMethod).toLowerCase().trim());
+                    if (isWalletOrRfid && selectedStudent && !isGuestCustomer) {
+                        const amountToDeduct = Number(posTotal || netTotal || orderData.total || 0);
+                        const res = await deductStudentWallet(selectedStudent.id, amountToDeduct);
+                        if (res && res.success === false) {
+                            showToast(`Payment deduction failed: ${res.error || 'Transaction aborted'}`, "danger");
+                            setIsProcessingCheckout(false);
+                            return;
+                        }
+                        if (res && res.success) {
+                            orderData.walletDeducted = true;
+                            orderData.newBalance = res.newBalance;
+                        }
                         // ── Safe Financial Fallbacks (null/undefined-proof) ──
                         const currentBalance = Number(selectedStudent?.balance ?? selectedStudent?.wallet_balance ?? 0);
-                        const newBalance = Math.max(0, currentBalance - netTotal);
+                        const newBalance = (res && typeof res.newBalance === 'number') ? res.newBalance : Math.max(0, currentBalance - netTotal);
                         const studentDailyCap = Number(selectedStudent?.daily_limit || selectedStudent?.dailyCap || selectedStudent?.daily_spending_cap || globalDailySpendingDefault || 200.00);
                         const currentDailySpent = Number(selectedStudent?.dailySpent || selectedStudent?.daily_calories_spent || 0);
                         const currentCapRemaining = Math.max(0, studentDailyCap - currentDailySpent);
@@ -35162,10 +35260,16 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                     const sb = (typeof window !== 'undefined' && window.CanteenDB && window.CanteenDB.getClient) ? window.CanteenDB.getClient() : (typeof supabaseClient !== 'undefined' ? supabaseClient : null);
                     if (sb) {
                         try {
-                            sb.from('profiles').update({ balance: cleanBal, wallet_balance: cleanBal }).eq('id', updatedUser.id).then(() => {}).catch(e => console.warn(e));
-                            sb.from('wallets').update({ balance: cleanBal }).eq('user_id', updatedUser.id).then(() => {}).catch(e => console.warn(e));
+                            const { error: profErr } = await sb.from('profiles').update({ balance: cleanBal, wallet_balance: cleanBal, updated_at: new Date().toISOString() }).eq('id', updatedUser.id);
+                            if (profErr) console.warn("profiles update warning:", profErr);
                         } catch (e) {
-                            console.warn("Direct profiles/wallets balance update warning:", e);
+                            console.warn("Direct profiles balance update warning:", e);
+                        }
+                        try {
+                            const { error: wallErr } = await sb.from('wallets').update({ balance: cleanBal, updated_at: new Date().toISOString() }).eq('user_id', updatedUser.id);
+                            if (wallErr) console.warn("wallets update warning:", wallErr);
+                        } catch (e) {
+                            console.warn("Direct wallets balance update warning:", e);
                         }
                     }
                     window.dispatchEvent(new CustomEvent('canteen:balance-deducted', {
@@ -35565,7 +35669,12 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                     if (window.CanteenDB && window.CanteenDB.unarchivePreorder) {
                         await window.CanteenDB.unarchivePreorder(preorderId).catch(e => console.warn(e));
                     } else if (supabaseClient) {
-                        await supabaseClient.from('preorders').update({ status: 'Pending', is_archived: false, updated_at: new Date().toISOString() }).eq('id', preorderId).catch(e => console.warn(e));
+                        try {
+                            const { error: preErr } = await supabaseClient.from('preorders').update({ status: 'Pending', is_archived: false, updated_at: new Date().toISOString() }).eq('id', preorderId);
+                            if (preErr) console.warn(preErr);
+                        } catch (e) {
+                            console.warn(e);
+                        }
                     }
                     showToast(`Restored pre-order back to Active Reservations queue!`);
                 } catch (err) {
@@ -35586,25 +35695,45 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                 } else if (type === 'order') {
                     setRecentOrders(prev => prev.filter(o => o.id !== id && o.orderNo !== id && o.order_number !== id));
                     if (supabaseClient) {
-                        await supabaseClient.from('orders').delete().or(`id.eq.${id},order_number.eq.${id}`).catch(e => console.warn(e));
+                        try {
+                            const { error: oErr } = await supabaseClient.from('orders').delete().or(`id.eq.${id},order_number.eq.${id}`);
+                            if (oErr) console.warn(oErr);
+                        } catch (e) {
+                            console.warn(e);
+                        }
                     }
                     showToast(`Permanently purged order record.`);
                 } else if (type === 'batch') {
                     setInventoryBatches(prev => prev.filter(b => b.id !== id && b.batch_number !== id));
                     if (supabaseClient) {
-                        await supabaseClient.from('inventory_batches').delete().or(`id.eq.${id},batch_number.eq.${id}`).catch(e => console.warn(e));
+                        try {
+                            const { error: bErr } = await supabaseClient.from('inventory_batches').delete().or(`id.eq.${id},batch_number.eq.${id}`);
+                            if (bErr) console.warn(bErr);
+                        } catch (e) {
+                            console.warn(e);
+                        }
                     }
                     showToast(`Permanently purged inventory batch.`);
                 } else if (type === 'topup') {
                     setGcashQueue(prev => prev.filter(t => t.id !== id && t.refNo !== id));
                     if (supabaseClient) {
-                        await supabaseClient.from('topup_requests').delete().or(`id.eq.${id},reference_number.eq.${id}`).catch(e => console.warn(e));
+                        try {
+                            const { error: tErr } = await supabaseClient.from('topup_requests').delete().or(`id.eq.${id},reference_number.eq.${id}`);
+                            if (tErr) console.warn(tErr);
+                        } catch (e) {
+                            console.warn(e);
+                        }
                     }
                     showToast(`Permanently purged top-up request.`);
                 } else if (type === 'preorder') {
                     setPreorders(prev => prev.filter(p => p.id !== id && p.token !== id));
                     if (supabaseClient) {
-                        await supabaseClient.from('preorders').delete().or(`id.eq.${id},token.eq.${id}`).catch(e => console.warn(e));
+                        try {
+                            const { error: pErr } = await supabaseClient.from('preorders').delete().or(`id.eq.${id},token.eq.${id}`);
+                            if (pErr) console.warn(pErr);
+                        } catch (e) {
+                            console.warn(e);
+                        }
                     }
                     showToast(`Permanently purged pre-order record.`);
                 }
@@ -36227,20 +36356,33 @@ const currBal = Number(matchedStud.balance ?? matchedStud.wallet_balance ?? 0);
 
                     let newBal = Math.max(0.0, currBal - order.total);
 
-                                                    // Primary atomic deduction via cloud database RPC
-                                                    if (window.CanteenDB && matchedStud.id) {
-                                                        try {
-                                                            const deductRes = await window.CanteenDB.deductWalletBalance(matchedStud.id, order.total);
-                                                            if (deductRes && typeof deductRes.new_balance === 'number') {
-                                                                newBal = deductRes.new_balance;
-                                                            }
-                                                        } catch (deductErr) {
-                                                            console.error("[POS Checkout] Atomic wallet deduction failed, aborting checkout:", deductErr);
-                                                            showToast(`Wallet deduction failed: ${deductErr.message || 'Payment rejected'}. Transaction aborted without altering inventory.`, 'danger');
-                                                            setIsCheckoutSubmitting(false);
-                                                            return;
-                                                        }
-                                                    }
+                    // Primary atomic deduction via cloud database RPC or dynamic wallet deduction
+                    if (order.walletDeducted && typeof order.newBalance === 'number') {
+                        newBal = order.newBalance;
+                    } else if (typeof window.deductStudentWallet === 'function') {
+                        const deductRes = await window.deductStudentWallet(matchedStud.id, order.total);
+                        if (deductRes && deductRes.success === false) {
+                            console.error("[POS Checkout] Atomic wallet deduction failed, aborting checkout:", deductRes.error);
+                            showToast(`Wallet deduction failed: ${deductRes.error || 'Payment rejected'}. Transaction aborted without altering inventory.`, 'danger');
+                            setIsCheckoutSubmitting(false);
+                            return;
+                        }
+                        if (deductRes && typeof deductRes.newBalance === 'number') {
+                            newBal = deductRes.newBalance;
+                        }
+                    } else if (window.CanteenDB && matchedStud.id) {
+                        try {
+                            const deductRes = await window.CanteenDB.deductWalletBalance(matchedStud.id, order.total);
+                            if (deductRes && typeof deductRes.new_balance === 'number') {
+                                newBal = deductRes.new_balance;
+                            }
+                        } catch (deductErr) {
+                            console.error("[POS Checkout] Atomic wallet deduction failed, aborting checkout:", deductErr);
+                            showToast(`Wallet deduction failed: ${deductErr.message || 'Payment rejected'}. Transaction aborted without altering inventory.`, 'danger');
+                            setIsCheckoutSubmitting(false);
+                            return;
+                        }
+                    }
 
                                                     // Apply deducted balance to local state & cache
                                                     const updatedList = (registeredUsers || []).map(user => {
