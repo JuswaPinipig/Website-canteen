@@ -935,6 +935,50 @@
             return cleanLiability;
         },
 
+        async adjustWalletBalance(userId, amount) {
+            const num = Number(amount) || 0;
+            if (num > 0) {
+                return await this.creditWalletBalance(userId, num);
+            } else if (num < 0) {
+                return await this.deductWalletBalance(userId, Math.abs(num));
+            }
+            return 0;
+        },
+
+        async adjustCreditLiability(userId, amount) {
+            const num = Number(amount) || 0;
+            const users = this.loadLocal('novalunch_registered_users', []);
+            const matched = users.find(u => u.id === userId || u.studentId === userId || (u.email && u.email.toLowerCase() === String(userId).toLowerCase()));
+            const currentLiability = Number(matched?.creditLiability ?? matched?.credit_liability ?? 0);
+            const newLiability = Math.max(0, currentLiability + num);
+            return await this.updateStudentCreditLiability(matched?.id || userId, newLiability);
+        },
+
+        async updateOrder(orderId, updates = {}) {
+            if (updates.status) {
+                await this.updateOrderStatus(orderId, updates.status).catch(() => {});
+            }
+            const orders = this.loadLocal('novalunch_recent_orders', []);
+            const updatedOrders = orders.map(o => {
+                const isMatch = o.id === orderId || o.orderNo === orderId || o.ref_no === orderId;
+                return isMatch ? { ...o, ...updates } : o;
+            });
+            this.saveLocal('novalunch_recent_orders', updatedOrders);
+            if (typeof CanteenCache !== 'undefined' && CanteenCache.set) CanteenCache.set('recent_orders', updatedOrders);
+
+            if (supabase && this.isUUID(orderId)) {
+                try {
+                    await supabase.from('orders').update({
+                        ...updates,
+                        updated_at: new Date().toISOString()
+                    }).eq('id', orderId);
+                } catch (e) {
+                    console.warn('[CanteenDB] updateOrder cloud error:', e);
+                }
+            }
+            return true;
+        },
+
         async settleStudentDebt(userId, amountPaid, paymentMethod = 'cash', cashierId = null, settledOrderIds = []) {
             const cleanAmount = parseFloat(amountPaid) || 0;
             const method = String(paymentMethod || 'cash').toLowerCase();

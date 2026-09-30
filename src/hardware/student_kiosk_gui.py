@@ -19,6 +19,7 @@ import threading
 import urllib.request
 import urllib.parse
 import urllib.error
+import logging
 from collections import deque
 from pathlib import Path
 from socketserver import ThreadingMixIn
@@ -32,6 +33,11 @@ import argparse
 SCRIPT_DIR = Path(__file__).resolve().parent
 SRC_DIR = SCRIPT_DIR.parent
 PROJECT_ROOT = SRC_DIR.parent
+
+# Configure logger for Kiosk subsystem
+logger = logging.getLogger("NovaLunchKiosk")
+if not logger.handlers:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 # Ensure Windows console handles UTF-8 prints without UnicodeEncodeError
 try:
@@ -1117,7 +1123,7 @@ class OfflineSyncWorker(threading.Thread):
 YOLO_MODEL = None
 YOLO_ATTEMPTED = False
 
-def get_yolo_model(pt_path="src/assets/models/novalunch_yolo.pt"):
+def get_yolo_model(pt_path=None):
     global YOLO_MODEL, YOLO_ATTEMPTED
     if YOLO_MODEL is not None:
         return YOLO_MODEL
@@ -1125,37 +1131,71 @@ def get_yolo_model(pt_path="src/assets/models/novalunch_yolo.pt"):
         return None
     YOLO_ATTEMPTED = True
 
-    env_path = os.environ.get("YOLO_MODEL_PATH")
+    # Establish assets and models directories
+    models_dir = (SRC_DIR / "assets" / "models").resolve()
+    if not models_dir.exists():
+        models_dir = (PROJECT_ROOT / "src" / "assets" / "models").resolve()
+
+    primary_model_path = models_dir / "novalunch_yolo-2.pt"
+
     candidates = [
-        env_path,
-        pt_path,
-        str((SRC_DIR / "assets" / "models" / "novalunch_yolo-2.pt").resolve()),
-        str((SRC_DIR / "assets" / "models" / "novalunch_yolo.pt").resolve()),
-        str((PROJECT_ROOT / "src" / "assets" / "models" / "novalunch_yolo-2.pt").resolve()),
-        str((PROJECT_ROOT / "src" / "assets" / "models" / "novalunch_yolo.pt").resolve()),
-        str((PROJECT_ROOT / "assets" / "models" / "novalunch_yolo-2.pt").resolve()),
-        str((PROJECT_ROOT / "assets" / "models" / "novalunch_yolo.pt").resolve()),
-        str((SCRIPT_DIR / "novalunch_yolo-2.pt").resolve()),
-        str((SCRIPT_DIR / "novalunch_yolo.pt").resolve()),
-        os.path.join(os.getcwd(), "src", "assets", "models", "novalunch_yolo-2.pt"),
-        os.path.join(os.getcwd(), "src", "assets", "models", "novalunch_yolo.pt"),
-        "novalunch_yolo-2.pt",
-        "novalunch_yolo.pt"
+        models_dir / "novalunch_yolo-2.pt",   # Priority 1: Updated v2 model
+        models_dir / "novalunch_yolo.pt",     # Fallback
+        models_dir / "best.pt",
     ]
+
+    # Additional fallback search paths if deployed in alternate directory layouts
+    candidates.extend([
+        (PROJECT_ROOT / "src" / "assets" / "models" / "novalunch_yolo-2.pt").resolve(),
+        (PROJECT_ROOT / "assets" / "models" / "novalunch_yolo-2.pt").resolve(),
+        (SCRIPT_DIR / "novalunch_yolo-2.pt").resolve(),
+        Path("novalunch_yolo-2.pt").resolve(),
+    ])
+
+    env_path = os.environ.get("YOLO_MODEL_PATH")
+    if env_path:
+        candidates.insert(0, Path(env_path).resolve())
+    if pt_path:
+        pt_cand = Path(pt_path).resolve()
+        if pt_cand not in candidates:
+            candidates.insert(0 if not env_path else 1, pt_cand)
+
     resolved_path = None
     for p in candidates:
-        if p and os.path.exists(p):
-            resolved_path = p
-            break
+        if not p:
+            continue
+        cand = Path(p)
+        # Pre-flight validation
+        if not cand.is_file():
+            continue
+        if cand.stat().st_size <= 1024 * 1024:
+            logger.warning(f"[AI VISION WARN] Skipping invalid/truncated checkpoint {cand.name} (size: {cand.stat().st_size} bytes)")
+            continue
+        try:
+            with open(cand, "rb") as f:
+                header = f.read(64)
+                if header.startswith(b"version https://git-lfs"):
+                    logger.warning(f"[AI VISION WARN] Skipping Git LFS pointer file: {cand.name}")
+                    continue
+        except Exception as e:
+            logger.warning(f"[AI VISION WARN] Error reading header of {cand.name}: {e}")
+            continue
+
+        resolved_path = cand
+        break
 
     if resolved_path:
         try:
             from ultralytics import YOLO
-            YOLO_MODEL = YOLO(resolved_path)
-            print(f"[AI VISION] 🟢 Ultralytics YOLO model loaded: {resolved_path}")
+            file_size_mb = resolved_path.stat().st_size / (1024 * 1024)
+            YOLO_MODEL = YOLO(str(resolved_path))
+            logger.info(f"[AI VISION] 🟢 Successfully loaded updated model checkpoint: {resolved_path.name} ({file_size_mb:.1f} MB)")
+            print(f"[AI VISION] 🟢 Successfully loaded updated model checkpoint: {resolved_path.name} ({file_size_mb:.1f} MB)")
         except Exception as e:
+            logger.error(f"[AI VISION WARN] YOLO load error: {e}")
             print(f"[AI VISION WARN] YOLO load error: {e}")
     else:
+        logger.warning("[AI VISION WARN] YOLO model weights not found in standard asset paths.")
         print("[AI VISION WARN] YOLO model weights not found in standard asset paths.")
     return YOLO_MODEL
 
@@ -1371,55 +1411,11 @@ class CameraThread(threading.Thread):
         # Tray boundary
         cv2.rectangle(canvas, (100, 70), (540, 410), (55, 65, 85), 2)
 
-        if not getattr(self, 'simulation_enabled', False):
-            # Standby mode — safe, no phantom food detections
-            cv2.putText(canvas, "NOVALUNCH AI TRAY SCANNER - STANDBY", (140, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (140, 165, 200), 1)
-            cv2.putText(canvas, "Place meal tray under camera sensor", (155, 235), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (200, 220, 240), 1)
-            cv2.putText(canvas, "(Live Optical Sensor Ready)", (210, 265), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (100, 130, 160), 1)
-            return canvas, []
-
-        cv2.putText(canvas, "NOVALUNCH SCANNING ZONE (DEMO SIMULATION)", (130, 95), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (160, 175, 200), 1)
-
-        # Sweeping cyan laser line
-        sweep_y = int(80 + (320 * (math.sin(math.radians(angle_deg)) + 1.0) / 2.0))
-        cv2.line(canvas, (105, sweep_y), (535, sweep_y), (212, 182, 6), 2)
-
-        # Demo overlay is purely cosmetic. Detections are emitted ONLY for class
-        # labels that resolve to a real, active catalog product (price > 0).
-        # There are NO placeholder/mock product objects: an unresolvable label is
-        # skipped entirely rather than substituted with a hardcoded item.
-        demo_slots = [
-            {"label": "Buttercream_Biscuits",           "box": (150, 130, 320, 270), "fill": (14, 14, 74),  "edge": (74, 24, 201),  "text": (160, 160, 199, 243, 254)},
-            {"label": "Jack_And_Jill_Magic_Chips",       "box": (360, 150, 480, 360), "fill": (74, 14, 23),  "edge": (217, 119, 6),  "text": (370, 180, 254, 243, 199)},
-        ]
-
-        detections = []
-        for idx, slot in enumerate(demo_slots):
-            item = lookup_pos_item(slot["label"])
-            if not item:
-                # Not present in the real catalog — draw nothing, detect nothing.
-                continue
-            x1, y1, x2, y2 = slot["box"]
-            tx, ty, tr, tg, tb = slot["text"]
-            price = float(item.get("price", 0.0) or 0.0)
-            cv2.rectangle(canvas, (x1, y1), (x2, y2), slot["fill"], -1)
-            cv2.rectangle(canvas, (x1, y1), (x2, y2), slot["edge"], 2)
-            cv2.putText(canvas, str(item.get("name", slot["label"])), (tx, ty), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
-            cv2.putText(canvas, f"P{price:.2f}", (tx, ty + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (tr, tg, tb), 1)
-            detections.append({
-                "id": str(item.get("id")),
-                "product_id": str(item.get("id")),
-                "ai_label": str(item.get("ai_label") or slot["label"]),
-                "name": item.get("name"),
-                "category": item.get("category", "SNACKS & BAKERY"),
-                "qty": 1,
-                "price": price,
-                "stock": int(item.get("stock", 50)),
-                "requires_cashier_review": False,
-                "bbox": [x1, y1, x2 - x1, y2 - y1],
-                "conf": 0.98 - (0.02 * idx)
-            })
-        return canvas, detections
+        # Standby mode — safe, zero phantom food detections
+        cv2.putText(canvas, "NOVALUNCH AI TRAY SCANNER - STANDBY", (140, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (140, 165, 200), 1)
+        cv2.putText(canvas, "Place meal tray under camera sensor", (155, 235), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (200, 220, 240), 1)
+        cv2.putText(canvas, "(Live Optical Sensor Ready)", (210, 265), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (100, 130, 160), 1)
+        return canvas, []
 
     def run(self):
         synth_angle = 0

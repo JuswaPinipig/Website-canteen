@@ -16,9 +16,17 @@ import zipfile
 import pickle
 import io
 
-def inspect_pt_file(pt_path="src/assets/models/novalunch_yolo.pt"):
-    if not os.path.exists(pt_path) and os.path.exists("novalunch_yolo.pt"):
-        pt_path = "novalunch_yolo.pt"
+def inspect_pt_file(pt_path="src/assets/models/novalunch_yolo-2.pt"):
+    if not os.path.exists(pt_path):
+        for candidate in [
+            "src/assets/models/novalunch_yolo-2.pt",
+            "novalunch_yolo-2.pt",
+            "src/assets/models/novalunch_yolo.pt",
+            "novalunch_yolo.pt",
+        ]:
+            if os.path.exists(candidate):
+                pt_path = candidate
+                break
     if not os.path.exists(pt_path):
         return {"error": f"File '{pt_path}' not found."}
 
@@ -93,6 +101,6 @@ def inspect_pt_file(pt_path="src/assets/models/novalunch_yolo.pt"):
     return result
 
 if __name__ == "__main__":
-    filepath = sys.argv[1] if len(sys.argv) > 1 else "src/assets/models/novalunch_yolo.pt"
+    filepath = sys.argv[1] if len(sys.argv) > 1 else "src/assets/models/novalunch_yolo-2.pt"
     info = inspect_pt_file(filepath)
     print(json.dumps(info, indent=2))

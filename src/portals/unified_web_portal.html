@@ -1638,125 +1638,15 @@
         };
 
         // RICH DUMMY DATA SEED FALLBACKS WITH NUTRITIONAL & 2026 METRICS
-        const INITIAL_RAW_INGREDIENTS = [
-            { id: 'ing_1', name: 'Ground Beef Patty', unit: 'pcs', currentStock: 120, reorderPoint: 30, unitCost: 22.00 },
-            { id: 'ing_2', name: 'Sesame Burger Buns', unit: 'pcs', currentStock: 140, reorderPoint: 40, unitCost: 8.50 },
-            { id: 'ing_3', name: 'Cheddar Cheese Slices', unit: 'pcs', currentStock: 100, reorderPoint: 25, unitCost: 6.00 },
-            { id: 'ing_4', name: 'Chicken Breast Cutlets', unit: 'pcs', currentStock: 80, reorderPoint: 20, unitCost: 35.00 },
-            { id: 'ing_5', name: 'Jasmine White Rice', unit: 'kg', currentStock: 45.0, reorderPoint: 10.0, unitCost: 52.00 },
-            { id: 'ing_6', name: 'Spaghetti Noodles', unit: 'kg', currentStock: 25.0, reorderPoint: 5.0, unitCost: 48.00 },
-            { id: 'ing_7', name: 'Pinoy Sweet Tomato Sauce', unit: 'liters', currentStock: 30.0, reorderPoint: 8.0, unitCost: 65.00 }
-        ];
+        const INITIAL_RAW_INGREDIENTS = [];
 
         const INITIAL_KDS_ORDERS = [];
 
-        const INITIAL_MOCK_MENU = [
-            { id: "a1111111-1111-1111-1111-111111111111", name: "Classic Cheeseburger", category: "Meals & Mains", station: "Hot Kitchen", price: 75.00, costPrice: 45.00, stock: 50, aiLabel: null, unit: "Grilled Beef Patty & Cheese", calories: 480, protein: "24g", allergens: ["Dairy", "Gluten"], mealWindows: ["LUNCH", "SNACK", "ALL_DAY"], recipe: [{ ingredientId: 'ing_1', qtyRequired: 1 }, { ingredientId: 'ing_2', qtyRequired: 1 }, { ingredientId: 'ing_3', qtyRequired: 1 }], img: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=400&q=80", barcode: "480000000001", available: true, is_available: true, is_archived: false, status: "active", productType: "packaged_good", expiryStatus: "active" },
-            { id: "a2222222-2222-2222-2222-222222222222", name: "Crispy Chicken Rice Bowl", category: "Meals & Mains", station: "Hot Kitchen", price: 85.00, costPrice: 50.00, stock: 60, aiLabel: null, unit: "Plated Rice & Gravy", calories: 520, protein: "28g", allergens: ["Gluten"], mealWindows: ["LUNCH", "ALL_DAY"], recipe: [{ ingredientId: 'ing_4', qtyRequired: 1 }, { ingredientId: 'ing_5', qtyRequired: 0.2 }], img: "https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?auto=format&fit=crop&w=400&q=80", barcode: "480000000002", available: true, is_available: true, is_archived: false, status: "active", productType: "ulam_meal", expiryStatus: "active" },
-            { id: "a3333333-3333-3333-3333-333333333333", name: "Ham & Cheese Sandwich", category: "Snacks & Bakery", station: "Assembly / Bakery", price: 45.00, costPrice: 25.00, stock: 40, aiLabel: null, unit: "Toasted Whole Wheat", calories: 310, protein: "14g", allergens: ["Dairy", "Gluten"], mealWindows: ["BREAKFAST", "SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1528735602780-2552fd46c7af?auto=format&fit=crop&w=400&q=80", barcode: "480000000003", available: true, is_available: true, is_archived: false, status: "active", productType: "ulam_meal", expiryStatus: "near_expiry", hoursUntilExpiry: 1.2, batchNo: "BATCH-20260730-LUNCH" },
-            { id: "a4444444-4444-4444-4444-444444444444", name: "Mineral Water (500ml)", category: "Beverages", station: "Cold Prep / Beverages", price: 20.00, costPrice: 10.00, stock: 150, aiLabel: null, unit: "Chilled Bottle", calories: 0, protein: "0g", allergens: [], mealWindows: ["BREAKFAST", "LUNCH", "SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1523362628745-0c100150b504?auto=format&fit=crop&w=400&q=80", barcode: "480000000004", available: true, is_available: true, is_archived: false, status: "active", productType: "packaged_good", expiryStatus: "active" },
-            { id: "a5555555-5555-5555-5555-555555555555", name: "Iced Fruit Juice (350ml)", category: "Beverages", station: "Cold Prep / Beverages", price: 30.00, costPrice: 15.00, stock: 80, aiLabel: null, unit: "Freshly Pressed Cup", calories: 120, protein: "1g", allergens: ["Sugar"], mealWindows: ["BREAKFAST", "LUNCH", "SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?auto=format&fit=crop&w=400&q=80", barcode: "480000000005", available: true, is_available: true, is_archived: false, status: "active", productType: "packaged_good", expiryStatus: "active" },
-            { id: "a6666666-6666-6666-6666-666666666666", name: "Fresh Red Apple", category: "Snacks & Bakery", station: "Cold Prep / Beverages", price: 25.00, costPrice: 15.00, stock: 40, aiLabel: null, unit: "Organic Whole Fruit", calories: 95, protein: "0.5g", allergens: [], mealWindows: ["BREAKFAST", "LUNCH", "SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?auto=format&fit=crop&w=400&q=80", barcode: "480000000006", available: true, is_available: true, is_archived: false, status: "active", productType: "packaged_good", expiryStatus: "active" },
-            { id: "a7777777-7777-7777-7777-777777777777", name: "Beef Pares w/ Garlic Rice", category: "Meals & Mains", station: "Hot Kitchen", price: 90.00, costPrice: 55.00, stock: 25, aiLabel: null, unit: "Slow-cooked Beef Tenderloin", calories: 580, protein: "32g", allergens: ["Soy"], mealWindows: ["LUNCH", "ALL_DAY"], recipe: [{ ingredientId: 'ing_5', qtyRequired: 0.2 }], img: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80", barcode: "480000000007", available: true, is_available: true, is_archived: false, status: "active", productType: "ulam_meal", expiryStatus: "near_expiry", hoursUntilExpiry: 0.8, batchNo: "BATCH-20260730-PARES" },
-            { id: "a8888888-8888-8888-8888-888888888888", name: "Choco Chip Cookie", category: "Snacks & Bakery", station: "Assembly / Bakery", price: 18.00, costPrice: 9.00, stock: 90, aiLabel: null, unit: "Freshly Baked Cookie", calories: 190, protein: "2g", allergens: ["Sugar", "Dairy", "Gluten"], mealWindows: ["SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1499636136210-6f4ee915583e?auto=format&fit=crop&w=400&q=80", barcode: "480000000008", available: true, is_available: true, is_archived: false, status: "active", productType: "packaged_good", expiryStatus: "near_expiry", daysUntilExpiry: 2, batchNo: "BATCH-2026-LOT88" },
-            { id: "a9999999-9999-9999-9999-999999999999", name: "Spaghetti Bolognese", category: "Meals & Mains", station: "Hot Kitchen", price: 65.00, costPrice: 35.00, stock: 30, aiLabel: null, unit: "Sweet-style Pinoy Pasta", calories: 440, protein: "18g", allergens: ["Dairy", "Gluten"], mealWindows: ["LUNCH", "SNACK", "ALL_DAY"], recipe: [{ ingredientId: 'ing_6', qtyRequired: 0.15 }, { ingredientId: 'ing_7', qtyRequired: 0.15 }], img: "https://images.unsplash.com/photo-1551183053-bf91a1d81141?auto=format&fit=crop&w=400&q=80", barcode: "480000000009", available: true, is_available: true, is_archived: false, status: "active", productType: "ulam_meal", expiryStatus: "active" },
-            { id: "b1010101-1010-1010-1010-101010101010", name: "Buttercream Crackers", category: "Snacks & Bakery", station: "Assembly / Bakery", price: 35.00, costPrice: 20.00, stock: 50, aiLabel: null, unit: "Packaged Biscuits (25g)", calories: 150, protein: "2g", allergens: ["Gluten", "Dairy"], mealWindows: ["BREAKFAST", "SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1590080875515-8a3a8dc5735e?auto=format&fit=crop&w=400&q=80", barcode: "480000000010", available: true, is_available: true, is_archived: false, status: "active", productType: "packaged_good", expiryStatus: "active" },
-            { id: "b1111111-1111-1111-1111-111111111111", name: "Jack 'n Jill Magic Chips", category: "Snacks & Bakery", station: "Assembly / Bakery", price: 25.00, costPrice: 15.00, stock: 45, aiLabel: "Jack_And_Jill_Magic_Chips", unit: "Cheese Cracker Snack (28g)", calories: 140, protein: "2g", allergens: ["Gluten", "Dairy"], mealWindows: ["BREAKFAST", "SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1566478989037-eec170784d0b?auto=format&fit=crop&w=400&q=80", barcode: "480000000011", available: true, is_available: true, is_archived: false, status: "active", productType: "packaged_good", expiryStatus: "active" },
-            { id: "111ac6f3-cca3-479e-86a1-1d1edd28a945", name: "Buttercream Biscuits", category: "Snacks & Bakery", station: "Assembly / Bakery", price: 30.00, costPrice: 15.00, stock: 50, aiLabel: "Buttercream_Biscuits", unit: "Vanilla Cream Biscuits", calories: 160, protein: "2g", allergens: ["Gluten", "Dairy"], mealWindows: ["SNACK", "ALL_DAY"], recipe: [], img: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80", barcode: "480000000012", available: true, is_available: true, is_archived: false, status: "active", productType: "packaged_good", expiryStatus: "active" }
-        ];
+        const INITIAL_MOCK_MENU = [];
 
-        const INITIAL_USERS = [
-            // 1. STUDENTS (Active Accounts)
-            { id: "9bd9e2a0-1a82-4d8a-a112-0308f2fedd03", email: "mark.student@sjc.edu.ph", studentId: "2023-02104", name: "Mark Anthony Santos", role: "Student", department: "Grade 12 - ABM B", rfidUid: "0008839212", rfidType: "125kHz EM4100", dailyCap: 150.00, balance: 85.00, creditLiability: 75.00, creditLimit: 500.00, payLaterAllowance: true, payLaterCount: 1, status: "active", guardian: "Elena Santos", allergies: [] },
-            { id: "814e5c22-5edb-4b4a-9296-405560bbe503", email: "beatriz.student@sjc.edu.ph", studentId: "2023-03011", name: "Beatriz Ramos", role: "Student", department: "Grade 10 - St. Joseph", rfidUid: "0008839213", rfidType: "125kHz EM4100", dailyCap: 200.00, balance: 120.00, creditLiability: 0.00, creditLimit: 500.00, payLaterAllowance: false, payLaterCount: 0, status: "active", guardian: "Roberto Ramos", allergies: ["Dairy"] },
-            { id: "b1051051-1051-1051-1051-105110511051", email: "gabriel.student@sjc.edu.ph", studentId: "2023-04910", name: "Gabriel Santos", role: "Student", department: "Grade 11 - HUMSS", rfidUid: "0008839214", rfidType: "125kHz EM4100", dailyCap: 300.00, balance: 500.00, creditLiability: 0.00, creditLimit: 500.00, payLaterAllowance: true, payLaterCount: 0, status: "active", guardian: "Elena Santos", allergies: [] },
-            { id: "b1061061-1061-1061-1061-106110611061", email: "claire.student@sjc.edu.ph", studentId: "2024-00102", name: "Claire Mendoza", role: "Student", department: "Grade 8 - St. Luke", rfidUid: "0008839215", rfidType: "125kHz EM4100", dailyCap: 200.00, balance: 215.00, creditLiability: 0.00, creditLimit: 500.00, payLaterAllowance: true, payLaterCount: 0, status: "active", guardian: "Manuel Mendoza", allergies: ["Gluten"] },
+        const INITIAL_USERS = [];
 
-            // 2. PARENTS & GUARDIANS (Verified Parent Accounts)
-            { id: "b2032032-2032-2032-2032-203220322032", email: "elena.parent@sjc.edu.ph", studentId: "PAR-2026-003", name: "Elena Santos", role: "Parent", phone: "0919-555-0103", relationship: "Mother", status: "active", guardian: "Mark Anthony Santos (2023-02104)", linkedStudentId: "9bd9e2a0-1a82-4d8a-a112-0308f2fedd03", linkedStudentName: "Mark Anthony Santos" },
-
-            // 3. CANTEEN CASHIERS & POS OPERATORS
-            {
-                id: "a04adc89-ea0c-4495-b7c6-649aea22e861",
-                email: "cashier@gmail.com",
-                studentId: "STF-CSH-001",
-                name: "Elena Bautista",
-                role: "Cashier",
-                department: "Main Canteen POS Terminal #01",
-                salaryDeductionEligible: false,
-                pinCode: "1234",
-                status: "active"
-            },
-            {
-                id: "b3023023-3023-3023-3023-302330233023",
-                email: "cashier.mario@sjc.edu.ph",
-                studentId: "STF-CSH-002",
-                name: "Mario Rossi",
-                role: "Cashier",
-                department: "Express Beverage Counter #02",
-                salaryDeductionEligible: false,
-                pinCode: "1234",
-                status: "active"
-            },
-
-            // 4. TEACHERS & ACADEMIC FACULTY (Salary Payroll Deduction Eligible)
-            {
-                id: "b1011011-1011-1011-1011-101110111011",
-                email: "teacher.santos@sjc.edu.ph",
-                studentId: "FAC-2026-004",
-                name: "Prof. Maria Santos",
-                role: "Teacher",
-                department: "Science & Mathematics Faculty",
-                salaryDeductionEligible: true,
-                accumulatedSalaryDeduction: 165.00,
-                salaryDeductions: [
-                    { id: "SAL-901", orderNo: "ORD-2026-7811", date: "2026-08-18 12:15 PM", items: "1x Pork Adobo Meal, 1x Mineral Water (500ml)", amount: 95.00, status: "PENDING_PAYROLL" },
-                    { id: "SAL-902", orderNo: "ORD-2026-7845", date: "2026-08-20 12:30 PM", items: "1x Classic Cheeseburger, 1x Fresh Red Apple", amount: 70.00, status: "PENDING_PAYROLL" }
-                ],
-                rfidUid: "0008839901",
-                rfidType: "125kHz EM4100",
-                status: "active"
-            },
-            {
-                id: "t102",
-                email: "teacher.dalisay@sjc.edu.ph",
-                studentId: "FAC-2026-012",
-                name: "Mr. Ricardo Dalisay",
-                role: "Teacher",
-                department: "Senior High School Faculty",
-                salaryDeductionEligible: true,
-                accumulatedSalaryDeduction: 0.00,
-                salaryDeductions: [],
-                rfidUid: "0008839902",
-                rfidType: "125kHz EM4100",
-                status: "active"
-            },
-
-            // 5. SYSTEM ADMINISTRATORS
-            { id: "16bc0d74-4180-4278-8815-062c5b6e86b5", email: "admin@gmail.com", studentId: "ADM-2026-001", name: "System Admin (Official)", role: "Admin", department: "IT & Canteen Management Office", pinCode: "1234", status: "active" }
-        ];
-
-        const INITIAL_REFUNDS_LIST = [
-            {
-                id: 'REF-2026-0821-003',
-                orderId: 'ORD-2026-7790',
-                refNo: 'XFT-20260821-IMZ6',
-                date: new Date(Date.now() - 3600000 * 3),
-                studentId: '2023-02104',
-                studentName: 'Mark Anthony Santos',
-                itemsSummary: '1x Beef Pares w/ Garlic Rice',
-                amount: 90.00,
-                source: 'PARENT_DISPUTE',
-                sourceLabel: 'Parent AI Dispute',
-                reasonCategory: 'AI Scanner Misclassification',
-                reason: 'Parent disputed charge: AI tray camera misidentified vegetable side as Beef Pares entree.',
-                method: 'RFID_WALLET',
-                methodLabel: 'Pending Wallet Credit',
-                restocked: false,
-                status: 'PENDING',
-                processedBy: 'Awaiting Admin Audit'
-            }
-        ];
+        const INITIAL_REFUNDS_LIST = [];
 
         // =====================================================================
         // OFFICIAL SALARY DEDUCTION PDF GENERATOR & PRINTABLE UTILITIES (JSPDF)
@@ -3420,12 +3310,7 @@
                 }));
             };
 
-            const campusAccounts = [
-                { role: 'STUDENT', email: 'student.member@sjc.edu.ph', label: 'Student Member', name: 'Student Member', id: 'SJC-STD-0001', icon: Icon.User },
-                { role: 'PARENT', email: 'parent.maria@sjc.edu.ph', label: 'Parent Guardian', name: 'Maria Santos', id: 'SJC-PAR-0992', icon: Icon.Users },
-                { role: 'CASHIER', email: 'cashier.pos@sjc.edu.ph', label: 'Canteen Cashier', name: 'Elena Cashier', id: 'STAFF-CSH-01', icon: Icon.ShoppingCart },
-                { role: 'ADMIN', email: 'admin.system@sjc.edu.ph', label: 'Administrator', name: 'Admin Officer', id: 'ADMIN-SYS-01', icon: Icon.ShieldCheck }
-            ];
+            const campusAccounts = [];
 
             const getRoleBadge = (role) => {
                 switch (role) {
@@ -4609,22 +4494,36 @@
                                                     {showPassword ? <Icon.EyeOff className="w-4 h-4" /> : <Icon.Eye className="w-4 h-4" />}
                                                 </button>
                                             </div>
-                                            {/* Live Password Strength & Instruction Checklist */}
-                                            <div className="mt-2.5 p-2.5 bg-slate-50/90 rounded-xl border border-slate-200/80 space-y-1.5 text-[11px]">
-                                                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Password Requirements:</div>
-                                                <div className={`flex items-center gap-1.5 transition-colors ${password.length >= 8 ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>
-                                                    {password.length >= 8 ? <Icon.CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> : <span className="w-3.5 h-3.5 rounded-full border border-slate-300 flex items-center justify-center text-[9px] text-slate-400 shrink-0">•</span>}
-                                                    <span>Minimum 8 characters</span>
-                                                </div>
-                                                <div className={`flex items-center gap-1.5 transition-colors ${/\d/.test(password) ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>
-                                                    {/\d/.test(password) ? <Icon.CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> : <span className="w-3.5 h-3.5 rounded-full border border-slate-300 flex items-center justify-center text-[9px] text-slate-400 shrink-0">•</span>}
-                                                    <span>At least 1 number (0-9)</span>
-                                                </div>
-                                                <div className={`flex items-center gap-1.5 transition-colors ${/[A-Z]/.test(password) ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>
-                                                    {/[A-Z]/.test(password) ? <Icon.CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> : <span className="w-3.5 h-3.5 rounded-full border border-slate-300 flex items-center justify-center text-[9px] text-slate-400 shrink-0">•</span>}
-                                                    <span>At least 1 uppercase letter (A-Z)</span>
-                                                </div>
-                                            </div>
+                                            {/* Floating Password Checklist (Wave 5) */}
+                                            {(() => {
+                                                const regPassword = password || '';
+                                                const isMinLen = regPassword.length >= 8;
+                                                const hasNum = /\d/.test(regPassword);
+                                                const hasUpper = /[A-Z]/.test(regPassword);
+                                                return (
+                                                    <div className="mt-2.5 p-2.5 bg-slate-50/90 rounded-xl border border-slate-200/80 space-y-1.5 text-[11px]">
+                                                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Password Requirements:</div>
+                                                        <div className={`flex items-center gap-2 transition-colors ${isMinLen ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>
+                                                            <span className={`w-3.5 text-center font-bold text-xs ${isMinLen ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                                                {isMinLen ? '✓' : '○'}
+                                                            </span>
+                                                            <span>At least 8 characters</span>
+                                                        </div>
+                                                        <div className={`flex items-center gap-2 transition-colors ${hasNum ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>
+                                                            <span className={`w-3.5 text-center font-bold text-xs ${hasNum ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                                                {hasNum ? '✓' : '○'}
+                                                            </span>
+                                                            <span>At least 1 number</span>
+                                                        </div>
+                                                        <div className={`flex items-center gap-2 transition-colors ${hasUpper ? 'text-emerald-700 font-semibold' : 'text-slate-500'}`}>
+                                                            <span className={`w-3.5 text-center font-bold text-xs ${hasUpper ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                                                {hasUpper ? '✓' : '○'}
+                                                            </span>
+                                                            <span>At least 1 uppercase letter</span>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
                                         <div>
                                             <label className="block text-xs font-semibold text-slate-700 mb-1">Confirm Password</label>
@@ -7713,27 +7612,30 @@
             }, [filteredCompletedOrders, ordersPage, ordersPerPage]);
             const totalOrderPages = Math.max(1, Math.ceil(filteredCompletedOrders.length / ordersPerPage));
 
-            const handleProcessOrderRefund = async (e) => {
-                if (e) e.preventDefault();
-                if (!orderToRefund) return;
+            const handleExecuteRefund = async (orderParam = null, restockParam = true) => {
+                const targetOrder = orderParam || orderToRefund;
+                if (!targetOrder) return;
                 setIsSubmittingOrderRefund(true);
 
-                const refundAmt = parseFloat(orderToRefund.total || orderToRefund.final_amount || orderToRefund.total_amount || 0);
-                const orderId = orderToRefund.orderNo || orderToRefund.id || orderToRefund.ref_no;
-                const method = String(orderToRefund.paymentMethod || orderToRefund.payment_method || 'RFID').toUpperCase();
-                const studentId = orderToRefund.studentId || orderToRefund.customer_id;
-                const studentName = orderToRefund.student || orderToRefund.student_name || orderToRefund.customer_name;
+                const orderTotal = parseFloat(targetOrder.total || targetOrder.final_amount || targetOrder.total_amount || 0);
+                const orderId = targetOrder.orderNo || targetOrder.id || targetOrder.ref_no;
+                const method = String(targetOrder.paymentMethod || targetOrder.payment_method || 'RFID').toUpperCase();
+                const studentId = targetOrder.studentId || targetOrder.customer_id;
+                const customerName = targetOrder.student || targetOrder.student_name || targetOrder.customer_name || 'Customer';
+                const shouldRestock = typeof restockParam === 'boolean' ? restockParam : refundRestockCheckbox;
 
                 try {
-                    // 1. Restock items into menuCatalog and Supabase if checked
-                    if (refundRestockCheckbox && Array.isArray(orderToRefund.items) && orderToRefund.items.length > 0) {
+                    // 1. Inventory Restock (if checked): Loop through order.items and increment stock in menuCatalog and via CanteenDB.updateProduct
+                    if (shouldRestock && Array.isArray(targetOrder.items) && targetOrder.items.length > 0) {
                         setMenuCatalog(prevCatalog => {
                             return prevCatalog.map(prod => {
-                                const matchedItem = orderToRefund.items.find(it => (it.id && it.id === prod.id) || (it.name && it.name.toLowerCase() === prod.name.toLowerCase()));
+                                const matchedItem = targetOrder.items.find(it => (it.id && it.id === prod.id) || (it.name && it.name.toLowerCase() === prod.name.toLowerCase()));
                                 if (matchedItem) {
                                     const addQty = parseInt(matchedItem.qty || matchedItem.quantity || 1) || 1;
                                     const newStock = (prod.stock || 0) + addQty;
-                                    if (window.CanteenDB && typeof window.CanteenDB.updateProductStock === 'function') {
+                                    if (window.CanteenDB && typeof window.CanteenDB.updateProduct === 'function') {
+                                        window.CanteenDB.updateProduct(prod.id, { stock: newStock }).catch(() => {});
+                                    } else if (window.CanteenDB && typeof window.CanteenDB.updateProductStock === 'function') {
                                         window.CanteenDB.updateProductStock(prod.id, newStock).catch(() => {});
                                     }
                                     return { ...prod, stock: newStock };
@@ -7743,42 +7645,50 @@
                         });
                     }
 
-                    // 2. Payment Reversal
-                    if (method === 'RFID') {
-                        const matchedUser = registeredUsers.find(u =>
-                            (studentId && (u.studentId === studentId || u.id === studentId)) ||
-                            (studentName && u.name && u.name.toLowerCase() === studentName.toLowerCase())
-                        );
+                    // 2. Financial Reversal
+                    const isRfid = method === 'RFID';
+                    const isPayLater = method.includes('PAY_LATER') || method.includes('CREDIT') || method.includes('TAB');
+                    const isPayroll = method.includes('SALARY') || method.includes('PAYROLL') || method.includes('FACULTY');
+
+                    const matchedUser = registeredUsers.find(u =>
+                        (studentId && (u.studentId === studentId || u.id === studentId)) ||
+                        (customerName && u.name && u.name.toLowerCase() === customerName.toLowerCase())
+                    );
+                    const targetUserId = matchedUser?.id || studentId;
+
+                    if (isRfid) {
+                        if (targetUserId && window.CanteenDB && typeof window.CanteenDB.adjustWalletBalance === 'function') {
+                            window.CanteenDB.adjustWalletBalance(targetUserId, orderTotal).catch(() => {});
+                        } else if (targetUserId && window.CanteenDB && typeof window.CanteenDB.creditWalletBalance === 'function') {
+                            window.CanteenDB.creditWalletBalance(targetUserId, orderTotal).catch(() => {});
+                        }
                         if (matchedUser) {
-                            const newBal = (parseFloat(matchedUser.balance) || 0) + refundAmt;
-                            if (window.CanteenDB && typeof window.CanteenDB.creditWalletBalance === 'function') {
-                                window.CanteenDB.creditWalletBalance(matchedUser.id, refundAmt).catch(() => {});
+                            const newBal = (Number(matchedUser.balance) || 0) + orderTotal;
+                            setRegisteredUsers(prev => prev.map(u => u.id === matchedUser.id ? { ...u, balance: newBal, wallet_balance: newBal } : u));
+                        }
+                    } else if (isPayLater || isPayroll) {
+                        if (targetUserId && window.CanteenDB && typeof window.CanteenDB.adjustCreditLiability === 'function') {
+                            window.CanteenDB.adjustCreditLiability(targetUserId, -orderTotal).catch(() => {});
+                        }
+                        if (matchedUser) {
+                            if (isPayLater) {
+                                const currentLiability = Number(matchedUser.creditLiability ?? matchedUser.credit_liability ?? 0);
+                                const newLiability = Math.max(0, currentLiability - orderTotal);
+                                setRegisteredUsers(prev => prev.map(u => u.id === matchedUser.id ? { ...u, creditLiability: newLiability, credit_liability: newLiability } : u));
+                            } else {
+                                const currentDeduction = Number(matchedUser.accumulatedSalaryDeduction ?? 0);
+                                const newDeduction = Math.max(0, currentDeduction - orderTotal);
+                                setRegisteredUsers(prev => prev.map(u => u.id === matchedUser.id ? { ...u, accumulatedSalaryDeduction: newDeduction } : u));
                             }
-                            setRegisteredUsers(prev => prev.map(u => u.id === matchedUser.id ? { ...u, balance: newBal } : u));
-                        }
-                    } else if (method.includes('PAY_LATER') || method.includes('CREDIT') || method.includes('TAB')) {
-                        const matchedUser = registeredUsers.find(u =>
-                            (studentId && (u.studentId === studentId || u.id === studentId)) ||
-                            (studentName && u.name && u.name.toLowerCase() === studentName.toLowerCase())
-                        );
-                        if (matchedUser) {
-                            const currentLiability = parseFloat(matchedUser.creditLiability || matchedUser.credit_liability || 0);
-                            const newLiability = Math.max(0, currentLiability - refundAmt);
-                            setRegisteredUsers(prev => prev.map(u => u.id === matchedUser.id ? { ...u, creditLiability: newLiability, credit_liability: newLiability } : u));
-                        }
-                    } else if (method.includes('SALARY') || method.includes('PAYROLL') || method.includes('FACULTY')) {
-                        const matchedUser = registeredUsers.find(u =>
-                            (studentId && (u.studentId === studentId || u.employeeId === studentId || u.id === studentId)) ||
-                            (studentName && u.name && u.name.toLowerCase() === studentName.toLowerCase())
-                        );
-                        if (matchedUser) {
-                            const currentDeduction = parseFloat(matchedUser.accumulatedSalaryDeduction || 0);
-                            const newDeduction = Math.max(0, currentDeduction - refundAmt);
-                            setRegisteredUsers(prev => prev.map(u => u.id === matchedUser.id ? { ...u, accumulatedSalaryDeduction: newDeduction } : u));
                         }
                     }
 
-                    // 3. Update order in recentOrders to REFUNDED
+                    // 3. Order Status Update
+                    if (window.CanteenDB && typeof window.CanteenDB.updateOrder === 'function') {
+                        window.CanteenDB.updateOrder(orderId, { status: 'REFUNDED' }).catch(() => {});
+                    } else if (window.CanteenDB && typeof window.CanteenDB.updateOrderStatus === 'function') {
+                        window.CanteenDB.updateOrderStatus(orderId, 'REFUNDED').catch(() => {});
+                    }
                     setRecentOrders(prevOrders => {
                         const updated = prevOrders.map(o => {
                             const isTarget = (o.orderNo && o.orderNo === orderId) || (o.id && o.id === orderId) || (o.ref_no && o.ref_no === orderId);
@@ -7786,10 +7696,10 @@
                                 return {
                                     ...o,
                                     status: 'REFUNDED',
-                                    refundedAmount: refundAmt,
+                                    refundedAmount: orderTotal,
                                     refundedAt: new Date().toISOString(),
                                     refundReason: refundReasonInput.trim(),
-                                    restocked: refundRestockCheckbox
+                                    restocked: shouldRestock
                                 };
                             }
                             return o;
@@ -7801,39 +7711,40 @@
                     });
 
                     // 4. Append to refundsList
-                    const itemsSummaryText = Array.isArray(orderToRefund.items) && orderToRefund.items.length > 0
-                        ? orderToRefund.items.map(i => `${i.quantity || i.qty || 1}x ${i.name || i.item_name || 'Item'}`).join(', ')
-                        : (orderToRefund.items_summary || '1x Canteen Meal Package');
+                    const itemsSummaryText = Array.isArray(targetOrder.items) && targetOrder.items.length > 0
+                        ? targetOrder.items.map(i => `${i.quantity || i.qty || 1}x ${i.name || i.item_name || 'Item'}`).join(', ')
+                        : (targetOrder.items_summary || '1x Canteen Meal Package');
 
                     const newRefundRecord = {
                         id: 'REF-' + Date.now(),
                         orderId: orderId,
-                        studentName: studentName || 'Customer',
+                        studentName: customerName,
                         studentId: studentId || 'N/A',
                         itemsSummary: itemsSummaryText,
-                        amount: refundAmt,
+                        amount: orderTotal,
                         method: method,
                         methodLabel: `Refunded (${method})`,
                         source: 'ADMIN_MANUAL',
                         sourceLabel: 'Admin Order Refund',
                         reason: refundReasonInput.trim(),
                         status: 'APPROVED',
-                        processedBy: 'Admin Authority',
+                        processedBy: 'System Admin',
                         timestamp: new Date().toISOString(),
                         date: new Date(),
-                        restocked: refundRestockCheckbox
+                        restocked: shouldRestock
                     };
                     setRefundsList(prev => [newRefundRecord, ...prev]);
 
-                    // 5. Log audit action
-                    const auditMsg = `ORDER_REFUNDED: Ref ${orderId} (₱${refundAmt.toFixed(2)}) for ${studentName || 'Customer'} - ${refundRestockCheckbox ? 'Items Restocked' : 'No Restock'}`;
+                    // 5. Audit Dispatch per spec: logAuditAction('ORDER_REFUNDED', `Refunded Order #${orderId} (₱${orderTotal}) for ${customerName}. Restocked: ${restocked ? 'Yes' : 'No'}`, 'System Admin')
+                    const restockStr = shouldRestock ? 'Yes' : 'No';
+                    const auditMsg = `Refunded Order #${orderId} (₱${orderTotal.toFixed(2)}) for ${customerName}. Restocked: ${restockStr}`;
                     if (typeof logAuditAction === 'function') {
-                        logAuditAction(auditMsg, 'Admin Authority', 'financial');
+                        logAuditAction('ORDER_REFUNDED', auditMsg, 'System Admin', 'financial');
                     } else if (window.CanteenDB && typeof window.CanteenDB.logAuditEvent === 'function') {
-                        window.CanteenDB.logAuditEvent({ action: auditMsg, actor: 'Admin Authority', event_type: 'financial' }).catch(() => {});
+                        window.CanteenDB.logAuditEvent({ action: `ORDER_REFUNDED: ${auditMsg}`, actor: 'System Admin', event_type: 'financial' }).catch(() => {});
                     }
 
-                    showToast(`Refund processed for ${studentName || 'order'} (₱${refundAmt.toFixed(2)}).${refundRestockCheckbox ? ' Inventory restocked.' : ''}`, 'success');
+                    showToast(`Refund processed for ${customerName} (₱${orderTotal.toFixed(2)}). Restocked: ${restockStr}`, 'success');
                     setOrderToRefund(null);
                 } catch (err) {
                     console.error("Refund error:", err);
@@ -7841,6 +7752,11 @@
                 } finally {
                     setIsSubmittingOrderRefund(false);
                 }
+            };
+
+            const handleProcessOrderRefund = (e) => {
+                if (e) e.preventDefault();
+                return handleExecuteRefund(orderToRefund, refundRestockCheckbox);
             };
 
             // Helper to get start of current week (Monday)
@@ -9215,65 +9131,7 @@
             const [liabilityTab, setLiabilityTab] = useState('students'); // 'students' | 'faculty'
 
             // Baseline historical records
-            const [localRecords, setLocalRecords] = useState([
-                {
-                    id: '2024-08210',
-                    refId: 'SIS-2026-0820-002',
-                    name: 'Maria Dela Cruz',
-                    grade: 'Grade 8 - St. Claire',
-                    debt: 240.00,
-                    cap: 500.00,
-                    parent: 'Maria Santos Dela Cruz',
-                    parentContact: '0917-882-9102',
-                    item: '2x Chicken Meal, 1x Juice',
-                    photo: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=300&q=80',
-                    date: new Date(Date.now() - 86400000 * 1.5),
-                    status: 'ACTIVE_DEBT',
-                    synced: false,
-                    paymentMethod: null,
-                    receiptNo: null,
-                    settledAt: null,
-                    remarks: ''
-                },
-                {
-                    id: '2023-01122',
-                    refId: 'SIS-2026-0819-003',
-                    name: 'Kenjie Bautista',
-                    grade: 'Grade 11 - ABM',
-                    debt: 480.00,
-                    cap: 500.00,
-                    parent: 'Bautista Family',
-                    parentContact: '0918-123-4567',
-                    item: '3x Beef Pares, 2x Soda',
-                    photo: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=300&q=80',
-                    date: new Date(Date.now() - 86400000 * 2.5),
-                    status: 'ACTIVE_DEBT',
-                    synced: false,
-                    paymentMethod: null,
-                    receiptNo: null,
-                    settledAt: null,
-                    remarks: ''
-                },
-                {
-                    id: '2025-09941',
-                    refId: 'SIS-2026-0818-004',
-                    name: 'Angelo Reyes',
-                    grade: 'Grade 7 - St. Francis',
-                    debt: 95.00,
-                    cap: 300.00,
-                    parent: 'Reyes Parent',
-                    parentContact: '0920-555-8899',
-                    item: '1x Cheeseburger, 1x Water',
-                    photo: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=300&q=80',
-                    date: new Date(Date.now() - 86400000 * 3.5),
-                    status: 'ACTIVE_DEBT',
-                    synced: false,
-                    paymentMethod: null,
-                    receiptNo: null,
-                    settledAt: null,
-                    remarks: ''
-                }
-            ]);
+            const [localRecords, setLocalRecords] = useState([]);
 
             // Interactive Settlement Modal State
             const [settleModalOpen, setSettleModalOpen] = useState(false);
@@ -9293,46 +9151,25 @@
             const tuitionRecords = useMemo(() => {
                 const map = new Map();
 
-                // 1. Load local base records
-                localRecords.forEach(r => map.set(r.id, { ...r }));
-
-                // 2. Sync with registeredUsers
+                // 1. Sync with registeredUsers
                 if (registeredUsers && registeredUsers.length > 0) {
                     registeredUsers.forEach(u => {
                         const studId = u.studentId || u.id;
                         const liveLiability = parseFloat(u.creditLiability ?? u.credit_liability ?? 0);
                         const liveCap = parseFloat(u.creditLimit ?? u.credit_limit ?? 500);
 
-                        if (map.has(studId)) {
-                            const existing = map.get(studId);
-                            let status = existing.status;
-                            if (liveLiability === 0 && existing.debt > 0) {
-                                status = existing.status === 'SYNCED_TO_SIS' ? 'SYNCED_TO_SIS' : 'PAID_DIRECT';
-                            } else if (liveLiability > 0) {
-                                status = 'ACTIVE_DEBT';
-                            }
-                            map.set(studId, {
-                                ...existing,
-                                debt: liveLiability,
-                                cap: liveCap || existing.cap,
-                                name: u.name || existing.name,
-                                grade: u.department || u.grade || existing.grade,
-                                parent: u.guardian || u.parent || existing.parent,
-                                parentContact: u.parentContact || u.phone || existing.parentContact,
-                                status
-                            });
-                        } else if (liveLiability > 0) {
+                        if (liveLiability > 0) {
                             map.set(studId, {
                                 id: studId,
-                                refId: `SIS-${new Date().getFullYear()}-${studId.replace(/[^0-9]/g, '') || '001'}`,
+                                refId: `SIS-${new Date().getFullYear()}-${String(studId).replace(/[^0-9]/g, '') || '001'}`,
                                 name: u.name || 'Student Account',
                                 grade: u.department || 'Enrolled Student',
                                 debt: liveLiability,
                                 cap: liveCap,
-                                parent: u.guardian || 'Guardian on Record',
-                                parentContact: u.phone || '0917-000-0000',
+                                parent: u.guardian || u.parent || 'Guardian on Record',
+                                parentContact: u.parentContact || u.phone || '',
                                 item: 'Pay Later Emergency Canteen Allowance',
-                                photo: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=300&q=80',
+                                photo: u.avatar || u.photo || '',
                                 date: new Date(),
                                 status: 'ACTIVE_DEBT',
                                 synced: false,
@@ -9341,6 +9178,15 @@
                                 settledAt: null,
                                 remarks: ''
                             });
+                        }
+                    });
+                }
+
+                // 2. Apply any runtime local settlement/waiver overrides
+                if (localRecords && localRecords.length > 0) {
+                    localRecords.forEach(r => {
+                        if (map.has(r.id)) {
+                            map.set(r.id, { ...map.get(r.id), ...r });
                         }
                     });
                 }
@@ -11134,53 +10980,45 @@
             const handleResetSubmit = async (e) => {
                 e.preventDefault();
                 setResetErrorMsg('');
-                const cleanResetInput = resetEmail.trim().toLowerCase();
+                const identifier = resetEmail.trim();
 
-                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                const studentIdRegex = /^\d{4}-\d{4,5}$|^[A-Z0-9]{3,20}$/i;
-
-                const isEmail = emailRegex.test(cleanResetInput);
-                const isStudentId = studentIdRegex.test(cleanResetInput);
-
-                if (!isEmail && !isStudentId) {
-                    setResetErrorMsg('Please enter a valid Email address (e.g. user@sjc.edu.ph) or Student/Staff ID (e.g. 2026-01900).');
+                if (!identifier) {
+                    setResetErrorMsg('Please enter your Student ID Number or Registered Guardian Email.');
                     return;
                 }
 
+                const cleanResetInput = identifier.toLowerCase();
                 const matchedUser = registeredUsers.find(u =>
                     (u.email && u.email.toLowerCase() === cleanResetInput) ||
                     (u.studentId && u.studentId.toLowerCase() === cleanResetInput) ||
                     (u.id && u.id.toLowerCase() === cleanResetInput)
                 );
 
-                if (!matchedUser) {
-                    setResetErrorMsg('No registered account found matching this email address or Student/Staff ID.');
-                    return;
+                // Dispatch audit action per spec: logAuditAction('PASSWORD_RESET_REQ', `Reset requested for: ${identifier}`, 'System Auth')
+                if (typeof logAuditAction === 'function') {
+                    logAuditAction('PASSWORD_RESET_REQ', `Reset requested for: ${identifier}`, 'System Auth');
+                } else if (window.CanteenDB && typeof window.CanteenDB.logAuditEvent === 'function') {
+                    window.CanteenDB.logAuditEvent({ action: `PASSWORD_RESET_REQ: Reset requested for: ${identifier}`, actor: 'System Auth', event_type: 'security' }).catch(() => {});
                 }
-
-                // Generate 6-digit verification code
-                const code = String(Math.floor(100000 + Math.random() * 900000));
-                setResetVerificationCode(code);
-                setResetMatchedAccount(matchedUser);
 
                 // Dispatch notification alert to admin queue
                 const notifEntry = {
                     id: 'NOTIF-RESET-' + Date.now(),
                     type: 'PASSWORD_RESET_REQUEST',
                     title: 'Password Reset Request',
-                    message: `Recovery requested for ${matchedUser.name} (${matchedUser.studentId || matchedUser.email || 'User'}). Verification Code: ${code}`,
+                    message: `Recovery requested for: ${identifier}`,
                     timestamp: new Date().toISOString(),
                     read: false,
                     is_read: false,
                     recipientRole: 'admin',
                     metadata: {
-                        userId: matchedUser.id,
-                        code: code,
-                        email: matchedUser.email
+                        userId: matchedUser?.id,
+                        identifier: identifier,
+                        email: matchedUser?.email
                     }
                 };
 
-                 try {
+                try {
                     const existingNotifs = JSON.parse(localStorage.getItem('novalunch_notifications') || '[]');
                     localStorage.setItem('novalunch_notifications', JSON.stringify([notifEntry, ...existingNotifs]));
                     if (typeof window !== 'undefined' && window.dispatchEvent) {
@@ -11188,14 +11026,13 @@
                     }
                 } catch (_) {}
 
-                logAuditAction(`PASSWORD_RESET_REQ: Password recovery requested for ${matchedUser.name} (${matchedUser.studentId || matchedUser.email || 'User'}) - Verification Code: ${code}`, 'User Self-Service', 'security');
-
                 try {
-                    if (supabaseClient && matchedUser.email && isEmail) {
+                    if (supabaseClient && matchedUser?.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(matchedUser.email)) {
                         await supabaseClient.auth.resetPasswordForEmail(matchedUser.email).catch(() => {});
                     }
                 } catch (_) {}
 
+                setResetMatchedAccount(matchedUser);
                 setResetSent(true);
             };
 
@@ -11422,53 +11259,42 @@
                         </main>
                     </div>
 
-                    {/* Password Recovery Modal */}
-                    <CustomModal isOpen={forgotModalOpen} onClose={() => { setForgotModalOpen(false); setResetSent(false); setResetErrorMsg(''); setResetVerificationCode(''); setResetMatchedAccount(null); }} title="Password Recovery" subtitle="" icon={Icon.Mail} size="md">
+                    {/* Password Recovery Modal (Wave 5) */}
+                    <CustomModal isOpen={forgotModalOpen} onClose={() => { setForgotModalOpen(false); setResetSent(false); setResetErrorMsg(''); setResetMatchedAccount(null); }} title="Password Recovery" subtitle="" icon={Icon.Mail} size="md">
                         {resetSent ? (
                             <div className="text-center space-y-4 py-2 animate-in fade-in duration-150">
                                 <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-700 border border-emerald-200/80 flex items-center justify-center mx-auto shadow-2xs">
                                     <Icon.ShieldCheck className="w-7 h-7 stroke-[2.2]" />
                                 </div>
-                                <div className="space-y-1">
-                                    <h3 className="font-outfit text-lg font-bold text-slate-900 tracking-tight">Recovery Code Generated!</h3>
-                                    <p className="text-xs text-slate-500">
-                                        Password recovery verification code for <strong className="text-slate-800">{resetMatchedAccount?.name || resetEmail}</strong>
-                                    </p>
-                                </div>
-
-                                {/* 6-DIGIT VERIFICATION CODE CARD */}
-                                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
-                                    <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">
-                                        6-Digit Verification Code
-                                    </div>
-                                    <div className="font-mono text-3xl font-extrabold tracking-widest text-[#7B1E22] selection:bg-rose-100">
-                                        {resetVerificationCode || '849201'}
-                                    </div>
-                                    <div className="text-[11px] text-slate-500">
-                                        A notification alert has also been dispatched to the IT Administrator.
+                                <div className="space-y-2">
+                                    <h3 className="font-outfit text-lg font-bold text-slate-900 tracking-tight">Request Submitted</h3>
+                                    <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl text-xs text-slate-700 leading-relaxed text-left space-y-2">
+                                        <p className="font-medium text-slate-800">
+                                            Password reset request submitted. Please visit the canteen admin office or verify your registered contact to finalize credentials.
+                                        </p>
+                                        {resetMatchedAccount && (
+                                            <div className="pt-2 border-t border-slate-200/60 text-[11px] text-slate-500 font-mono">
+                                                Account: {resetMatchedAccount.name} ({resetMatchedAccount.studentId || resetMatchedAccount.email || 'User'})
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 
-                                <div className="p-3 bg-amber-50/70 border border-amber-200/60 rounded-xl text-[11px] text-amber-900 text-left flex items-start gap-2">
-                                    <Icon.Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                                    <span>
-                                        Present this code to the Canteen Administrator to instantly complete your password update.
-                                    </span>
+                                <div className="pt-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setForgotModalOpen(false);
+                                            setResetSent(false);
+                                            setResetErrorMsg('');
+                                            setResetMatchedAccount(null);
+                                            setResetEmail('');
+                                        }}
+                                        className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer transition-all active:scale-98"
+                                    >
+                                        Done
+                                    </button>
                                 </div>
-
-                                <ActionButton
-                                    variant="primary"
-                                    onClick={() => {
-                                        setForgotModalOpen(false);
-                                        setResetSent(false);
-                                        setResetErrorMsg('');
-                                        setResetVerificationCode('');
-                                        setResetMatchedAccount(null);
-                                    }}
-                                    className="w-full py-2.5 font-bold shadow-xs cursor-pointer"
-                                >
-                                    Return to Login
-                                </ActionButton>
                             </div>
                         ) : (
                             <form onSubmit={handleResetSubmit} className="space-y-4">
@@ -11478,21 +11304,21 @@
                                         <span>{resetErrorMsg}</span>
                                     </div>
                                 )}
-                                <p className="text-xs text-slate-600">Enter your registered email address or Student/Staff ID Number to generate a verification code.</p>
+                                <p className="text-xs text-slate-600">Enter your Student ID Number or Registered Guardian Email to submit a password reset request.</p>
                                 <div>
-                                    <label className="block text-xs font-semibold mb-1">Email or Student / Staff ID</label>
+                                    <label className="block text-xs font-semibold mb-1 text-slate-700">Student ID Number or Registered Guardian Email</label>
                                     <input
                                         type="text"
                                         required
-                                        placeholder="e.g. 2026-01900 or user@sjc.edu.ph"
+                                        placeholder="e.g. 2026-01900 or guardian@gmail.com"
                                         value={resetEmail}
                                         onChange={(e) => { setResetEmail(e.target.value); setResetErrorMsg(''); }}
-                                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs font-medium focus:bg-white"
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5 text-xs font-medium focus:bg-white text-slate-900"
                                     />
                                 </div>
                                 <div className="flex gap-2 pt-2 border-t border-slate-100">
                                     <ActionButton variant="secondary" onClick={() => { setForgotModalOpen(false); setResetErrorMsg(''); }} className="w-1/3 py-2">Cancel</ActionButton>
-                                    <ActionButton variant="primary" type="submit" className="w-2/3 py-2 font-bold">Request Recovery Code</ActionButton>
+                                    <ActionButton variant="primary" type="submit" className="w-2/3 py-2 font-bold">Submit Request</ActionButton>
                                 </div>
                             </form>
                         )}
@@ -21499,41 +21325,38 @@
             const [dismissedAILabels, setDismissedAILabels] = useState(new Set());
 
             // ── Cash Drawer & Shift Management State (Wave 5) ──
-            const [cashierShift, setCashierShift] = useState(() => {
+            const [activeShift, setActiveShift] = useState(() => {
                 try {
                     const saved = localStorage.getItem('novalunch_active_shift');
-                    if (saved) return JSON.parse(saved);
-                } catch (e) { }
-                return {
-                    id: 'SHIFT-' + Date.now(),
-                    status: 'OPEN',
-                    openedAt: new Date().toISOString(),
-                    closedAt: null,
-                    openingFloat: 1500.00,
-                    cashPayouts: [],
-                    actualCashCounted: null,
-                    cashierId: currentUser?.id || 'cashier-01',
-                    cashierName: currentUser?.name || 'Cashier Register #01'
-                };
+                    return saved ? JSON.parse(saved) : null;
+                } catch {
+                    return null;
+                }
             });
+            const [openingFloatInput, setOpeningFloatInput] = useState('1000.00');
+            const [actualCashCounted, setActualCashCounted] = useState('');
+
+            // Backward compatibility aliases
+            const cashierShift = activeShift;
+            const setCashierShift = setActiveShift;
+            const actualCashCountedInput = actualCashCounted;
+            const setActualCashCountedInput = setActualCashCounted;
 
             const updateCashierShift = (newShift) => {
-                setCashierShift(newShift);
+                setActiveShift(newShift);
                 try {
-                    localStorage.setItem('novalunch_active_shift', JSON.stringify(newShift));
+                    if (newShift) {
+                        localStorage.setItem('novalunch_active_shift', JSON.stringify(newShift));
+                    } else {
+                        localStorage.removeItem('novalunch_active_shift');
+                    }
                 } catch (e) { }
             };
 
             const [openDrawerModalOpen, setOpenDrawerModalOpen] = useState(false);
-            const [openingFloatInput, setOpeningFloatInput] = useState(String(cashierShift?.openingFloat || 1500));
             const [cashPayoutModalOpen, setCashPayoutModalOpen] = useState(false);
             const [cashPayoutAmountInput, setCashPayoutAmountInput] = useState('');
             const [cashPayoutReasonInput, setCashPayoutReasonInput] = useState('');
-            const [actualCashCountedInput, setActualCashCountedInput] = useState(
-                cashierShift?.actualCashCounted !== null && cashierShift?.actualCashCounted !== undefined 
-                    ? String(cashierShift.actualCashCounted) 
-                    : ''
-            );
 
             // Handler: Trigger Manual Offline Edge Sync
             const handleTriggerOfflineSync = async () => {
@@ -22153,15 +21976,17 @@
                         showToast(`Imported ${d.cart.length} item(s) directly from AI Kiosk tray!`);
                         setAiModalOpen(false);
                         return;
+                    } else {
+                        showToast("AI Kiosk tray scan returned no detected items.", "warning");
+                        setAiModalOpen(false);
+                        return;
                     }
                 } catch (e) {
-                    console.log("Using default fallback scan items", e);
+                    console.warn("Hardware tray scan failed:", e);
+                    showToast("Hardware scanning failed: Unable to connect to Kiosk camera (Port 8085).", "danger");
+                    setAiModalOpen(false);
+                    return;
                 }
-                const burger = menuCatalog.find(m => m.id === 'p1') || menuCatalog[0];
-                const juice = menuCatalog.find(m => m.id === 'p5') || menuCatalog[1];
-                if (burger) onAddToCart(burger);
-                if (juice) onAddToCart(juice);
-                setAiModalOpen(false);
             };
 
             // ── Apple 2026 Student Kiosk Display (student_kiosk_gui.py) Launcher & Cart Bridge ──
@@ -22555,10 +22380,100 @@
                 }
             };
 
-            const currentTab = ['register', 'shift_history', 'shift', 'sales_report', 'salary_deductions'].includes(activeTab) ? activeTab : 'register';
+            const isDrawerTab = activeTab === 'drawer' || activeTab === 'shift';
+            const isSummaryTab = activeTab === 'summary' || activeTab === 'sales_report';
+            const currentTab = isDrawerTab ? 'shift' : isSummaryTab ? 'sales_report' : ['register', 'shift_history', 'salary_deductions'].includes(activeTab) ? activeTab : 'register';
 
             return (
                 <div className="lg:pl-72 pl-0 h-screen max-h-screen bg-[#F8FAFC] text-slate-800 flex flex-col overflow-hidden transition-all">
+                    {/* BLOCKING MODAL: INITIALIZE CASHIER SHIFT IF NOT ACTIVE (Wave 5) */}
+                    {!activeShift && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/75 backdrop-blur-md p-4 animate-in fade-in duration-200">
+                            <div className="w-full max-w-md bg-white rounded-3xl p-6 sm:p-7 shadow-2xl border border-slate-200/90 space-y-5 animate-in zoom-in-95 duration-200">
+                                <div className="flex items-center gap-3.5 border-b border-slate-100 pb-4">
+                                    <div className="w-12 h-12 rounded-2xl bg-[#7B1E22]/10 text-[#7B1E22] flex items-center justify-center shrink-0 border border-[#7B1E22]/20 shadow-2xs">
+                                        <Icon.DollarSign className="w-6 h-6 stroke-[2.2]" />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-outfit text-xl font-bold text-slate-900 tracking-tight">Open Register Shift</h3>
+                                        <p className="text-xs text-slate-500">Initialize cash drawer before beginning sales operations</p>
+                                    </div>
+                                </div>
+
+                                <form onSubmit={(e) => {
+                                    e.preventDefault();
+                                    const floatVal = Math.max(0, parseFloat(openingFloatInput) || 0);
+                                    const newShift = {
+                                        shiftId: 'SH-' + Date.now(),
+                                        id: 'SH-' + Date.now(),
+                                        cashierName: currentUser?.name || currentUser?.full_name || 'Cashier',
+                                        cashierId: currentUser?.id || 'cashier-01',
+                                        startTime: new Date().toISOString(),
+                                        openedAt: new Date().toISOString(),
+                                        openingFloat: floatVal,
+                                        cashPayouts: [],
+                                        actualCashCounted: null,
+                                        status: 'OPEN'
+                                    };
+                                    try {
+                                        localStorage.setItem('novalunch_active_shift', JSON.stringify(newShift));
+                                    } catch (_) {}
+                                    setActiveShift(newShift);
+                                    if (typeof logAuditAction === 'function') {
+                                        logAuditAction('SHIFT_OPENED', `Register shift started with ₱${floatVal.toFixed(2)} opening float (Shift ID: ${newShift.shiftId})`, currentUser?.name || currentUser?.full_name || 'Cashier', 'financial');
+                                    } else if (window.CanteenDB && typeof window.CanteenDB.logAuditEvent === 'function') {
+                                        window.CanteenDB.logAuditEvent({ action: `SHIFT_OPENED: Register shift started with ₱${floatVal.toFixed(2)} opening float (Shift ID: ${newShift.shiftId})`, actor: currentUser?.name || 'Cashier', event_type: 'financial' }).catch(() => {});
+                                    }
+                                    showToast(`Shift initialized with ₱${floatVal.toFixed(2)} opening float`, "success");
+                                }} className="space-y-4">
+                                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2">
+                                        <span className="text-xs text-slate-500 font-medium">Standard Institutional Float Presets:</span>
+                                        <div className="flex gap-2">
+                                            {[500, 1000, 1500, 2000].map(amt => (
+                                                <button
+                                                    key={amt}
+                                                    type="button"
+                                                    onClick={() => setOpeningFloatInput(amt.toFixed(2))}
+                                                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                                                        parseFloat(openingFloatInput) === amt
+                                                            ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                                                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                                                    }`}
+                                                >
+                                                    ₱{amt.toLocaleString()}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-700 mb-1.5">Opening Cash Float (₱)</label>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            required
+                                            value={openingFloatInput}
+                                            onChange={(e) => setOpeningFloatInput(e.target.value)}
+                                            placeholder="1000.00"
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xl font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#7B1E22]/20 focus:border-[#7B1E22]"
+                                        />
+                                    </div>
+
+                                    <div className="pt-2">
+                                        <button
+                                            type="submit"
+                                            className="w-full h-11 rounded-xl bg-[#7B1E22] hover:bg-[#681418] text-white text-sm font-bold shadow-xs transition-all active:scale-98 cursor-pointer flex items-center justify-center gap-2"
+                                        >
+                                            <Icon.CheckCircle2 className="w-4 h-4" />
+                                            <span>Start Shift</span>
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
                     {/* SALES MODULE HEADER & ACTION BAR (APPLE HIG × ANTI-AI-SLOP) */}
                     <div className="p-4 lg:p-5 pb-0 space-y-3 shrink-0">
                         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-3 border-b border-slate-200/70">
@@ -23528,36 +23443,45 @@
                         <div className="flex-1 p-6 space-y-6 overflow-y-auto">
                             <div className="enterprise-card p-6 sm:p-7 rounded-3xl bg-white space-y-6 shadow-xs border border-slate-200/80">
                                 {(() => {
-                                    const floatAmt = parseFloat(cashierShift?.openingFloat) || 1500.00;
-                                    const cashOrders = recentOrders.filter(o => (o.paymentMethod || o.payment_method || '').toUpperCase() === 'CASH' && o.status !== 'VOIDED' && o.status !== 'REFUNDED');
-                                    const cashSales = cashOrders.reduce((sum, o) => sum + (parseFloat(o.total || o.final_amount || o.total_amount || 0) || 0), 0);
-                                    const payoutsList = cashierShift?.cashPayouts || [];
+                                    const floatAmt = parseFloat(activeShift?.openingFloat) || 0;
+                                    const shiftStartTime = activeShift?.startTime || activeShift?.openedAt || new Date(0).toISOString();
+                                    const shiftTime = new Date(shiftStartTime).getTime();
+
+                                    const shiftCashOrders = (recentOrders || []).filter(o => {
+                                        const pm = (o.paymentMethod || o.payment_method || '').toLowerCase();
+                                        const isCash = pm === 'cash';
+                                        const isNotRefunded = o.status !== 'VOIDED' && o.status !== 'REFUNDED';
+                                        const orderTime = new Date(o.created_at || o.timestamp || o.date || 0).getTime();
+                                        return isCash && isNotRefunded && (isNaN(shiftTime) || orderTime >= shiftTime);
+                                    });
+                                    const cashSales = shiftCashOrders.reduce((sum, o) => sum + (parseFloat(o.total || o.final_amount || o.total_amount || 0) || 0), 0);
+                                    const payoutsList = activeShift?.cashPayouts || [];
                                     const totalPayouts = payoutsList.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
                                     const expectedCashInDrawer = floatAmt + cashSales - totalPayouts;
-                                    const actualCounted = actualCashCountedInput !== '' ? parseFloat(actualCashCountedInput) : (cashierShift?.actualCashCounted !== null && cashierShift?.actualCashCounted !== undefined ? parseFloat(cashierShift.actualCashCounted) : null);
+                                    const actualCounted = actualCashCountedInput !== '' ? parseFloat(actualCashCountedInput) : (activeShift?.actualCashCounted !== null && activeShift?.actualCashCounted !== undefined ? parseFloat(activeShift.actualCashCounted) : null);
                                     const variance = actualCounted !== null ? (actualCounted - expectedCashInDrawer) : 0;
-                                    const isShiftOpen = cashierShift?.status !== 'CLOSED';
+                                    const isShiftOpen = activeShift?.status !== 'CLOSED';
 
                                     return (
                                         <div className="space-y-6">
                                             {/* HEADER & ACTIONS */}
                                             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-5">
                                                 <div className="flex items-center gap-3.5">
-                                                    <div className="w-10 h-10 rounded-2xl bg-brand-50 border border-brand-100/80 text-brand-700 flex items-center justify-center shadow-2xs shrink-0">
-                                                        <Icon.DollarSign className="w-5 h-5" />
+                                                    <div className="w-10 h-10 rounded-2xl bg-[#7B1E22]/10 border border-[#7B1E22]/20 text-[#7B1E22] flex items-center justify-center shadow-2xs shrink-0">
+                                                        <Icon.DollarSign className="w-5 h-5 stroke-[2.2]" />
                                                     </div>
                                                     <div>
                                                         <div className="flex items-center gap-2">
-                                                            <h2 className="font-outfit text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Cash Drawer</h2>
+                                                            <h2 className="font-outfit text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Cash Drawer Ledger</h2>
                                                             <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
                                                                 isShiftOpen ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-100 text-slate-600 border-slate-200'
                                                             }`}>
                                                                 <span className={`w-1.5 h-1.5 rounded-full ${isShiftOpen ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></span>
-                                                                {isShiftOpen ? 'Shift Active' : 'Shift Closed'}
+                                                                {isShiftOpen ? `Shift Active (${activeShift?.shiftId || activeShift?.id || 'SH-ACTIVE'})` : 'Shift Closed'}
                                                             </span>
                                                         </div>
                                                         <p className="text-xs text-slate-500 font-normal mt-0.5">
-                                                            Real-time drawer cash composition and physical float audit
+                                                            Shift started: {new Date(shiftStartTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • Cashier: {activeShift?.cashierName || currentUser?.name || 'Cashier'}
                                                         </p>
                                                     </div>
                                                 </div>
@@ -23565,7 +23489,7 @@
                                                     <button
                                                         type="button"
                                                         onClick={() => {
-                                                            setOpeningFloatInput(String(floatAmt));
+                                                            setOpeningFloatInput(String(floatAmt.toFixed(2)));
                                                             setOpenDrawerModalOpen(true);
                                                         }}
                                                         className="h-9 px-3.5 bg-white hover:bg-slate-50 border border-slate-200/90 text-slate-700 font-semibold text-xs rounded-xl shadow-2xs transition-all active:scale-98 flex items-center gap-1.5 cursor-pointer"
@@ -23605,14 +23529,14 @@
                                                     {/* CARD 1: OPENING FLOAT */}
                                                     <div className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/70 space-y-1 relative">
                                                         <div className="flex items-center justify-between">
-                                                            <span className="text-xs font-medium text-slate-500">Opening Float</span>
+                                                            <span className="text-xs font-medium text-slate-500">Opening Base Float</span>
                                                             <button
                                                                 type="button"
                                                                 onClick={() => {
-                                                                    setOpeningFloatInput(String(floatAmt));
+                                                                    setOpeningFloatInput(String(floatAmt.toFixed(2)));
                                                                     setOpenDrawerModalOpen(true);
                                                                 }}
-                                                                className="text-[10px] font-semibold text-brand-700 hover:underline cursor-pointer"
+                                                                className="text-[10px] font-semibold text-[#7B1E22] hover:underline cursor-pointer"
                                                             >
                                                                 Edit
                                                             </button>
@@ -23623,18 +23547,18 @@
                                                         <div className="text-[11px] text-slate-400">Shift starting cash balance</div>
                                                     </div>
 
-                                                    {/* CARD 2: TOTAL CASH ORDERS */}
+                                                    {/* CARD 2: TOTAL CASH SALES */}
                                                     <div className="p-4 bg-emerald-50/50 rounded-2xl border border-emerald-200/60 space-y-1">
                                                         <div className="flex items-center justify-between">
-                                                            <span className="text-xs font-semibold text-emerald-800">+ Cash Sales</span>
+                                                            <span className="text-xs font-semibold text-emerald-800">+ Shift Cash Sales</span>
                                                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                                                                {cashOrders.length} orders
+                                                                {shiftCashOrders.length} orders
                                                             </span>
                                                         </div>
                                                         <div className="font-outfit text-2xl font-bold text-emerald-900 tabular-nums">
                                                             +₱{cashSales.toFixed(2)}
                                                         </div>
-                                                        <div className="text-[11px] text-emerald-700/80">Completed counter cash tenders</div>
+                                                        <div className="text-[11px] text-emerald-700/80">Completed shift cash tenders</div>
                                                     </div>
 
                                                     {/* CARD 3: CASH PAYOUTS */}
@@ -23654,7 +23578,7 @@
                                                     {/* CARD 4: EXPECTED DRAWER CASH */}
                                                     <div className="p-4 bg-slate-900 text-white rounded-2xl border border-slate-800 space-y-1 shadow-xs">
                                                         <div className="flex items-center justify-between">
-                                                            <span className="text-xs font-medium text-slate-400">= Expected Drawer Cash</span>
+                                                            <span className="text-xs font-medium text-slate-400">= Expected Physical Cash</span>
                                                             <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
                                                         </div>
                                                         <div className="font-outfit text-2xl font-bold text-emerald-400 tabular-nums">
@@ -23684,17 +23608,17 @@
                                                     ) : Math.abs(variance) < 0.01 ? (
                                                         <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1.5 shadow-2xs">
                                                             <Icon.CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
-                                                            <span>Balanced (Exact Match ₱0.00)</span>
+                                                            <span>Balanced / Exact ₱0.00</span>
                                                         </span>
                                                     ) : variance > 0 ? (
                                                         <span className="px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-300 flex items-center gap-1.5 shadow-2xs">
                                                             <Icon.TrendingUp className="w-3.5 h-3.5 text-blue-700" />
-                                                            <span>Overage: +₱{variance.toFixed(2)}</span>
+                                                            <span>Over: +₱{variance.toFixed(2)}</span>
                                                         </span>
                                                     ) : (
                                                         <span className="px-3 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-1.5 shadow-2xs">
                                                             <Icon.AlertTriangle className="w-3.5 h-3.5 text-rose-700" />
-                                                            <span>Shortage: -₱{Math.abs(variance).toFixed(2)}</span>
+                                                            <span>Short: -₱{Math.abs(variance).toFixed(2)}</span>
                                                         </span>
                                                     )}
                                                 </div>
@@ -23726,7 +23650,7 @@
                                                                 return;
                                                             }
                                                             const updated = {
-                                                                ...cashierShift,
+                                                                ...activeShift,
                                                                 actualCashCounted: countedNum
                                                             };
                                                             updateCashierShift(updated);
@@ -23738,6 +23662,66 @@
                                                         <span>Save Cash Count</span>
                                                     </button>
                                                 </div>
+                                            </div>
+
+                                            {/* SCROLLABLE TABLE: COMPLETED CASH TRANSACTIONS IN CURRENT SHIFT */}
+                                            <div className="space-y-3">
+                                                <div className="flex items-center justify-between">
+                                                    <div>
+                                                        <h4 className="font-outfit text-sm font-bold text-slate-900">Shift Cash Transactions</h4>
+                                                        <p className="text-[11px] text-slate-500">Itemized cash sales processed during this active shift session</p>
+                                                    </div>
+                                                    <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full">
+                                                        {shiftCashOrders.length} Completed Tenders
+                                                    </span>
+                                                </div>
+
+                                                {shiftCashOrders.length === 0 ? (
+                                                    <div className="p-8 text-center bg-slate-50/60 rounded-2xl border border-slate-200/60 text-slate-400 text-xs">
+                                                        No completed cash transactions recorded during this active shift.
+                                                    </div>
+                                                ) : (
+                                                    <div className="overflow-x-auto max-h-72 overflow-y-auto rounded-2xl border border-slate-200/70 bg-white">
+                                                        <table className="w-full text-left text-xs">
+                                                            <thead className="sticky top-0 bg-slate-50/90 backdrop-blur-xs z-10">
+                                                                <tr className="border-b border-slate-100 text-slate-400 text-[10.5px] font-semibold uppercase tracking-wider">
+                                                                    <th className="py-2.5 px-3.5">Order Ref #</th>
+                                                                    <th className="py-2.5 px-3.5">Time</th>
+                                                                    <th className="py-2.5 px-3.5">Customer</th>
+                                                                    <th className="py-2.5 px-3.5">Items</th>
+                                                                    <th className="py-2.5 px-3.5 text-right">Cash Amount</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="divide-y divide-slate-100">
+                                                                {shiftCashOrders.map((o, idx) => {
+                                                                    const orderTime = o.created_at || o.timestamp || o.date;
+                                                                    const timeStr = orderTime ? new Date(orderTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '---';
+                                                                    const custName = o.customer_name || o.student_name || o.userName || 'Walk-in Customer';
+                                                                    const itemsStr = Array.isArray(o.items) && o.items.length > 0
+                                                                        ? o.items.map(i => `${i.name || i.item_name || 'Item'} (x${i.quantity || i.qty || 1})`).join(', ')
+                                                                        : 'Canteen Order';
+                                                                    const orderAmt = parseFloat(o.total || o.final_amount || o.total_amount || 0) || 0;
+
+                                                                    return (
+                                                                        <tr key={o.id || o.order_id || idx} className="hover:bg-slate-50/60 transition-colors">
+                                                                            <td className="py-2.5 px-3.5 font-mono font-semibold text-slate-700">
+                                                                                #{String(o.id || o.order_id || '').slice(-6) || 'ORD'}
+                                                                            </td>
+                                                                            <td className="py-2.5 px-3.5 text-slate-500 font-mono">{timeStr}</td>
+                                                                            <td className="py-2.5 px-3.5 font-medium text-slate-800">{custName}</td>
+                                                                            <td className="py-2.5 px-3.5 text-slate-600 max-w-xs truncate" title={itemsStr}>
+                                                                                {itemsStr}
+                                                                            </td>
+                                                                            <td className="py-2.5 px-3.5 text-right font-outfit font-bold text-emerald-800 tabular-nums">
+                                                                                ₱{orderAmt.toFixed(2)}
+                                                                            </td>
+                                                                        </tr>
+                                                                    );
+                                                                })}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                )}
                                             </div>
 
                                             {/* RECORDED PAYOUTS LOG TABLE */}
@@ -23804,38 +23788,50 @@
                         <div className="flex-1 p-6 space-y-6 overflow-y-auto">
                             {/* ACTIVE CASHIER SESSION RECONCILIATION & Z-READING EXECUTIVE BANNER */}
                             {(() => {
-                                const floatAmt = parseFloat(cashierShift?.openingFloat) || 1500.00;
-                                const activeOrders = recentOrders.filter(o => o.status !== 'VOIDED' && o.status !== 'REFUNDED');
+                                const floatAmt = parseFloat(activeShift?.openingFloat) || 0;
+                                const shiftStartTime = activeShift?.startTime || activeShift?.openedAt || new Date(0).toISOString();
+                                const shiftTime = new Date(shiftStartTime).getTime();
+
+                                const activeOrders = (recentOrders || []).filter(o => {
+                                    const isNotRefunded = o.status !== 'VOIDED' && o.status !== 'REFUNDED';
+                                    const orderTime = new Date(o.created_at || o.timestamp || o.date || 0).getTime();
+                                    return isNotRefunded && (isNaN(shiftTime) || orderTime >= shiftTime);
+                                });
                                 const grandTotal = activeOrders.reduce((sum, o) => sum + (parseFloat(o.total || o.final_amount || o.total_amount || 0) || 0), 0);
 
-                                const cashOrders = recentOrders.filter(o => (o.paymentMethod || o.payment_method || '').toUpperCase() === 'CASH' && o.status !== 'VOIDED' && o.status !== 'REFUNDED');
+                                const cashOrders = activeOrders.filter(o => (o.paymentMethod || o.payment_method || '').toLowerCase() === 'cash');
                                 const cashSales = cashOrders.reduce((sum, o) => sum + (parseFloat(o.total || o.final_amount || o.total_amount || 0) || 0), 0);
 
-                                const rfidOrders = recentOrders.filter(o => (o.paymentMethod || o.payment_method || '').toUpperCase() === 'RFID' && o.status !== 'VOIDED' && o.status !== 'REFUNDED');
+                                const rfidOrders = activeOrders.filter(o => (o.paymentMethod || o.payment_method || '').toLowerCase() === 'rfid');
                                 const rfidSales = rfidOrders.reduce((sum, o) => sum + (parseFloat(o.total || o.final_amount || o.total_amount || 0) || 0), 0);
 
-                                const payLaterOrders = recentOrders.filter(o => (o.paymentMethod || o.payment_method || '').toUpperCase().includes('PAY_LATER') && o.status !== 'VOIDED' && o.status !== 'REFUNDED');
+                                const payLaterOrders = activeOrders.filter(o => (o.paymentMethod || o.payment_method || '').toLowerCase().includes('pay_later'));
                                 const payLaterSales = payLaterOrders.reduce((sum, o) => sum + (parseFloat(o.total || o.final_amount || o.total_amount || 0) || 0), 0);
 
-                                const payrollOrders = recentOrders.filter(o => ((o.paymentMethod || o.payment_method || '').toUpperCase().includes('SALARY') || (o.paymentMethod || o.payment_method || '').toUpperCase().includes('PAYROLL')) && o.status !== 'VOIDED' && o.status !== 'REFUNDED');
+                                const payrollOrders = activeOrders.filter(o => {
+                                    const pm = (o.paymentMethod || o.payment_method || '').toLowerCase();
+                                    return pm.includes('salary') || pm.includes('payroll');
+                                });
                                 const payrollSales = payrollOrders.reduce((sum, o) => sum + (parseFloat(o.total || o.final_amount || o.total_amount || 0) || 0), 0);
 
-                                const payoutsList = cashierShift?.cashPayouts || [];
+                                const payoutsList = activeShift?.cashPayouts || [];
                                 const totalPayouts = payoutsList.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
                                 const expectedCashInDrawer = floatAmt + cashSales - totalPayouts;
-                                const actualCounted = actualCashCountedInput !== '' ? parseFloat(actualCashCountedInput) : (cashierShift?.actualCashCounted !== null && cashierShift?.actualCashCounted !== undefined ? parseFloat(cashierShift.actualCashCounted) : null);
+                                const actualCounted = actualCashCountedInput !== '' ? parseFloat(actualCashCountedInput) : (activeShift?.actualCashCounted !== null && activeShift?.actualCashCounted !== undefined ? parseFloat(activeShift.actualCashCounted) : null);
                                 const variance = actualCounted !== null ? (actualCounted - expectedCashInDrawer) : 0;
-                                const isShiftOpen = cashierShift?.status !== 'CLOSED';
+                                const isShiftOpen = activeShift?.status !== 'CLOSED';
 
                                 const handleEndShiftAndPrint = () => {
                                     const finalCounted = actualCounted !== null ? actualCounted : expectedCashInDrawer;
-                                    const finalVariance = finalCounted - expectedCashInDrawer;
+                                    const finalDiscrepancy = finalCounted - expectedCashInDrawer;
+                                    const shiftId = activeShift?.shiftId || activeShift?.id || ('SH-' + Date.now());
                                     const archiveItem = {
-                                        id: cashierShift.id || ('SHIFT-' + Date.now()),
-                                        cashierId: cashierShift.cashierId || currentUser?.id || 'cashier-01',
-                                        cashierName: cashierShift.cashierName || currentUser?.name || 'Cashier',
+                                        id: shiftId,
+                                        shiftId: shiftId,
+                                        cashierId: activeShift?.cashierId || currentUser?.id || 'cashier-01',
+                                        cashierName: activeShift?.cashierName || currentUser?.name || 'Cashier',
                                         status: 'CLOSED',
-                                        openedAt: cashierShift.openedAt,
+                                        openedAt: activeShift?.startTime || activeShift?.openedAt,
                                         closedAt: new Date().toISOString(),
                                         openingFloat: floatAmt,
                                         cashSales: cashSales,
@@ -23843,7 +23839,8 @@
                                         totalPayouts: totalPayouts,
                                         expectedCash: expectedCashInDrawer,
                                         actualCounted: finalCounted,
-                                        variance: finalVariance,
+                                        variance: finalDiscrepancy,
+                                        discrepancy: finalDiscrepancy,
                                         totalOrders: activeOrders.length,
                                         totalRevenue: grandTotal,
                                         breakdown: {
@@ -23853,26 +23850,30 @@
                                             payroll: { count: payrollOrders.length, amount: payrollSales }
                                         }
                                     };
-                                     try {
+                                    try {
                                         const prevArchives = JSON.parse(localStorage.getItem('novalunch_shift_archives') || '[]');
                                         localStorage.setItem('novalunch_shift_archives', JSON.stringify([archiveItem, ...prevArchives]));
                                     } catch (e) { }
 
-                                    logAuditAction(`SHIFT_CLOSED: Register shift ended. Opening float ₱${floatAmt.toFixed(2)}, Cash sales ₱${cashSales.toFixed(2)}, Payouts ₱${totalPayouts.toFixed(2)}, Expected ₱${expectedCashInDrawer.toFixed(2)}, Counted ₱${finalCounted.toFixed(2)}, Variance ${finalVariance >= 0 ? '+₱' : '-₱'}${Math.abs(finalVariance).toFixed(2)} (Shift ID: ${archiveItem.id})`, currentUser?.name || 'Cashier Register #01', 'financial');
+                                    const discrepancyStr = Math.abs(finalDiscrepancy) < 0.01
+                                        ? 'Exact ₱0.00'
+                                        : `${finalDiscrepancy >= 0 ? '+' : ''}₱${finalDiscrepancy.toFixed(2)}`;
 
+                                    if (typeof logAuditAction === 'function') {
+                                        logAuditAction('SHIFT_CLOSED', `Shift #${shiftId} closed. Expected: ₱${expectedCashInDrawer.toFixed(2)}, Actual: ₱${finalCounted.toFixed(2)}, Discrepancy: ${discrepancyStr}`, currentUser?.name || 'Cashier', 'financial');
+                                    } else if (window.CanteenDB && typeof window.CanteenDB.logAuditEvent === 'function') {
+                                        window.CanteenDB.logAuditEvent({
+                                            action: `SHIFT_CLOSED: Shift #${shiftId} closed. Expected: ₱${expectedCashInDrawer.toFixed(2)}, Actual: ₱${finalCounted.toFixed(2)}, Discrepancy: ${discrepancyStr}`,
+                                            actor: currentUser?.name || 'Cashier',
+                                            event_type: 'financial'
+                                        }).catch(() => {});
+                                    }
+
+                                    // Remove active shift from localStorage and reset state to null to prompt for next opening float
                                     localStorage.removeItem('novalunch_active_shift');
-                                    setActualCashCountedInput('');
-                                    updateCashierShift({
-                                        id: 'SHIFT-' + Date.now(),
-                                        status: 'OPEN',
-                                        openedAt: new Date().toISOString(),
-                                        closedAt: null,
-                                        openingFloat: 1500.00,
-                                        cashPayouts: [],
-                                        actualCashCounted: null,
-                                        cashierId: currentUser?.id || 'cashier-01',
-                                        cashierName: currentUser?.name || 'Cashier Register #01'
-                                    });
+                                    setActiveShift(null);
+                                    setOpeningFloatInput('1000.00');
+                                    setActualCashCounted('');
 
                                     showToast("Shift ended and archived. Launching Z-Read Print...", "success");
                                     window.print();
@@ -23892,11 +23893,11 @@
                                                             isShiftOpen ? 'bg-emerald-950 text-emerald-300 border-emerald-800' : 'bg-slate-800 text-slate-400 border-slate-700'
                                                         }`}>
                                                             <span className={`w-1.5 h-1.5 rounded-full ${isShiftOpen ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`}></span>
-                                                            {isShiftOpen ? 'Shift Active' : 'Shift Closed'}
+                                                            {isShiftOpen ? `Shift Active (${activeShift?.shiftId || activeShift?.id || 'SH-ACTIVE'})` : 'Shift Closed'}
                                                         </span>
                                                     </div>
                                                     <p className="text-xs text-slate-400 font-normal mt-0.5">
-                                                        Terminal #01 • Cashier: {currentUser?.name || cashierShift?.cashierName || 'Elena Rostova'} • Started: {new Date(cashierShift?.openedAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                        Cashier: {activeShift?.cashierName || currentUser?.name || 'Cashier'} • Started: {new Date(shiftStartTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                     </p>
                                                 </div>
                                             </div>
@@ -23916,7 +23917,7 @@
                                                     className="h-9 px-4 bg-[#7B1E22] hover:bg-[#681418] text-white font-semibold text-xs rounded-xl shadow-xs transition-all active:scale-98 flex items-center gap-2 cursor-pointer"
                                                 >
                                                     <Icon.Lock className="w-3.5 h-3.5 text-amber-300" />
-                                                    <span>End Shift & Print Summary</span>
+                                                    <span>End Shift & Archive Z-Reading</span>
                                                 </button>
                                             </div>
                                         </div>
@@ -23968,53 +23969,90 @@
                                             </div>
                                         </div>
 
-                                        {/* CASH RECONCILIATION EXPECTED VS ACTUAL WITH LIVE INDICATOR */}
-                                        <div className="p-5 bg-slate-900 rounded-2xl border border-slate-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                                            <div className="space-y-1">
-                                                <div className="text-xs text-slate-400">Total Shift Gross Volume</div>
-                                                <div className="font-outfit text-3xl font-bold text-white tabular-nums">
-                                                    ₱{grandTotal.toFixed(2)}
-                                                    <span className="text-xs font-normal text-slate-400 ml-2">({activeOrders.length} total orders)</span>
+                                        {/* CASH RECONCILIATION EXPECTED VS ACTUAL WITH LIVE INDICATOR & DIRECT INPUT */}
+                                        <div className="p-5 bg-slate-900 rounded-2xl border border-slate-800 space-y-4">
+                                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                                                <div className="space-y-1">
+                                                    <div className="text-xs text-slate-400">Total Shift Gross Volume</div>
+                                                    <div className="font-outfit text-3xl font-bold text-white tabular-nums">
+                                                        ₱{grandTotal.toFixed(2)}
+                                                        <span className="text-xs font-normal text-slate-400 ml-2">({activeOrders.length} total shift orders)</span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex flex-wrap items-center gap-5">
+                                                    <div className="space-y-0.5 md:text-right">
+                                                        <div className="text-[11px] text-slate-400">Expected Physical Cash</div>
+                                                        <div className="font-outfit text-xl font-bold text-emerald-400 tabular-nums">
+                                                            ₱{expectedCashInDrawer.toFixed(2)}
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="space-y-0.5 md:text-right">
+                                                        <div className="text-[11px] text-slate-400">Actual Counted</div>
+                                                        <div className="font-outfit text-xl font-bold text-white tabular-nums">
+                                                            {actualCounted !== null ? `₱${actualCounted.toFixed(2)}` : 'Not Counted'}
+                                                        </div>
+                                                    </div>
+
+                                                    <div>
+                                                        {actualCounted === null ? (
+                                                            <span className="px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-800 text-slate-300 border border-slate-700">
+                                                                Pending Count
+                                                            </span>
+                                                        ) : Math.abs(variance) < 0.01 ? (
+                                                            <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-950 text-emerald-300 border border-emerald-700 flex items-center gap-1.5">
+                                                                <Icon.CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                                                <span>Balanced / Exact ₱0.00</span>
+                                                            </span>
+                                                        ) : variance > 0 ? (
+                                                            <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-blue-950 text-blue-300 border border-blue-700 flex items-center gap-1.5">
+                                                                <Icon.TrendingUp className="w-3.5 h-3.5 text-blue-400" />
+                                                                <span>Over: +₱{variance.toFixed(2)}</span>
+                                                            </span>
+                                                        ) : (
+                                                            <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-rose-950 text-rose-300 border border-rose-700 flex items-center gap-1.5">
+                                                                <Icon.AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+                                                                <span>Short: -₱{Math.abs(variance).toFixed(2)}</span>
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
 
-                                            <div className="flex flex-wrap items-center gap-5">
-                                                <div className="space-y-0.5 md:text-right">
-                                                    <div className="text-[11px] text-slate-400">Expected Drawer Cash</div>
-                                                    <div className="font-outfit text-xl font-bold text-emerald-400 tabular-nums">
-                                                        ₱{expectedCashInDrawer.toFixed(2)}
-                                                    </div>
+                                            {/* CASH COUNT INPUT FIELD DIRECTLY ON Z-READ SCREEN */}
+                                            <div className="pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row items-center gap-3">
+                                                <div className="relative flex-1 w-full">
+                                                    <span className="absolute left-3.5 top-2.5 font-bold text-slate-400 text-sm">₱</span>
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        placeholder="Enter counted physical cash..."
+                                                        value={actualCashCountedInput}
+                                                        onChange={(e) => setActualCashCountedInput(e.target.value)}
+                                                        className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-8 pr-4 py-2 text-sm font-bold text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#7B1E22] transition-all"
+                                                    />
                                                 </div>
-
-                                                <div className="space-y-0.5 md:text-right">
-                                                    <div className="text-[11px] text-slate-400">Actual Counted</div>
-                                                    <div className="font-outfit text-xl font-bold text-white tabular-nums">
-                                                        {actualCounted !== null ? `₱${actualCounted.toFixed(2)}` : 'Not Counted'}
-                                                    </div>
-                                                </div>
-
-                                                <div>
-                                                    {actualCounted === null ? (
-                                                        <span className="px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-800 text-slate-300 border border-slate-700">
-                                                            Pending Count
-                                                        </span>
-                                                    ) : Math.abs(variance) < 0.01 ? (
-                                                        <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-950 text-emerald-300 border border-emerald-700 flex items-center gap-1.5">
-                                                            <Icon.CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                                                            <span>Balanced (₱0.00)</span>
-                                                        </span>
-                                                    ) : variance > 0 ? (
-                                                        <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-blue-950 text-blue-300 border border-blue-700 flex items-center gap-1.5">
-                                                            <Icon.TrendingUp className="w-3.5 h-3.5 text-blue-400" />
-                                                            <span>Over +₱{variance.toFixed(2)}</span>
-                                                        </span>
-                                                    ) : (
-                                                        <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-rose-950 text-rose-300 border border-rose-700 flex items-center gap-1.5">
-                                                            <Icon.AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
-                                                            <span>Short -₱{Math.abs(variance).toFixed(2)}</span>
-                                                        </span>
-                                                    )}
-                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const countedNum = parseFloat(actualCashCountedInput);
+                                                        if (isNaN(countedNum) || countedNum < 0) {
+                                                            showToast("Please enter a valid cash amount.", "error");
+                                                            return;
+                                                        }
+                                                        const updated = {
+                                                            ...activeShift,
+                                                            actualCashCounted: countedNum
+                                                        };
+                                                        updateCashierShift(updated);
+                                                        showToast(`Saved drawer count of ₱${countedNum.toFixed(2)}`, "success");
+                                                    }}
+                                                    className="w-full sm:w-auto h-9 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs transition-all active:scale-98 flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                                                >
+                                                    <Icon.Check className="w-3.5 h-3.5 text-emerald-400" />
+                                                    <span>Update Count</span>
+                                                </button>
                                             </div>
                                         </div>
                                     </div>
@@ -24241,11 +24279,15 @@
                                         <button
                                             type="button"
                                             onClick={() => {
-                                                const adobo = menuCatalog.find(m => m.name.includes('Adobo')) || menuCatalog[0];
-                                                if (adobo) onAddToCart(adobo);
-                                                window.CanteenDB?.logGovernanceOverride(selectedStudent?.id, null, 'AI_VISION_MISCLASSIFICATION', 'Cashier 1-Tap swap to Pork Adobo', true);
-                                                showToast("1-Tap Override: Swapped to Pork Adobo. Audit logged.", "success");
-                                                speakWebText("Pork Adobo added by cashier override.");
+                                                const adobo = menuCatalog.find(m => m.name.toLowerCase().includes('adobo'));
+                                                if (adobo) {
+                                                    onAddToCart(adobo);
+                                                    window.CanteenDB?.logGovernanceOverride(selectedStudent?.id, null, 'AI_VISION_MISCLASSIFICATION', 'Cashier 1-Tap swap to Pork Adobo', true);
+                                                    showToast("1-Tap Override: Swapped to Pork Adobo. Audit logged.", "success");
+                                                    speakWebText("Pork Adobo added by cashier override.");
+                                                } else {
+                                                    showToast("Pork Adobo not found in active menu catalog.", "warning");
+                                                }
                                             }}
                                             className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1"
                                         >
@@ -24254,11 +24296,15 @@
                                         <button
                                             type="button"
                                             onClick={() => {
-                                                const rice = menuCatalog.find(m => m.name.includes('Rice')) || menuCatalog[1];
-                                                if (rice) onAddToCart(rice);
-                                                window.CanteenDB?.logGovernanceOverride(selectedStudent?.id, null, 'AI_VISION_MISCLASSIFICATION', 'Cashier 1-Tap added Steamed Rice', true);
-                                                showToast("1-Tap Override: Added Steamed Rice. Audit logged.", "success");
-                                                speakWebText("Steamed Rice added by cashier override.");
+                                                const rice = menuCatalog.find(m => m.name.toLowerCase().includes('rice'));
+                                                if (rice) {
+                                                    onAddToCart(rice);
+                                                    window.CanteenDB?.logGovernanceOverride(selectedStudent?.id, null, 'AI_VISION_MISCLASSIFICATION', 'Cashier 1-Tap added Steamed Rice', true);
+                                                    showToast("1-Tap Override: Added Steamed Rice. Audit logged.", "success");
+                                                    speakWebText("Steamed Rice added by cashier override.");
+                                                } else {
+                                                    showToast("Steamed Rice not found in active menu catalog.", "warning");
+                                                }
                                             }}
                                             className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1"
                                         >
@@ -25852,17 +25898,9 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
             const [adminSeniorPwdDiscountEnabled, setAdminSeniorPwdDiscountEnabled] = useState(true);
 
             // Hardware Topology & Preorder Slot State
-            const [hardwareMappings, setHardwareMappings] = useState([
-                { terminal_id: 'POS-TERM-01', pos_register_name: 'Main Canteen Register 1', camera_device_index: 0, rfid_reader_port: 'COM3', assigned_station: 'Hot Kitchen', is_online: true },
-                { terminal_id: 'POS-TERM-02', pos_register_name: 'Express Beverage Bar 2', camera_device_index: 1, rfid_reader_port: 'COM4', assigned_station: 'Cold Prep', is_online: true },
-                { terminal_id: 'AI-KIOSK-MAIN', pos_register_name: 'Self-Service Vision Kiosk 1', camera_device_index: 0, rfid_reader_port: 'COM5', assigned_station: 'Main Hall', is_online: true }
-            ]);
+            const [hardwareMappings, setHardwareMappings] = useState([]);
 
-            const [preorderSlots, setPreorderSlots] = useState([
-                { id: 'slot-1', slot_name: 'Morning Snack Pickup (10:00 - 10:30 AM)', start_time: '10:00', end_time: '10:30', max_capacity: 75, is_active: true },
-                { id: 'slot-2', slot_name: 'Lunch Shift 1 (11:30 AM - 12:15 PM)', start_time: '11:30', end_time: '12:15', max_capacity: 120, is_active: true },
-                { id: 'slot-3', slot_name: 'Lunch Shift 2 (12:30 PM - 01:15 PM)', start_time: '12:30', end_time: '13:15', max_capacity: 120, is_active: true }
-            ]);
+            const [preorderSlots, setPreorderSlots] = useState([]);
 
             // Trained Classes inside active PyTorch .pt Model Weights File (novalunch_yolo.pt)
             const YOLO_PT_CLASSES = [
@@ -26989,7 +27027,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                      activeTab === 'sales_report' ? 'Sales & Financials' :
                                      ['users', 'users_staff', 'users_parent'].includes(activeTab) ? 'Accounts' :
                                      (activeTab === 'inventory' || activeTab === 'ingredients') ? 'Menu & Inventory' :
-                                     activeTab === 'refunds' ? 'Disputes & Refunds' :
+                                     (activeTab === 'refunds' || activeTab === 'disputes') ? 'Disputes & Refunds' :
                                      activeTab === 'gcash_queue' ? 'Top-Up Queue' :
                                      activeTab === 'ai_vision' ? 'Vision Model' :
                                      (activeTab === 'audit_logs' || activeTab === 'archive_center') ? 'Audit & Archives' :
@@ -28728,7 +28766,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                         )}
 
                         {/* TAB: REFUNDS & RETURNS MODULE */}
-                        {activeTab === 'refunds' && (
+                        {(activeTab === 'refunds' || activeTab === 'disputes') && (
                             <PortalErrorBoundary viewName="Refunds & Returns Management">
                                 <AdminRefundsView
                                     registeredUsers={registeredUsers}
@@ -29359,7 +29397,11 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                         </div>
 
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                            {preorderSlots.map(slot => (
+                                            {preorderSlots.length === 0 ? (
+                                                <div className="col-span-full py-8 text-center text-xs text-slate-400 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+                                                    No pickup slots configured.
+                                                </div>
+                                            ) : preorderSlots.map(slot => (
                                                 <div key={slot.id} className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200/60 space-y-3">
                                                     <div className="flex justify-between items-start">
                                                         <div>
@@ -32422,7 +32464,37 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                     >
                         {selectedTopupForReview && (() => {
                             const item = selectedTopupForReview;
-                            const matchingStudent = registeredUsers.find(u => u.id === item.studentId || u.studentId === item.studentIdNumber || (u.name && item.student.includes(u.name))) || { name: item.student, studentId: "2023-01900", rfidUid: "0008839210", balance: 350 };
+                            const matchingStudent = registeredUsers.find(u => u.id === item.studentId || u.studentId === item.studentIdNumber || (u.name && item.student && item.student.includes(u.name)));
+                            if (!matchingStudent) {
+                                return (
+                                    <div className="p-8 text-center space-y-4">
+                                        <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+                                            <Icon.AlertCircle className="w-6 h-6" />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <h4 className="font-outfit font-bold text-slate-900 text-base">Unmatched Student Account</h4>
+                                            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                                                No registered student found matching "{item.student}". The top-up operation cannot proceed without a verified student account.
+                                            </p>
+                                        </div>
+                                        <div className="pt-2 flex justify-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    onRejectTopup(item, "Unmatched Student Account");
+                                                    setSelectedTopupForReview(null);
+                                                }}
+                                                className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 rounded-xl font-bold text-xs cursor-pointer"
+                                            >
+                                                Reject Submission
+                                            </button>
+                                            <ActionButton variant="secondary" onClick={() => setSelectedTopupForReview(null)} className="px-4 py-2 font-bold text-xs">
+                                                Close
+                                            </ActionButton>
+                                        </div>
+                                    </div>
+                                );
+                            }
                             const isDuplicateRef = gcashQueue.filter(q => q.refNo && q.refNo.trim().toLowerCase() === item.refNo.trim().toLowerCase()).length > 1;
 
                             return (
@@ -32484,7 +32556,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                                     </div>
                                                     <div className="flex justify-between">
                                                         <span className="text-slate-500">RFID Badge UID:</span>
-                                                        <strong className="font-mono text-brand-700">{matchingStudent.rfidUid || "0008839210"}</strong>
+                                                        <strong className="font-mono text-brand-700">{matchingStudent.rfidUid || "Unassigned"}</strong>
                                                     </div>
                                                     <div className="flex justify-between">
                                                         <span className="text-slate-500">Current RFID Balance:</span>
@@ -32728,7 +32800,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
             // ── Entity States with Multi-Tier Caching (Memory + LocalStorage + SWR) ──
             const [menuCatalog, setMenuCatalog] = useState(() => {
                 const sanitizeCatalog = (list) => {
-                    if (!list || !Array.isArray(list)) return INITIAL_MOCK_MENU;
+                    if (!list || !Array.isArray(list)) return [];
                     return list
                         .filter(p => p && p.name !== 'ugfiuc')
                         .map(p => {
@@ -32753,7 +32825,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                 if (cached && Array.isArray(cached) && cached.length > 0) return sanitizeCatalog(cached);
                 const local = db?.loadLocal('novalunch_products_catalog', null);
                 if (local && Array.isArray(local) && local.length > 0) return sanitizeCatalog(local);
-                return INITIAL_MOCK_MENU;
+                return [];
             });
             const [registeredUsers, setRegisteredUsers] = useState(() => {
                 const memCached = CanteenCache.getData('registered_users');
@@ -32764,7 +32836,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                 if (cached && Array.isArray(cached) && cached.length > 0) {
                     return cached.map(sanitizeStudent);
                 }
-                return INITIAL_USERS;
+                return [];
             });
             const [recentOrders, setRecentOrders] = useState(() => {
                 const cached = CanteenCache.getData('recent_orders');
@@ -32774,12 +32846,12 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
             const [gcashQueue, setGcashQueue] = useState(() => {
                 const cached = CanteenCache.getData('gcash_queue');
                 if (cached && Array.isArray(cached) && cached.length > 0) return cached;
-                return db?.loadLocal('novalunch_gcash_queue', INITIAL_GCASH_QUEUE) || INITIAL_GCASH_QUEUE;
+                return db?.loadLocal('novalunch_gcash_queue', []) || [];
             });
             const [refundsList, setRefundsList] = useState(() => {
                 const cached = CanteenCache.getData('refunds_list');
                 if (cached && Array.isArray(cached) && cached.length > 0) return cached;
-                return db?.loadLocal('novalunch_refunds_list', INITIAL_REFUNDS_LIST) || INITIAL_REFUNDS_LIST;
+                return db?.loadLocal('novalunch_refunds_list', []) || [];
             });
             const [preorders, setPreorders] = useState(() => {
                 const cached = CanteenCache.getData('preorders');
@@ -32789,24 +32861,17 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
             const [reloadLogs, setReloadLogs] = useState(() => {
                 const cached = CanteenCache.getData('reload_logs');
                 if (cached && Array.isArray(cached) && cached.length > 0) return cached;
-                return db?.loadLocal('novalunch_reload_logs', [
-                    { id: 'RLD-401', date: 'July 28, 2026', amount: 500.00, ref: 'GC-9812-4019-3810', status: 'Approved' },
-                    { id: 'RLD-380', date: 'July 20, 2026', amount: 300.00, ref: 'GC-8812-1029-4411', status: 'Approved' }
-                ]) || [];
+                return db?.loadLocal('novalunch_reload_logs', []) || [];
             });
             const [inventoryBatches, setInventoryBatches] = useState(() => {
                 const cached = CanteenCache.getData('inventory_batches');
                 if (cached && Array.isArray(cached) && cached.length > 0) return cached;
-                return db?.loadLocal('novalunch_inventory_batches', [
-                    { id: 'b1', batch_number: 'BATCH-2026-0801', product_name: 'Pork Adobo Meal', quantity_received: 50, quantity_remaining: 32, unit_cost: 45.0, expiration_date: '2026-08-05', status: 'ACTIVE' },
-                    { id: 'b2', batch_number: 'BATCH-2026-0802', product_name: 'Buttercream Crackers', quantity_received: 100, quantity_remaining: 85, unit_cost: 12.0, expiration_date: '2026-09-15', status: 'ACTIVE' },
-                    { id: 'b3', batch_number: 'BATCH-2026-0728', product_name: 'Fresh Red Apple', quantity_received: 40, quantity_remaining: 5, unit_cost: 15.0, expiration_date: '2026-08-03', status: 'NEAR_EXPIRY' }
-                ]);
+                return db?.loadLocal('novalunch_inventory_batches', []) || [];
             });
             const [rawIngredients, setRawIngredients] = useState(() => {
                 const cached = CanteenCache.getData('raw_ingredients');
                 if (cached && Array.isArray(cached) && cached.length > 0) return cached;
-                return db?.loadLocal('novalunch_raw_ingredients', typeof INITIAL_RAW_INGREDIENTS !== 'undefined' ? INITIAL_RAW_INGREDIENTS : []);
+                return db?.loadLocal('novalunch_raw_ingredients', []);
             });
             const [kdsOrders, setKdsOrders] = useState(() => {
                 const cached = CanteenCache.getData('kds_orders');
@@ -32817,246 +32882,14 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
             const [toastMessage, setToastMessage] = useState("");
 
             // Universal Role-Aware Canteen Notifications (Zero-Emoji Institutional System)
-            const INITIAL_CANTEEN_NOTIFICATIONS = [
-                // STUDENT STREAM
-                {
-                    id: 'notif_stu_1',
-                    role: 'STUDENT',
-                    user_id: null,
-                    title: 'Recess Pre-Order Packed & Ready',
-                    message: 'Your Classic Cheeseburger is staged at Counter Shelf B2. Present claim token PO-8921 or tap RFID card.',
-                    type: 'preorder_ready',
-                    category: 'orders',
-                    is_read: false,
-                    created_at: '5m ago',
-                    action_type: 'tab',
-                    action_target: 'tab:history',
-                    action_label: 'View Order History'
-                },
-                {
-                    id: 'notif_stu_2',
-                    role: 'STUDENT',
-                    user_id: null,
-                    title: 'Parent Account Link Request',
-                    message: 'Parent Maria Santos (maria.santos@gmail.com) sent a request to link to your canteen profile for balance reloads.',
-                    type: 'link_request',
-                    category: 'security',
-                    is_read: false,
-                    created_at: '25m ago',
-                    action_type: 'link_request',
-                    data: { requestId: 'req_101' }
-                },
-                {
-                    id: 'notif_stu_3',
-                    role: 'STUDENT',
-                    user_id: null,
-                    title: 'GCash Top-Up Credited',
-                    message: 'Your RFID E-Wallet balance was credited ₱500.00 by guardian Maria Santos (Ref: GC-902188219).',
-                    type: 'wallet_topup',
-                    category: 'financial',
-                    is_read: true,
-                    created_at: '2h ago',
-                    action_type: 'tab',
-                    action_target: 'tab:wallet',
-                    action_label: 'View E-Wallet'
-                },
-                {
-                    id: 'notif_stu_4',
-                    role: 'STUDENT',
-                    user_id: null,
-                    title: 'Dietary Guardrail Filter Active',
-                    message: 'Peanut allergy guardrail is active on your profile. Canteen kiosks will automatically screen conflicting ingredients.',
-                    type: 'guardrail',
-                    category: 'security',
-                    is_read: true,
-                    created_at: 'Yesterday'
-                },
-
-                // PARENT STREAM
-                {
-                    id: 'notif_par_1',
-                    role: 'PARENT',
-                    user_id: null,
-                    title: 'Child Meal Purchase Logged',
-                    message: 'Your child completed checkout for Classic Cheeseburger (₱75.00) at Counter 1. 92% Healthy Choice rating.',
-                    type: 'meal_purchase',
-                    category: 'orders',
-                    is_read: false,
-                    created_at: '12m ago',
-                    action_type: 'tab',
-                    action_target: 'tab:family',
-                    action_label: 'View Meal Feed'
-                },
-                {
-                    id: 'notif_par_2',
-                    role: 'PARENT',
-                    user_id: null,
-                    title: 'GCash Reload Verified by Admin',
-                    message: 'Official GCash payment of ₱500.00 (Ref: 902188219) has been verified and added to your child\'s RFID balance.',
-                    type: 'gcash_approved',
-                    category: 'financial',
-                    is_read: false,
-                    created_at: '1h ago',
-                    action_type: 'tab',
-                    action_target: 'tab:reload',
-                    action_label: 'Reload History'
-                },
-                {
-                    id: 'notif_par_3',
-                    role: 'PARENT',
-                    user_id: null,
-                    title: 'Daily Spending Limit Active',
-                    message: 'Daily meal cap for your child is configured at ₱250.00/day. High-sugar beverages are locked.',
-                    type: 'guardrail',
-                    category: 'security',
-                    is_read: true,
-                    created_at: '3h ago',
-                    action_type: 'tab',
-                    action_target: 'tab:guardrails',
-                    action_label: 'Configure Limits'
-                },
-                {
-                    id: 'notif_par_4',
-                    role: 'PARENT',
-                    user_id: null,
-                    title: 'Monthly Statement Generated',
-                    message: 'Your official September itemized cafeteria receipt statement and nutrition report is ready for PDF export.',
-                    type: 'statement',
-                    category: 'financial',
-                    is_read: true,
-                    created_at: '2d ago',
-                    action_type: 'tab',
-                    action_target: 'tab:family',
-                    action_label: 'View Statement'
-                },
-
-                // CASHIER STREAM
-                {
-                    id: 'notif_csh_1',
-                    role: 'CASHIER',
-                    user_id: 'cashier-01',
-                    title: 'Counter Terminal Ready',
-                    message: 'POS terminal online and ready for checkout and RFID badge tap authentication.',
-                    type: 'system',
-                    category: 'system',
-                    is_read: true,
-                    created_at: '8m ago',
-                    action_type: 'tab',
-                    action_target: 'tab:register',
-                    action_label: 'Open Register'
-                },
-                {
-                    id: 'notif_csh_2',
-                    role: 'CASHIER',
-                    user_id: 'cashier-01',
-                    title: 'Inventory Alert: Beef Pares Depleted',
-                    message: 'Main Course item "Beef Pares w/ Garlic Rice" reached 0 servings. Marked out of stock on menu grid.',
-                    type: 'low_stock',
-                    category: 'system',
-                    is_read: false,
-                    created_at: '30m ago',
-                    action_type: 'tab',
-                    action_target: 'tab:register',
-                    action_label: 'View Menu Grid'
-                },
-                {
-                    id: 'notif_csh_3',
-                    role: 'CASHIER',
-                    user_id: 'cashier-01',
-                    title: 'Shift Drawer Midday Audit Due',
-                    message: 'Total cash tendered currently at ₱4,350.00. Please verify physical drawer count before next shift.',
-                    type: 'shift_drawer',
-                    category: 'financial',
-                    is_read: true,
-                    created_at: '1h ago',
-                    action_type: 'tab',
-                    action_target: 'tab:shift',
-                    action_label: 'Z-Read Reconciliation'
-                },
-                {
-                    id: 'notif_csh_4',
-                    role: 'CASHIER',
-                    user_id: 'cashier-01',
-                    title: 'Edge 125kHz RFID Reader Synced',
-                    message: 'Hardware keyboard wedge listener active. EM4100 10-digit RFID decimal normalization running.',
-                    type: 'edge_sync',
-                    category: 'system',
-                    is_read: true,
-                    created_at: '4h ago'
-                },
-
-                // ADMIN STREAM
-                {
-                    id: 'notif_adm_1',
-                    role: 'ADMIN',
-                    user_id: 'admin',
-                    title: 'GCash Top-Up Queue Pending (2)',
-                    message: '2 reload verification slips (₱1,250.00 total) awaiting cashier admin verification.',
-                    type: 'gcash_pending',
-                    category: 'financial',
-                    is_read: false,
-                    created_at: '15m ago',
-                    action_type: 'tab',
-                    action_target: 'tab:gcash_queue',
-                    action_label: 'Review GCash Queue'
-                },
-                {
-                    id: 'notif_adm_2',
-                    role: 'ADMIN',
-                    user_id: 'admin',
-                    title: 'Meal Dispute Ticket Filed',
-                    message: 'Parent Maria Santos submitted dispute ticket for Order ORD-1092 (₱75.00). Reason: Incorrect beverage item.',
-                    type: 'dispute_ticket',
-                    category: 'orders',
-                    is_read: false,
-                    created_at: '45m ago',
-                    action_type: 'tab',
-                    action_target: 'tab:refunds',
-                    action_label: 'Review Dispute'
-                },
-                {
-                    id: 'notif_adm_3',
-                    role: 'ADMIN',
-                    user_id: 'admin',
-                    title: 'Near-Expiry Inventory Batch Warning',
-                    message: 'Fresh Milk 250ml (Batch #BAT-2026-09) expires within 18 hours. 14 units remaining in inventory.',
-                    type: 'near_expiry',
-                    category: 'system',
-                    is_read: false,
-                    created_at: '2h ago',
-                    action_type: 'tab',
-                    action_target: 'tab:inventory',
-                    action_label: 'Inspect Batches'
-                },
-                {
-                    id: 'notif_adm_4',
-                    role: 'ADMIN',
-                    user_id: 'admin',
-                    title: 'SIS Tuition Payroll Billing Batch',
-                    message: '12 Pay Later student accounts and faculty meal deductions are aggregated for registrar monthly billing.',
-                    type: 'statement',
-                    category: 'financial',
-                    is_read: true,
-                    created_at: 'Yesterday',
-                    action_type: 'tab',
-                    action_target: 'tab:tuition_billing',
-                    action_label: 'Export SIS Batch'
-                }
-            ];
+            const INITIAL_CANTEEN_NOTIFICATIONS = [];
 
             const [notifications, setNotifications] = useState(() => {
                 const stored = db?.loadLocal('novalunch_notifications', null);
-                if (stored && Array.isArray(stored) && stored.length > 0 && stored.some(n => n.role === 'ADMIN' || n.role === 'CASHIER' || n.role === 'PARENT')) {
+                if (stored && Array.isArray(stored)) {
                     return stored;
                 }
-                if (stored && Array.isArray(stored) && stored.length > 0) {
-                    const extraRoles = INITIAL_CANTEEN_NOTIFICATIONS.filter(ini => !stored.some(s => s.id === ini.id));
-                    const merged = [...stored.map(s => ({ ...s, role: s.role || 'STUDENT' })), ...extraRoles];
-                    CanteenCache.set('notifications', merged);
-                    if (db) db.saveLocal('novalunch_notifications', merged);
-                    return merged;
-                }
-                return INITIAL_CANTEEN_NOTIFICATIONS;
+                return [];
             });
             const [parentStudentLinkRequests, setParentStudentLinkRequests] = useState(() => db?.loadLocal('novalunch_parent_link_requests', []));
             const [parentStudentLinks, setParentStudentLinks] = useState(() => db?.loadLocal('novalunch_parent_links', []));
@@ -34139,7 +33972,11 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                     setActiveTab('command');
                     setActiveRole('ADMIN');
                 } else if (targetRole === 'TEACHER') {
-                    const teacherUser = resolvedUser || registeredUsers.find(u => u.role === 'Teacher') || { id: 'u_prof_maria', name: 'Prof. Maria Santos', role: 'Teacher', department: 'High School Faculty', salaryDeductionEligible: true, accumulatedSalaryDeduction: 320.00 };
+                    const teacherUser = resolvedUser || registeredUsers.find(u => u.role === 'Teacher' || u.role === 'Faculty');
+                    if (!teacherUser) {
+                        showToast('Authorization Error: No Faculty / Teacher record found in user registry.', 'danger');
+                        return;
+                    }
                     setCurrentUser(teacherUser);
                     setActiveTab('salary_deductions');
                     setActiveRole('CASHIER');
@@ -34566,12 +34403,11 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                     u.studentId === queueItem.studentIdNumber ||
                     (u.name && queueItem.student && (queueItem.student.toLowerCase().includes(u.name.toLowerCase()) || u.name.toLowerCase().includes(queueItem.student.toLowerCase())))
                 );
-                const targetUserId = targetUser?.id || queueItem.studentId;
-
-                if (!targetUserId) {
-                    showToast("Cannot approve: Unable to resolve target student account ID.", "danger");
+                if (!targetUser) {
+                    showToast("Cannot approve: Unable to resolve verified student account in registry.", "danger");
                     return;
                 }
+                const targetUserId = targetUser.id;
 
                 // 1. Snapshot previous state for compensation rollback
                 const prevQueue = gcashQueue;

@@ -99,7 +99,7 @@ module.exports = async function handler(req, res) {
     }
 
     const studentId = payload.studentId;
-    const studentName = payload.name || "Joshua Lupisan";
+    const studentName = payload.name || "Student";
     const studentGrade = payload.grade || "Grade 10 - St. Ignatius";
 
     // Immediately create relation in database (status: 'ACTIVE')

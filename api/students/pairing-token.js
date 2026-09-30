@@ -56,7 +56,7 @@ module.exports = async function handler(req, res) {
     const expiresAt = nowTs + PAIRING_TTL_SECONDS;
     const jti = crypto.randomUUID();
 
-    const studentName = body.name || body.session?.name || body.session?.full_name || "Joshua Lupisan";
+    const studentName = body.name || body.session?.name || body.session?.full_name || "Student";
     const studentGrade = body.grade || body.session?.grade || "Grade 10 - St. Ignatius";
 
     // Required specification payload: { studentId: string, timestamp: number, type: 'parent_link' }
