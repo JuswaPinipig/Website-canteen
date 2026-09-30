@@ -2199,18 +2199,41 @@
             // 2. Persist to Supabase (authoritative cross-device store)
             let cloudSaved = false;
             if (supabase) {
+                // Primary: Direct insert to qr_pairing_tokens table if present
                 try {
                     const { error } = await supabase.from('qr_pairing_tokens').insert([tokenRecord]);
-                    if (error) {
-                        console.error("Cloud token save error:", error);
-                    } else {
+                    if (!error) {
                         cloudSaved = true;
+                    } else {
+                        console.warn("[CanteenDB] Cloud qr_pairing_tokens table insert notice:", error.message);
                     }
                 } catch (e) {
-                    console.error("Cloud token save error:", e);
+                    console.warn("[CanteenDB] Cloud qr_pairing_tokens table insert exception:", e.message || e);
+                }
+
+                // Cross-device fallback: Save token to canteen_settings for 100% reliable cloud sync on GitHub Pages
+                try {
+                    const { error: csErr } = await supabase.from('canteen_settings').upsert([{
+                        key: `qr_token_${cleanCode}`,
+                        value: {
+                            ...tokenRecord,
+                            id: jti,
+                            jti,
+                            token_raw: token
+                        },
+                        description: `Active QR Pairing Token for ${targetName} (${cleanCode})`,
+                        updated_at: new Date().toISOString()
+                    }], { onConflict: 'key' });
+                    if (!csErr) {
+                        cloudSaved = true;
+                    } else {
+                        console.warn("[CanteenDB] Cloud canteen_settings token notice:", csErr.message);
+                    }
+                } catch (csEx) {
+                    console.warn("[CanteenDB] Cloud canteen_settings pairing token fallback exception:", csEx);
                 }
             } else {
-                console.error("Cloud token save error: Supabase client unavailable (offline).");
+                console.warn("[CanteenDB] Cloud token save notice: Supabase client unavailable (offline).");
             }
 
             // 3. Save to local storage cache novalunch_pairing_tokens (bounded, expired entries pruned)
@@ -2329,6 +2352,25 @@
                 } catch (err) {
                     console.warn("[CanteenDB] Pairing token cloud lookup exception:", err);
                 }
+
+                // If not found in qr_pairing_tokens, search canteen_settings table (guaranteed cross-device sync)
+                if (!tokenRecord) {
+                    try {
+                        const { data: settingRow, error: setErr } = await supabase
+                            .from('canteen_settings')
+                            .select('*')
+                            .eq('key', `qr_token_${targetCode}`)
+                            .maybeSingle();
+                        if (!setErr && settingRow && settingRow.value) {
+                            const val = settingRow.value;
+                            if (val && CLAIMABLE_STATUSES.includes(String(val.status || '').toUpperCase())) {
+                                tokenRecord = val;
+                            }
+                        }
+                    } catch (sEx) {
+                        console.warn("[CanteenDB] canteen_settings token lookup exception:", sEx);
+                    }
+                }
             }
 
             // 2. If not found in Supabase, search local storage novalunch_pairing_tokens where code = targetCode
@@ -2393,8 +2435,24 @@
                             name: prof.full_name || prof.name,
                             studentId: prof.student_id_number || prof.studentId,
                             grade: prof.department || 'Grade 10',
-                            department: prof.department || 'Grade 10'
+                            department: prof.department || 'Grade 10',
+                            balance: typeof prof.balance === 'number' ? prof.balance : (parseFloat(prof.balance) || 0),
+                            dailyCap: typeof prof.daily_limit === 'number' ? prof.daily_limit : (parseFloat(prof.daily_limit) || 200)
                         };
+                    } else {
+                        // Try lookup by student_id_number
+                        const { data: profByNum } = await supabase.from('profiles').select('*').eq('student_id_number', resolvedStudentId).maybeSingle();
+                        if (profByNum) {
+                            student = {
+                                id: profByNum.id,
+                                name: profByNum.full_name || profByNum.name,
+                                studentId: profByNum.student_id_number || profByNum.studentId,
+                                grade: profByNum.department || 'Grade 10',
+                                department: profByNum.department || 'Grade 10',
+                                balance: typeof profByNum.balance === 'number' ? profByNum.balance : (parseFloat(profByNum.balance) || 0),
+                                dailyCap: typeof profByNum.daily_limit === 'number' ? profByNum.daily_limit : (parseFloat(profByNum.daily_limit) || 200)
+                            };
+                        }
                     }
                 } catch (e) {}
             }
@@ -2416,6 +2474,24 @@
                     }
                 } catch (dbErr) {
                     console.warn("[CanteenDB] Supabase qr_pairing_tokens update notice:", dbErr.message);
+                }
+
+                try {
+                    await supabase
+                        .from('canteen_settings')
+                        .upsert([{
+                            key: `qr_token_${targetCode}`,
+                            value: {
+                                ...(tokenRecord || {}),
+                                status: 'CLAIMED',
+                                claimed_at: new Date().toISOString(),
+                                claimed_by: parentId
+                            },
+                            description: `Claimed QR Pairing Token for ${targetCode}`,
+                            updated_at: new Date().toISOString()
+                        }], { onConflict: 'key' });
+                } catch (csErr) {
+                    console.warn("[CanteenDB] Supabase canteen_settings token claim notice:", csErr.message);
                 }
             }
 
@@ -2620,15 +2696,32 @@
             if (!parentId) return [];
             if (supabase) {
                 try {
-                    const { data, error } = await supabase.from('parent_student_links').select('student_id, profiles!student_id(*)').eq('parent_id', parentId);
-                    if (!error && data) {
-                        return data.map(d => d.profiles || { id: d.student_id });
+                    const { data, error } = await supabase
+                        .from('parent_student_links')
+                        .select('student_id, profiles!student_id(*)')
+                        .eq('parent_id', parentId);
+                    if (!error && Array.isArray(data) && data.length > 0) {
+                        return data.map(d => {
+                            const p = d.profiles;
+                            if (!p) return { id: d.student_id, studentId: d.student_id, name: 'Student' };
+                            return {
+                                id: p.id,
+                                studentId: p.student_id_number || p.id,
+                                name: p.full_name,
+                                email: p.email,
+                                department: p.department || 'Grade 10',
+                                grade: p.department || 'Grade 10',
+                                balance: typeof p.balance === 'number' ? p.balance : (parseFloat(p.balance) || 0),
+                                dailyCap: typeof p.daily_limit === 'number' ? p.daily_limit : (parseFloat(p.daily_limit) || 200),
+                                status: p.status || 'active'
+                            };
+                        });
                     }
                 } catch (e) {
                     console.warn("Error fetching linked students:", e);
                 }
             }
-            return [];
+            return this.loadLocal('novalunch_parent_linked_students', []) || [];
         },
 
         // -------------------------------------------------------------------------
@@ -3816,5 +3909,12 @@
         window.SUPABASE_URL = SUPABASE_URL;
         window.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
         window.CanteenDB = CanteenDB;
+        CanteenDB.supabase = supabase;
+        window.supabaseClient = supabase;
+        if (window.supabase && typeof window.supabase.from !== 'function') {
+            window.supabase.from = (...args) => supabase.from(...args);
+            window.supabase.rpc = (...args) => supabase.rpc(...args);
+            window.supabase.auth = supabase.auth;
+        }
     }
 })(typeof window !== 'undefined' ? window : this);

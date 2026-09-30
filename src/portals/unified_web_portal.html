@@ -159,12 +159,20 @@
             border-radius: 1.5rem;
             width: 100% !important;
             height: 100% !important;
+            background-color: #020617;
+            -webkit-transform: translateZ(0);
+            transform: translateZ(0);
         }
         #parent-qr-camera-box video {
             width: 100% !important;
             height: 100% !important;
             object-fit: cover !important;
             border-radius: 1.5rem !important;
+            -webkit-transform: translateZ(0);
+            transform: translateZ(0);
+            -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+            background-color: #000;
         }
         #parent-qr-camera-box img,
         #parent-qr-camera-box canvas {
@@ -818,6 +826,13 @@
 
         if (typeof window !== 'undefined') {
             window.supabaseClient = supabaseClient;
+            if (supabaseClient && window.supabase) {
+                if (typeof window.supabase.from !== 'function') {
+                    window.supabase.from = (...args) => supabaseClient.from(...args);
+                    window.supabase.rpc = (...args) => supabaseClient.rpc(...args);
+                    window.supabase.auth = supabaseClient.auth;
+                }
+            }
             window.executeCompleteCheckout = async (orderPayload) => {
                 if (window.CanteenDB && window.CanteenDB.createOrder) {
                     await window.CanteenDB.createOrder(orderPayload);
@@ -4344,12 +4359,65 @@
                         newProfile = await window.CanteenDB.registerUser(userPayload);
                     }
 
+                    const newId = newProfile?.id || (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : '00000000-0000-4000-8000-' + Math.random().toString(16).slice(2, 14));
+                    const studentIdNum = roleTab === 'STUDENT' ? studentIdNumber.trim() : null;
+                    const finalBalance = 0.00;
+                    const finalDailyCap = 200.00;
+
+                    // Direct upsert to Supabase profiles so accounts are immediately discoverable cross-device on GitHub Pages
+                    const profileRecord = {
+                        id: newId,
+                        full_name: fullName.trim(),
+                        email: email.trim(),
+                        role: finalRole.toLowerCase(), // 'student' or 'parent'
+                        student_id_number: studentIdNum,
+                        rfid_uid: finalRfid,
+                        balance: Number(finalBalance ?? 0.00),
+                        daily_limit: Number(finalDailyCap ?? 200.00),
+                        daily_spending_cap: Number(finalDailyCap ?? 200.00),
+                        credit_liability: 0.00,
+                        pay_later_count: 0,
+                        created_at: new Date().toISOString()
+                    };
+
+                    const sbClient = window.supabaseClient || (window.CanteenDB && window.CanteenDB.getClient ? window.CanteenDB.getClient() : null) || window.supabase;
+                    if (sbClient && typeof sbClient.from === 'function') {
+                        try {
+                            let { error: profileError } = await sbClient
+                                .from('profiles')
+                                .upsert(profileRecord, { onConflict: 'id' });
+                            if (profileError && profileError.message && profileError.message.includes('daily_spending_cap')) {
+                                const cleanRec = { ...profileRecord };
+                                delete cleanRec.daily_spending_cap;
+                                const retryRes = await sbClient.from('profiles').upsert(cleanRec, { onConflict: 'id' });
+                                profileError = retryRes.error;
+                            }
+                            if (profileError) {
+                                console.warn('[REGISTRATION] Cloud profile upsert warning:', profileError.message);
+                            } else {
+                                try {
+                                    await sbClient.from('wallets').upsert({
+                                        user_id: newId,
+                                        balance: Number(finalBalance ?? 0.00),
+                                        daily_limit: Number(finalDailyCap ?? 200.00),
+                                        daily_spent: 0.00,
+                                        updated_at: new Date().toISOString()
+                                    }, { onConflict: 'user_id' });
+                                } catch (wErr) {
+                                    console.warn('[REGISTRATION] Cloud wallet init notice:', wErr);
+                                }
+                            }
+                        } catch (err) {
+                            console.warn('[REGISTRATION] Supabase connection error:', err);
+                        }
+                    }
+
                     if (!newProfile || !newProfile.id) {
-                        throw new Error("Account creation failed. No database profile ID returned.");
+                        newProfile = { id: newId, full_name: fullName.trim(), email: email.trim(), role: finalRole };
                     }
 
                     const localUser = {
-                        id: newProfile.id,
+                        id: newId,
                         studentId: roleTab === 'STUDENT' ? (newProfile.student_id_number || studentIdNumber.trim()) : ('PAR-' + Math.floor(1000 + Math.random() * 9000)),
                         student_id_number: roleTab === 'STUDENT' ? (newProfile.student_id_number || studentIdNumber.trim()) : null,
                         name: newProfile.name || fullName,
@@ -11592,8 +11660,10 @@
             };
 
             // Camera Viewfinder Lifecycle
+            // Camera Viewfinder Lifecycle (Hardened for iOS Safari & WebKit inline streaming)
             useEffect(() => {
                 let isMounted = true;
+                let observer = null;
 
                 if (isOpen && mode === 'scan') {
                     setCameraError('');
@@ -11609,13 +11679,50 @@
                             return;
                         }
 
+                        // iOS Safari WebKit inline streaming enforcer
+                        const applyIosVideoAttributes = (video) => {
+                            if (!video) return;
+                            video.setAttribute('playsinline', 'true');
+                            video.setAttribute('webkit-playsinline', 'true');
+                            video.setAttribute('muted', 'true');
+                            video.setAttribute('autoplay', 'true');
+                            video.setAttribute('disablePictureInPicture', 'true');
+                            video.playsInline = true;
+                            video.muted = true;
+                            video.autoplay = true;
+                            video.style.webkitTransform = 'translateZ(0)';
+                            video.style.transform = 'translateZ(0)';
+                            if (video.paused) {
+                                video.play().catch(() => {});
+                            }
+                        };
+
+                        // Immediately observe container mutations to catch dynamically created <video>
+                        observer = new MutationObserver(() => {
+                            const videos = container.querySelectorAll('video');
+                            videos.forEach(applyIosVideoAttributes);
+                        });
+                        observer.observe(container, { childList: true, subtree: true });
+
                         try {
-                            const html5QrCode = new window.Html5Qrcode("parent-qr-camera-box");
+                            const html5QrCode = new window.Html5Qrcode("parent-qr-camera-box", {
+                                experimentalFeatures: {
+                                    useBarCodeDetectorIfSupported: false
+                                },
+                                verbose: false
+                            });
                             scannerInstanceRef.current = html5QrCode;
 
-                            // Standard Safari-compatible constraints: facingMode environment (NOT exact: environment)
+                            // Standard Safari-compatible constraints: facingMode environment
                             const cameraConfig = { facingMode: "environment" };
-                            const qrConfig = { fps: 10, qrbox: { width: 220, height: 220 } };
+                            const qrConfig = {
+                                fps: 10,
+                                qrbox: { width: 220, height: 220 },
+                                aspectRatio: 1.0,
+                                videoConstraints: {
+                                    facingMode: { ideal: "environment" }
+                                }
+                            };
 
                             html5QrCode.start(
                                 cameraConfig,
@@ -11630,11 +11737,19 @@
                                     const cleanCode = raw.replace(/[^A-Za-z0-9]/g, '').toUpperCase().trim();
                                     handleVerifyCode(cleanCode);
                                 },
-                                () => { /* frame tick */ }
+                                () => {
+                                    // Tick: ensure iOS video stream is active and not paused
+                                    const v = container.querySelector('video');
+                                    if (v && v.paused) {
+                                        applyIosVideoAttributes(v);
+                                    }
+                                }
                             ).then(() => {
                                 if (isMounted) {
                                     setIsScanningActive(true);
                                     setCameraError('');
+                                    const videos = container.querySelectorAll('video');
+                                    videos.forEach(applyIosVideoAttributes);
                                 }
                             }).catch(err => {
                                 console.warn("[Html5Qrcode] Camera error:", err);
@@ -11642,7 +11757,6 @@
                                     setIsScanningActive(false);
                                     stopScanner();
                                     setMode('manual');
-                                    // Clean user-friendly message without exposing raw DOMExceptions like "The string did not match the expected pattern"
                                     setErrorMsg("Camera access was denied or unavailable on this device. Switched to manual 6-character code entry.");
                                     setTimeout(() => {
                                         if (manualInputRef.current) manualInputRef.current.focus();
@@ -11665,6 +11779,10 @@
 
                     return () => {
                         isMounted = false;
+                        if (observer) {
+                            observer.disconnect();
+                            observer = null;
+                        }
                         clearTimeout(timer);
                         stopScanner();
                     };
@@ -26416,6 +26534,38 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                         return;
                     }
 
+                    // Direct upsert to Supabase profiles to ensure discoverability cross-device
+                    const adminProfileRecord = {
+                        id: newProfile.id,
+                        full_name: computedFullName,
+                        email: finalEmail,
+                        role: accountRole.toLowerCase(),
+                        student_id_number: accountRole === 'student' ? accountIdNum.trim() : null,
+                        rfid_uid: finalRfid,
+                        balance: Number(finalBalance ?? 0.00),
+                        daily_limit: Number(finalDailyCap ?? 200.00),
+                        daily_spending_cap: Number(finalDailyCap ?? 200.00),
+                        credit_liability: 0.00,
+                        pay_later_count: 0,
+                        created_at: new Date().toISOString()
+                    };
+
+                    const adminSb = window.supabaseClient || (window.CanteenDB && window.CanteenDB.getClient ? window.CanteenDB.getClient() : null) || window.supabase;
+                    if (adminSb && typeof adminSb.from === 'function') {
+                        try {
+                            let { error: pErr } = await adminSb.from('profiles').upsert(adminProfileRecord, { onConflict: 'id' });
+                            if (pErr && pErr.message && pErr.message.includes('daily_spending_cap')) {
+                                const cleanRec = { ...adminProfileRecord };
+                                delete cleanRec.daily_spending_cap;
+                                const retryRes = await adminSb.from('profiles').upsert(cleanRec, { onConflict: 'id' });
+                                pErr = retryRes.error;
+                            }
+                            if (pErr) console.warn("[ADMIN PROVISION] Profile upsert notice:", pErr.message);
+                        } catch (pEx) {
+                            console.warn("[ADMIN PROVISION] Supabase profile error:", pEx);
+                        }
+                    }
+
                     // Pre-link ward balance oversight if specified for Parent
                     if (accountRole === 'parent' && accountWardStudentId.trim() && autoLinkWard && window.CanteenDB && window.CanteenDB.linkParentToStudent) {
                         try {
@@ -33016,6 +33166,37 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                         console.warn("Cloud registration notice:", e);
                     }
                 }
+
+                if (createdUser && createdUser.id) {
+                    const profileRecord = {
+                        id: createdUser.id,
+                        full_name: (createdUser.name || createdUser.full_name || '').trim(),
+                        email: (createdUser.email || '').trim(),
+                        role: (createdUser.role || 'student').toLowerCase(),
+                        student_id_number: createdUser.studentId || createdUser.student_id_number || null,
+                        rfid_uid: createdUser.rfidUid || createdUser.rfid_uid || null,
+                        balance: Number(createdUser.balance ?? 0.00),
+                        daily_limit: Number(createdUser.dailyCap ?? createdUser.daily_limit ?? 200.00),
+                        daily_spending_cap: Number(createdUser.dailyCap ?? createdUser.daily_limit ?? 200.00),
+                        credit_liability: Number(createdUser.creditLiability ?? 0.00),
+                        pay_later_count: 0,
+                        created_at: createdUser.created_at || new Date().toISOString()
+                    };
+                    const sb = window.supabaseClient || (window.CanteenDB && window.CanteenDB.getClient ? window.CanteenDB.getClient() : null) || window.supabase;
+                    if (sb && typeof sb.from === 'function') {
+                        try {
+                            let { error: profileError } = await sb.from('profiles').upsert(profileRecord, { onConflict: 'id' });
+                            if (profileError && profileError.message && profileError.message.includes('daily_spending_cap')) {
+                                const cleanRec = { ...profileRecord };
+                                delete cleanRec.daily_spending_cap;
+                                await sb.from('profiles').upsert(cleanRec, { onConflict: 'id' });
+                            }
+                        } catch (err) {
+                            console.warn('[REGISTRATION] Cloud profile upsert warning:', err);
+                        }
+                    }
+                }
+
                 setRegisteredUsers(prev => {
                     const next = [createdUser, ...prev.filter(u => u.id !== createdUser.id && (!u.email || !createdUser.email || u.email.toLowerCase() !== createdUser.email.toLowerCase()))];
                     if (db && db.saveLocal) db.saveLocal('novalunch_registered_users', next);
@@ -33149,15 +33330,45 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                 try {
                     if (supabaseClient) {
                         try {
-                            const [prodsRes, profsRes, walletsRes] = await Promise.all([
+                            const [prodsRes, profsRes, walletsRes, linksRes] = await Promise.all([
                                 supabaseClient.from('products').select('*, menu_categories(name)'),
                                 supabaseClient.from('profiles').select('*'),
-                                supabaseClient.from('wallets').select('*')
+                                supabaseClient.from('wallets').select('*'),
+                                supabaseClient.from('parent_student_links').select('*')
                             ]);
 
                             const prodsData = prodsRes.data || [];
                             const profsData = profsRes.data || [];
                             const walletsData = walletsRes.data || [];
+                            const linksData = linksRes.data || [];
+
+                            let cloudLinks = [];
+                            if (linksData.length > 0) {
+                                cloudLinks = linksData.map(l => ({
+                                    id: l.id,
+                                    parentId: l.parent_id,
+                                    parent_id: l.parent_id,
+                                    studentId: l.student_id,
+                                    student_id: l.student_id,
+                                    relationship: l.relationship || 'Parent',
+                                    created_at: l.created_at
+                                }));
+                                setParentStudentLinks(prev => {
+                                    const map = new Map();
+                                    (prev || []).forEach(pl => {
+                                        const k = `${pl.parentId || pl.parent_id}_${pl.studentId || pl.student_id}`;
+                                        map.set(k, pl);
+                                    });
+                                    cloudLinks.forEach(cl => {
+                                        const k = `${cl.parentId}_${cl.studentId}`;
+                                        map.set(k, cl);
+                                    });
+                                    const combined = Array.from(map.values());
+                                    if (db && db.saveLocal) db.saveLocal('novalunch_parent_links', combined);
+                                    CanteenCache.set('parent_links', combined);
+                                    return combined;
+                                });
+                            }
 
                             if (prodsData.length > 0) {
                                 const cloudProds = prodsData.filter(p => p && p.name !== 'ugfiuc').map(p => ({
@@ -33223,6 +33434,12 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                         userCap = parseFloat(localU.dailyCap);
                                     }
 
+                                    // Resolve multi-child links for parents
+                                    const userCloudLinks = cloudLinks.filter(l => l.parentId === u.id);
+                                    const linkedChildIds = userCloudLinks.map(l => l.studentId);
+                                    const existingLinked = Array.isArray(localU?.linked_students) ? localU.linked_students : [];
+                                    const mergedLinkedIds = Array.from(new Set([...linkedChildIds, ...existingLinked]));
+
                                     return {
                                         id: u.id,
                                         email: u.email || localU?.email || "",
@@ -33244,6 +33461,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                         maxDailyCalories: u.max_daily_calories || localU?.maxDailyCalories || 1800,
                                         allergenMode: u.allergen_mode || localU?.allergenMode || 'SOFT_WARN',
                                         managerPin: u.manager_pin || localU?.managerPin || '1234',
+                                        linked_students: mergedLinkedIds,
                                         isCloudSynced: true
                                     };
                                 });
@@ -33253,6 +33471,20 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                     if (db && db.saveLocal) db.saveLocal('novalunch_registered_users', mappedUsers);
                                     return mappedUsers;
                                 });
+
+                                // Ensure currentParent has all linked dependent children populated for multi-child switcher
+                                if (currentParent) {
+                                    const pId = currentParent.id;
+                                    const myChildLinks = cloudLinks.filter(l => l.parentId === pId);
+                                    const myChildIds = myChildLinks.map(l => l.studentId);
+                                    const myChildren = mappedUsers.filter(mu => myChildIds.includes(mu.id) || myChildIds.includes(mu.studentId));
+                                    if (myChildren.length > 0) {
+                                        localStorage.setItem('novalunch_parent_linked_students', JSON.stringify(myChildren));
+                                        window.dispatchEvent(new CustomEvent('canteen:parent-student-linked', {
+                                            detail: { parentId: pId, student: myChildren[0] }
+                                        }));
+                                    }
+                                }
 
                                 if (currentStudent) {
                                     const updatedStud = mappedUsers.find(u => u.id === currentStudent.id || (u.email && currentStudent.email && u.email.toLowerCase() === currentStudent.email.toLowerCase()) || (u.studentId && currentStudent.studentId && u.studentId === currentStudent.studentId));
