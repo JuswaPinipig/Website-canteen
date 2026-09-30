@@ -818,6 +818,109 @@
     <div id="root"></div>
 
     <script type="text/babel">
+        const DEFAULT_VISION_CLASSES = [
+            'hansel',
+            'loaded',
+            'fita',
+            'piattos cheese',
+            'sky flakes',
+            'lemon square',
+            'choco mucho',
+            'moby caramel',
+            'moby chocolate',
+            'mr chips',
+            'cheezy',
+            'vcut cheese',
+            'pillows',
+            'pepsi',
+            'royal',
+            'mountain dew',
+            'oishi crackers'
+        ];
+
+        const DEFAULT_ACTIVE_SNACKS = [
+            { id: '1c4cdeb9-a79c-41da-8c51-20de57e83263', name: 'Hansel', price: 19.99, category: 'Snacks & Bakery', ai_label: 'hansel', aiLabel: 'hansel', stock: 50, available: true, is_available: true, img: 'https://images.unsplash.com/photo-1590080875515-8a3a8dc5735e?auto=format&fit=crop&w=400&q=80' },
+            { id: 'bc0a3967-29a9-4f59-abd7-ec4ec27bf7be', name: 'Loaded', price: 19.99, category: 'Snacks & Bakery', ai_label: 'loaded', aiLabel: 'loaded', stock: 45, available: true, is_available: true, img: 'https://images.unsplash.com/photo-1541781774459-bb2af2f05b55?auto=format&fit=crop&w=400&q=80' },
+            { id: '350f2891-c29c-4523-ba49-bf7a52c39159', name: 'Fita', price: 15.99, category: 'Snacks & Bakery', ai_label: 'fita', aiLabel: 'fita', stock: 60, available: true, is_available: true, img: 'https://images.unsplash.com/photo-1590080875515-8a3a8dc5735e?auto=format&fit=crop&w=400&q=80' },
+            { id: '7b423713-16c8-4da4-a8a6-071f1a9a9fdc', name: 'Piattos Cheese', price: 15.99, category: 'Snacks & Bakery', ai_label: 'piattos cheese', aiLabel: 'piattos cheese', stock: 35, available: true, is_available: true, img: 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?auto=format&fit=crop&w=400&q=80' },
+            { id: '054f5317-0cce-45c3-a30e-abaa468ffeae', name: 'Sky flakes', price: 9.99, category: 'Snacks & Bakery', ai_label: 'sky flakes', aiLabel: 'sky flakes', stock: 50, available: true, is_available: true, img: 'https://images.unsplash.com/photo-1590080875515-8a3a8dc5735e?auto=format&fit=crop&w=400&q=80' },
+            { id: '1ac49a1c-77a0-4fd9-a768-6096ce04d625', name: 'Lemon Square', price: 12.99, category: 'Snacks & Bakery', ai_label: 'lemon square', aiLabel: 'lemon square', stock: 30, available: true, is_available: true, img: 'https://images.unsplash.com/photo-1533134242443-d4fd215305ad?auto=format&fit=crop&w=400&q=80' },
+            { id: '14b584de-e1a0-4100-bc99-4eff958ff337', name: 'Choco Mucho', price: 12.99, category: 'Snacks & Bakery', ai_label: 'choco mucho', aiLabel: 'choco mucho', stock: 45, available: true, is_available: true, img: 'https://images.unsplash.com/photo-1541781774459-bb2af2f05b55?auto=format&fit=crop&w=400&q=80' },
+            { id: '957c9d2c-e215-4331-b4bd-17060992eee2', name: 'Moby Caramel', price: 15.99, category: 'Snacks & Bakery', ai_label: 'moby caramel', aiLabel: 'moby caramel', stock: 40, available: true, is_available: true, img: 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?auto=format&fit=crop&w=400&q=80' },
+            { id: '3ce0251b-e7e7-47f2-bc3a-35a6a4b1456e', name: 'Moby Chocolate', price: 9.99, category: 'Snacks & Bakery', ai_label: 'moby chocolate', aiLabel: 'moby chocolate', stock: 40, available: true, is_available: true, img: 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?auto=format&fit=crop&w=400&q=80' },
+            { id: 'b85e16ac-27b8-484c-8262-4630e24baf76', name: 'Mr Chips', price: 15.99, category: 'Snacks & Bakery', ai_label: 'mr chips', aiLabel: 'mr chips', stock: 40, available: true, is_available: true, img: 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?auto=format&fit=crop&w=400&q=80' },
+            { id: '3e34ca0f-c1f7-40af-88a1-986f338f7bf9', name: 'Cheezy', price: 12.99, category: 'Snacks & Bakery', ai_label: 'cheezy', aiLabel: 'cheezy', stock: 40, available: true, is_available: true, img: 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?auto=format&fit=crop&w=400&q=80' },
+            { id: '611ef1b0-3f41-401e-8a87-be8957aaabc6', name: 'Vcut Cheese', price: 12.99, category: 'Snacks & Bakery', ai_label: 'vcut cheese', aiLabel: 'vcut cheese', stock: 40, available: true, is_available: true, img: 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?auto=format&fit=crop&w=400&q=80' },
+            { id: 'eef69b2a-584d-4fb6-ac81-ac2eafe65ea1', name: 'Pillows', price: 19.99, category: 'Snacks & Bakery', ai_label: 'pillows', aiLabel: 'pillows', stock: 40, available: true, is_available: true, img: 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?auto=format&fit=crop&w=400&q=80' },
+            { id: 'e2029f90-295d-4554-87f0-d6d7cccb7b6f', name: 'Pepsi', price: 15.99, category: 'Beverages', ai_label: 'pepsi', aiLabel: 'pepsi', stock: 50, available: true, is_available: true, img: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?auto=format&fit=crop&w=400&q=80' },
+            { id: '1e4839eb-99a4-44c8-8d29-93538be2e1ef', name: 'Royal', price: 15.99, category: 'Beverages', ai_label: 'royal', aiLabel: 'royal', stock: 50, available: true, is_available: true, img: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?auto=format&fit=crop&w=400&q=80' },
+            { id: 'f28a7a83-827c-4fa5-a1da-cf21b67f2487', name: 'Mountain dew', price: 15.99, category: 'Beverages', ai_label: 'mountain dew', aiLabel: 'mountain dew', stock: 50, available: true, is_available: true, img: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?auto=format&fit=crop&w=400&q=80' },
+            { id: 'a627d837-dfb3-44dc-85eb-2d6e9076fe42', name: 'Oishi Cracker', price: 15.99, category: 'Snacks & Bakery', ai_label: 'oishi crackers', aiLabel: 'oishi crackers', stock: 40, available: true, is_available: true, img: 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?auto=format&fit=crop&w=400&q=80' }
+        ];
+
+        const sanitizeCatalog = (list) => {
+            if (!list || !Array.isArray(list)) list = [];
+            const existingNames = new Set(list.filter(Boolean).map(p => (p.name || '').toLowerCase()));
+            const existingLabels = new Set(list.filter(Boolean).map(p => (p.ai_label || p.aiLabel || '').toLowerCase()));
+            const toAdd = DEFAULT_ACTIVE_SNACKS.filter(s => !existingNames.has(s.name.toLowerCase()) && !existingLabels.has(s.ai_label.toLowerCase()));
+            const combined = [...list, ...toAdd];
+
+            return combined
+                .filter(p => p && p.name !== 'ugfiuc')
+                .map(p => {
+                    let cleanAi = (p.aiLabel || p.ai_label || null);
+                    if (cleanAi === 'Buttercream_Biscuits' || cleanAi === 'Jack_And_Jill_Magic_Chips') {
+                        cleanAi = null;
+                    }
+                    if (!cleanAi && p.name) {
+                        const matchedSnack = DEFAULT_ACTIVE_SNACKS.find(s =>
+                            s.name.toLowerCase() === p.name.toLowerCase() ||
+                            p.name.toLowerCase().includes(s.ai_label) ||
+                            s.ai_label.includes(p.name.toLowerCase())
+                        );
+                        if (matchedSnack) cleanAi = matchedSnack.ai_label;
+                    }
+                    return { ...p, ai_label: cleanAi, aiLabel: cleanAi };
+                });
+        };
+
+        const resolveModelClasses = (apiClasses = [], catalog = [], prevClasses = []) => {
+            const classSet = new Set();
+            if (Array.isArray(apiClasses) && apiClasses.length > 0) {
+                apiClasses.forEach(c => c && classSet.add(String(c).trim()));
+            }
+            DEFAULT_VISION_CLASSES.forEach(c => c && classSet.add(String(c).trim()));
+            if (typeof window !== 'undefined' && Array.isArray(window.AI_CLASS_REGISTRY)) {
+                window.AI_CLASS_REGISTRY.forEach(item => {
+                    const lbl = typeof item === 'string' ? item : item?.label;
+                    if (lbl) classSet.add(String(lbl).trim());
+                });
+            }
+            if (Array.isArray(catalog)) {
+                catalog.forEach(p => {
+                    const lbl = p?.ai_label || p?.aiLabel;
+                    if (lbl && lbl !== 'NONE') classSet.add(String(lbl).trim());
+                });
+            }
+            if (Array.isArray(prevClasses)) {
+                prevClasses.forEach(c => c && classSet.add(String(c).trim()));
+            }
+            return Array.from(classSet);
+        };
+
+        if (typeof window !== 'undefined') {
+            window.DEFAULT_VISION_CLASSES = DEFAULT_VISION_CLASSES;
+            window.DEFAULT_ACTIVE_SNACKS = DEFAULT_ACTIVE_SNACKS;
+            window.sanitizeCatalog = sanitizeCatalog;
+            window.resolveModelClasses = resolveModelClasses;
+            if (!window.AI_CLASS_REGISTRY || window.AI_CLASS_REGISTRY.length === 0) {
+                window.AI_CLASS_REGISTRY = DEFAULT_VISION_CLASSES.map(label => ({
+                    label: label,
+                    name: String(label).replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+                }));
+            }
+        }
+        const AI_CLASS_REGISTRY = (typeof window !== 'undefined' && window.AI_CLASS_REGISTRY) ? window.AI_CLASS_REGISTRY : [];
         const { useState, useEffect, useCallback, useMemo, useRef } = React;
 
         const supabaseClient = (typeof window !== 'undefined' && window.supabase && typeof window.supabase.createClient === 'function' && window.SUPABASE_URL)
@@ -10732,7 +10835,7 @@
                             {/* TRAY SIMULATOR SCREEN */}
                             <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 relative min-h-[220px] flex flex-col justify-between">
                                 <div className="text-[10px] font-mono text-slate-500 flex justify-between">
-                                    <span>MODEL: novalunch_yolo.pt</span>
+                                    <span>MODEL: novalunch_yolo-2.pt</span>
                                     <span className="text-amber-400">FPS: 30.2</span>
                                 </div>
 
@@ -10889,7 +10992,7 @@
                             <div>Saint Joseph College — NovaLunch SaaS Platform v2.0</div>
                             <div className="flex items-center gap-4 text-[10px]">
                                 <span>Supabase DB: <strong className="text-emerald-400">11ms</strong></span>
-                                <span>YOLO Edge: <strong className="text-amber-400">novalunch_yolo.pt</strong></span>
+                                <span>YOLO Edge: <strong className="text-amber-400">novalunch_yolo-2.pt</strong></span>
                                 <span>RFID Reader: <strong className="text-blue-400">HID Wedge Active</strong></span>
                             </div>
                         </div>
@@ -25738,6 +25841,385 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
             );
         }
 
+        function AdminVisionModelView({ menuCatalog = [], onUpdateProduct = () => {}, showToast = () => {} }) {
+            const initialClasses = typeof resolveModelClasses === 'function'
+                ? resolveModelClasses([], menuCatalog, [])
+                : (window.DEFAULT_VISION_CLASSES || []);
+
+            const [visionModelData, setVisionModelData] = useState(() => ({
+                filename: "novalunch_yolo-2.pt",
+                size: "115.4 MB",
+                class_count: initialClasses.length,
+                classes: initialClasses,
+                confidence_cutoff: 0.80,
+                status: "Active (Catalog Bound)"
+            }));
+            const [filterTab, setFilterTab] = useState('all'); // 'all' | 'ready' | 'unassigned'
+            const [linkModalOpen, setLinkModalOpen] = useState(false);
+            const [selectedClassLabel, setSelectedClassLabel] = useState('');
+            const [selectedProductId, setSelectedProductId] = useState('');
+
+            useEffect(() => {
+                let isMounted = true;
+
+                const fetchModelInfo = async () => {
+                    let liveClasses = [];
+                    let liveInfo = null;
+
+                    try {
+                        const res = await fetch("http://127.0.0.1:8085/api/kiosk/model", { signal: AbortSignal.timeout(2000) });
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (data && Array.isArray(data.classes) && data.classes.length > 0) {
+                                liveClasses = data.classes;
+                                liveInfo = data;
+                            }
+                        }
+                    } catch (err) {
+                        // Kiosk daemon is offline or timed out; safe fallback to known model classes & catalog
+                    }
+
+                    if (!isMounted) return;
+
+                    setVisionModelData(prev => {
+                        const resolved = typeof resolveModelClasses === 'function'
+                            ? resolveModelClasses(liveClasses, menuCatalog, prev.classes)
+                            : (prev.classes && prev.classes.length > 0 ? prev.classes : (window.DEFAULT_VISION_CLASSES || []));
+                        const count = resolved.length;
+
+                        if (typeof window !== 'undefined') {
+                            window.AI_CLASS_REGISTRY = resolved.map(label => ({
+                                label: label,
+                                name: String(label).replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+                            }));
+                        }
+
+                        return {
+                            ...prev,
+                            filename: liveInfo?.filename || prev.filename || "novalunch_yolo-2.pt",
+                            size: liveInfo?.size || prev.size || "115.4 MB",
+                            class_count: count,
+                            classes: resolved,
+                            confidence_cutoff: liveInfo?.confidence_cutoff ?? prev.confidence_cutoff ?? 0.80,
+                            status: liveInfo?.status || (liveClasses.length > 0 ? "Active (Live Edge)" : "Active (Catalog Bound)")
+                        };
+                    });
+                };
+
+                fetchModelInfo();
+                return () => { isMounted = false; };
+            }, [menuCatalog]);
+
+            const getMatchedProduct = (label) => {
+                if (!label) return null;
+                const clean = String(label).replace(/_/g, ' ').trim().toLowerCase();
+                return (menuCatalog || []).find(p => {
+                    if (!p || p.is_archived || p.status === 'archived') return false;
+                    const pAi = (p.ai_label || p.aiLabel || '').trim().toLowerCase();
+                    const pName = (p.name || '').trim().toLowerCase();
+                    if (pAi && (pAi === String(label).trim().toLowerCase() || pAi === clean)) return true;
+                    if (pName && (pName === clean || pName.includes(clean) || (clean && clean.includes(pName)))) return true;
+                    return false;
+                });
+            };
+
+            const classes = (visionModelData.classes && visionModelData.classes.length > 0)
+                ? visionModelData.classes
+                : (window.DEFAULT_VISION_CLASSES || []);
+            const readyClasses = classes.filter(lbl => !!getMatchedProduct(lbl));
+            const unassignedClasses = classes.filter(lbl => !getMatchedProduct(lbl));
+
+            const filteredClasses = classes.filter(lbl => {
+                const isReady = !!getMatchedProduct(lbl);
+                if (filterTab === 'ready') return isReady;
+                if (filterTab === 'unassigned') return !isReady;
+                return true;
+            });
+
+            const handleOpenAssignModal = (label) => {
+                setSelectedClassLabel(label);
+                const matched = getMatchedProduct(label);
+                setSelectedProductId(matched ? matched.id : '');
+                setLinkModalOpen(true);
+            };
+
+            const handleSaveAssign = (e) => {
+                e.preventDefault();
+                if (!selectedClassLabel || !selectedProductId) return;
+                const prod = (menuCatalog || []).find(p => p.id === selectedProductId);
+                if (prod) {
+                    onUpdateProduct({ ...prod, ai_label: selectedClassLabel, aiLabel: selectedClassLabel });
+                    if (window.CanteenDB && prod.id) {
+                        window.CanteenDB.updateProductAiLabel(prod.id, selectedClassLabel).catch(err => console.warn("AI sync error", err));
+                    }
+                    showToast(`Bound AI class "${selectedClassLabel}" to ${prod.name}`, 'success');
+                }
+                setLinkModalOpen(false);
+            };
+
+            const handleUnlink = (label) => {
+                const matched = getMatchedProduct(label);
+                if (matched) {
+                    onUpdateProduct({ ...matched, ai_label: '', aiLabel: '' });
+                    if (window.CanteenDB && matched.id) {
+                        window.CanteenDB.updateProductAiLabel(matched.id, '').catch(err => console.warn("AI sync error", err));
+                    }
+                    showToast(`Unlinked AI class "${label}" from ${matched.name}`, 'info');
+                }
+            };
+
+            return (
+                <section className="space-y-6">
+                    {/* 1. MODEL OVERVIEW HEADER CARD */}
+                    <div className="p-6 rounded-3xl space-y-5 bg-white border border-slate-200/80 shadow-2xs">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-xl bg-sky-50 text-sky-700 flex items-center justify-center font-bold">
+                                    <Icon.Eye className="w-4 h-4 text-sky-600" />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h2 className="font-outfit text-xl font-bold text-slate-900 tracking-tight">Vision Model</h2>
+                                        <span className="px-2.5 py-0.5 bg-slate-100 text-slate-700 rounded-full text-[11px] font-mono font-medium">
+                                            {visionModelData.filename}
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-slate-500">Live tray detection classes inspection and catalog binding</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 ${
+                                    visionModelData.status.includes('Active')
+                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
+                                        : 'bg-amber-50 text-amber-700 border border-amber-200/60'
+                                }`}>
+                                    <span className={`w-1.5 h-1.5 rounded-full ${
+                                        visionModelData.status.includes('Active') ? 'bg-emerald-500' : 'bg-amber-500'
+                                    }`}></span>
+                                    {visionModelData.status}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* MODEL SUMMARY METRICS */}
+                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                            <div className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200/60 space-y-1">
+                                <span className="text-[11px] uppercase font-semibold text-slate-400">Model File</span>
+                                <div className="font-mono text-sm font-semibold text-slate-900 truncate">{visionModelData.filename}</div>
+                                <div className="text-[11px] text-slate-500">{visionModelData.size}</div>
+                            </div>
+                            <div className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200/60 space-y-1">
+                                <span className="text-[11px] uppercase font-semibold text-slate-400">Recognized Classes</span>
+                                <div className="font-outfit text-xl font-semibold text-slate-900 tabular-nums">
+                                    {visionModelData.class_count || visionModelData.classes.length} Items
+                                </div>
+                                <div className="text-[11px] text-slate-500">Camera Trained</div>
+                            </div>
+                            <div className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200/60 space-y-1">
+                                <span className="text-[11px] uppercase font-semibold text-slate-400">Menu Bound</span>
+                                <div className="font-outfit text-xl font-semibold text-slate-900 tabular-nums">
+                                    {readyClasses.length} / {visionModelData.classes.length}
+                                </div>
+                                <div className="text-[11px] text-slate-500">POS Ready</div>
+                            </div>
+                            <div className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200/60 space-y-1">
+                                <span className="text-[11px] uppercase font-semibold text-slate-400">Confidence Cutoff</span>
+                                <div className="font-outfit text-xl font-semibold text-slate-900 tabular-nums">
+                                    {Math.round((visionModelData.confidence_cutoff <= 1 ? visionModelData.confidence_cutoff : visionModelData.confidence_cutoff / 100) * 100)}%
+                                </div>
+                                <div className="text-[11px] text-slate-500">Minimum Threshold</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 2. CLASSES INSIDE MODEL FILE & MENU ASSIGNMENT TABLE */}
+                    <div className="p-6 rounded-3xl space-y-5 bg-white border border-slate-200/80 shadow-2xs">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                            <div>
+                                <h3 className="font-outfit text-lg font-bold text-slate-900 tracking-tight">Class Bindings</h3>
+                                <p className="text-xs text-slate-500">YOLO class IDs linked to POS menu catalog items</p>
+                            </div>
+
+                            {/* FILTER TOGGLE BUTTONS */}
+                            <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-full border border-slate-200/80 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={() => setFilterTab('all')}
+                                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-all ${
+                                        filterTab === 'all' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                                    }`}
+                                >
+                                    All ({classes.length})
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setFilterTab('ready')}
+                                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                                        filterTab === 'ready' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                                    }`}
+                                >
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                    Ready ({readyClasses.length})
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setFilterTab('unassigned')}
+                                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-all ${
+                                        filterTab === 'unassigned' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                                    }`}
+                                >
+                                    Unassigned ({unassignedClasses.length})
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* TABLE DISPLAY */}
+                        <div className="overflow-x-auto rounded-2xl border border-slate-200/80 overflow-hidden">
+                            <table className="w-full text-left text-xs">
+                                <thead className="bg-slate-50/80 text-slate-400 font-bold uppercase tracking-wider border-b border-slate-200/80">
+                                    <tr>
+                                        <th className="py-2.5 px-4">Class ID & Label</th>
+                                        <th className="py-2.5 px-4">Status</th>
+                                        <th className="py-2.5 px-4">Assigned Item</th>
+                                        <th className="py-2.5 px-4">Category</th>
+                                        <th className="py-2.5 px-4 text-right">POS Price</th>
+                                        <th className="py-2.5 px-4 text-right">Stock</th>
+                                        <th className="py-2.5 px-4 text-center">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {filteredClasses.length === 0 ? (
+                                        <tr>
+                                            <td colSpan="7" className="p-8 text-center text-slate-400">
+                                                No classes match the selected filter.
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        filteredClasses.map((label, idx) => {
+                                            const matched = getMatchedProduct(label);
+
+                                            return (
+                                                <tr key={idx} className="border-b border-slate-100 hover:bg-slate-50/50">
+                                                    <td className="py-3 px-4 font-mono text-xs text-slate-600">
+                                                        #{idx} <span className="font-semibold text-slate-800">{label}</span>
+                                                    </td>
+                                                    <td className="py-3 px-4">
+                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                                                            matched ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                                                        }`}>
+                                                            {matched ? '• Ready' : '• Unassigned'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-3 px-4 text-sm font-medium text-slate-900">
+                                                        {matched ? matched.name : <span className="text-slate-400 italic">Unassigned</span>}
+                                                    </td>
+                                                    <td className="py-3 px-4 text-xs text-slate-500">
+                                                        {matched ? (matched.category || 'General') : '—'}
+                                                    </td>
+                                                    <td className="py-3 px-4 text-xs font-mono text-slate-700 text-right">
+                                                        {matched ? `₱${(Number(matched.price) || 0).toFixed(2)}` : '—'}
+                                                    </td>
+                                                    <td className="py-3 px-4 text-xs font-mono text-slate-700 text-right">
+                                                        {matched ? (Number(matched.stock) || 0) : '—'}
+                                                    </td>
+                                                    <td className="py-3 px-4 text-center whitespace-nowrap">
+                                                        <div className="flex items-center justify-center gap-1.5">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleOpenAssignModal(label)}
+                                                                className="px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-700 rounded-full text-xs font-semibold transition-all border border-slate-200/80 shadow-2xs inline-flex items-center gap-1 cursor-pointer active:scale-95"
+                                                            >
+                                                                <Icon.Edit className="w-3 h-3 text-slate-500" />
+                                                                <span>{matched ? "Change" : "Assign"}</span>
+                                                            </button>
+                                                            {matched && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleUnlink(label)}
+                                                                    className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-rose-600 rounded-full hover:bg-rose-50 transition-colors cursor-pointer"
+                                                                    title="Unlink product"
+                                                                >
+                                                                    <Icon.Trash2 className="w-3 h-3" />
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {/* ASSIGN CLASS MODAL */}
+                    {linkModalOpen && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+                            <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl border border-slate-100">
+                                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                                    <div className="flex items-center gap-2">
+                                        <Icon.Eye className="w-5 h-5 text-[#7B1E22]" />
+                                        <h3 className="font-outfit text-base font-bold text-slate-900">Assign Model Class</h3>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setLinkModalOpen(false)}
+                                        className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                                    >
+                                        <Icon.X className="w-4 h-4" />
+                                    </button>
+                                </div>
+                                <form onSubmit={handleSaveAssign} className="space-y-4">
+                                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/70 text-xs text-slate-700">
+                                        <div className="font-semibold text-slate-800">
+                                            YOLO Class: <span className="font-mono text-[#7B1E22] bg-white px-1.5 py-0.5 rounded border border-slate-200">{selectedClassLabel}</span>
+                                        </div>
+                                        <p className="mt-1 text-[11px] text-slate-500">Select which menu product will be added to the student's tray when the camera identifies this item.</p>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-700 mb-1">Canteen Menu Item</label>
+                                        <select
+                                            value={selectedProductId}
+                                            onChange={(e) => setSelectedProductId(e.target.value)}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-medium text-slate-900 focus:bg-white focus:ring-2 focus:ring-[#7B1E22]/15 focus:border-[#7B1E22] cursor-pointer"
+                                            required
+                                        >
+                                            <option value="">-- Choose Menu Item --</option>
+                                            {(menuCatalog || []).filter(p => !p.is_archived && p.status !== 'archived').map(p => (
+                                                <option key={p.id} value={p.id}>
+                                                    {p.name} — ₱{(Number(p.price) || 0).toFixed(2)} ({p.stock ?? 0} in stock)
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="flex gap-2 pt-2 border-t border-slate-100 justify-end">
+                                        <button
+                                            type="button"
+                                            onClick={() => setLinkModalOpen(false)}
+                                            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-all cursor-pointer"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            type="submit"
+                                            className="px-4 py-2 bg-[#7B1E22] hover:bg-[#5C1016] text-white rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-2xs"
+                                        >
+                                            Save Binding
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+                </section>
+            );
+        }
+
+        if (typeof window !== 'undefined') {
+            window.AdminVisionModelView = AdminVisionModelView;
+        }
+
         function AdminView({ gcashQueue, menuCatalog, registeredUsers, setRegisteredUsers = () => { }, recentOrders = [], setRecentOrders = () => { }, refundsList = [], setRefundsList = () => { }, inventoryBatches = [], setInventoryBatches = () => { }, preorders = [], onUnarchivePreorder, onApproveTopup, onRejectTopup, onAddProduct, onUpdateProduct, onArchiveProduct, onAddNewStudent, onBatchAddStudents, onUpdateStudent, onArchiveStudent, onSettleDebt = null, activeTab = 'command', setActiveTab, onSignOut, onSelectRoleQuick, isCloudConnected, onRefreshCloud, notifications = [], onMarkNotifRead, onMarkAllNotifRead, onDeleteNotif, onClearReadNotifs, onActionClick, onRespondLinkRequest, onOpenCommandPalette, onOpenMobileSidebar, onExportMenuCSV, onExportStudentsCSV, onUnarchiveStudent, onUnarchiveProduct, onRestoreOrder, onRestoreBatch, onRestoreTopup, onPurgeItem, rawIngredients = [], setRawIngredients, setMenuCatalog = () => { }, kdsOrders = [], setKdsOrders, showToast = () => { }, isLoading = false, isSyncing = false }) {
             // ── LIVE AUDIT LOG STATE & DISPATCHER ──────────────────────────────────
             const [auditLogs, setAuditLogs] = useState(() => {
@@ -25905,11 +26387,70 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
             const [studentSearchQuery, setStudentSearchQuery] = useState('');
             const [productSearchQuery, setProductSearchQuery] = useState('');
 
+            // ── AI Vision Model Metadata & State Configuration (novalunch_yolo-2.pt) ──
+            const DEFAULT_VISION_MODEL = {
+                name: "novalunch_yolo-2.pt",
+                version: "YOLOv8-OBB Custom v2",
+                size: "115.4 MB",
+                recognizedClassesCount: (window.DEFAULT_VISION_CLASSES ? window.DEFAULT_VISION_CLASSES.length : 17),
+                confidenceCutoff: "0.80",    // 80% practical threshold
+                status: "Active"
+            };
+
+            // Auto-bind detected model classes to products in menuCatalog
+            const syncClassesWithCatalog = (catalog = []) => {
+                const trainedLabels = typeof resolveModelClasses === 'function'
+                    ? resolveModelClasses((window.AI_CLASS_REGISTRY && window.AI_CLASS_REGISTRY.length > 0) ? window.AI_CLASS_REGISTRY.map(c => c.label) : [], catalog, [])
+                    : (window.DEFAULT_VISION_CLASSES || []);
+
+                return trainedLabels.map((label, idx) => {
+                    const cleanLabel = label.replace(/_/g, ' ').toLowerCase();
+                    const matchedProduct = (catalog || []).find(p => {
+                        if (!p || p.is_archived || p.status === 'archived') return false;
+                        const pAi = (p.ai_label || p.aiLabel || '').toLowerCase();
+                        const pName = (p.name || '').toLowerCase();
+                        if (pAi === label.toLowerCase() || pAi === cleanLabel) return true;
+                        if (pName === cleanLabel || pName.includes(cleanLabel) || cleanLabel.includes(pName)) return true;
+                        return false;
+                    });
+
+                    return {
+                        id: idx,
+                        classId: idx,
+                        label: label,
+                        aiLabel: label,
+                        name: matchedProduct ? matchedProduct.name : label.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+                        status: matchedProduct ? "Ready" : "Unassigned",
+                        assignedProduct: matchedProduct || null,
+                        matchedProduct: matchedProduct || null,
+                        assignedItemName: matchedProduct ? matchedProduct.name : "Unassigned",
+                        category: matchedProduct ? (matchedProduct.category || "Snacks & Bakery") : "Snacks & Bakery",
+                        defaultCategory: matchedProduct ? (matchedProduct.category || "Snacks & Bakery") : "Snacks & Bakery",
+                        posPrice: matchedProduct ? Number(matchedProduct.price || 0) : null,
+                        stock: matchedProduct ? Number(matchedProduct.stock ?? 0) : null,
+                        modelFile: "novalunch_yolo-2.pt"
+                    };
+                });
+            };
+
+            const [visionModel, setVisionModel] = useState(() => {
+                try {
+                    const cached = localStorage.getItem('novalunch_vision_model');
+                    if (cached) {
+                        const parsed = JSON.parse(cached);
+                        if (parsed && parsed.name && parsed.name.includes('novalunch_yolo-2.pt')) {
+                            return parsed;
+                        }
+                    }
+                } catch (_) {}
+                return DEFAULT_VISION_MODEL;
+            });
+
             // AI Vision Model & Governance Settings States
             const [aiFilterTab, setAiFilterTab] = useState('current_detectable'); // 'current_detectable' | 'all' | 'unmapped'
             const [aiConfidenceCutoff, setAiConfidenceCutoff] = useState(80);
             const [aiReviewConfidenceCutoff, setAiReviewConfidenceCutoff] = useState(50);
-            const [selectedAiModel, setSelectedAiModel] = useState('novalunch_yolo.pt');
+            const [selectedAiModel, setSelectedAiModel] = useState('novalunch_yolo-2.pt');
             const [linkAiModalOpen, setLinkAiModalOpen] = useState(false);
             const [linkAiClass, setLinkAiClass] = useState(null);
             const [linkAiSelectedProdId, setLinkAiSelectedProdId] = useState('');
@@ -25933,28 +26474,76 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
 
             // Hardware Topology & Preorder Slot State
             const [hardwareMappings, setHardwareMappings] = useState([]);
-
             const [preorderSlots, setPreorderSlots] = useState([]);
 
-            // Trained Classes inside active PyTorch .pt Model Weights File (novalunch_yolo.pt)
-            const YOLO_PT_CLASSES = [
-                { classId: 0, label: 'Buttercream_Biscuits', name: 'Buttercream Biscuits', defaultCategory: 'Snacks & Bakery', source: 'novalunch_yolo.pt (Class 0)' },
-                { classId: 1, label: 'Jack_And_Jill_Magic_Chips', name: 'Jack & Jill Magic Chips', defaultCategory: 'Snacks & Bakery', source: 'novalunch_yolo.pt (Class 1)' }
-            ];
-            const AI_CLASS_REGISTRY = YOLO_PT_CLASSES;
-            window.AI_CLASS_REGISTRY = AI_CLASS_REGISTRY;
+            const [ptModelClasses, setPtModelClasses] = useState(() => {
+                try {
+                    const cached = localStorage.getItem('novalunch_vision_model_bindings');
+                    if (cached) {
+                        const parsed = JSON.parse(cached);
+                        if (Array.isArray(parsed) && parsed.length > 0) {
+                            return parsed;
+                        }
+                    }
+                } catch (_) {}
+                return syncClassesWithCatalog(menuCatalog);
+            });
 
-            const [ptModelClasses, setPtModelClasses] = useState(YOLO_PT_CLASSES);
+            // Purge Stale LocalStorage and fetch live model info from Kiosk daemon
+            useEffect(() => {
+                fetch('http://127.0.0.1:8085/api/kiosk/model')
+                    .then(r => r.json())
+                    .then(d => {
+                        if (d && (d.filename || (d.model_info && d.model_info.filename))) {
+                            const filename = d.filename || d.model_info.filename;
+                            const count = d.class_count || (d.classes && d.classes.length > 0 ? d.classes.length : (d.model_info && d.model_info.classes_count ? d.model_info.classes_count : (window.DEFAULT_VISION_CLASSES ? window.DEFAULT_VISION_CLASSES.length : 17)));
+                            const conf = d.confidence_cutoff || (d.model_info ? d.model_info.confidence_threshold : 0.80);
+                            setVisionModel(prev => ({
+                                ...prev,
+                                name: filename,
+                                recognizedClassesCount: count,
+                                confidenceCutoff: String(conf),
+                                status: d.status || (d.model_info ? d.model_info.status : "Active")
+                            }));
+                        }
+                    })
+                    .catch(() => {
+                        fetch('http://127.0.0.1:8085/api/kiosk/status')
+                            .then(r => r.json())
+                            .then(d => {
+                                if (d && d.model_info) {
+                                    setVisionModel(prev => ({
+                                        ...prev,
+                                        name: d.model_info.filename || prev.name,
+                                        recognizedClassesCount: d.model_info.classes_count || prev.recognizedClassesCount,
+                                        confidenceCutoff: String(d.model_info.confidence_threshold || prev.confidenceCutoff),
+                                        status: d.model_info.status || prev.status
+                                    }));
+                                }
+                            })
+                            .catch(() => {});
+                    });
+            }, []);
+
+            // Keep ptModelClasses in sync with menuCatalog changes
+            useEffect(() => {
+                const synced = syncClassesWithCatalog(menuCatalog);
+                setPtModelClasses(synced);
+                try {
+                    localStorage.setItem('novalunch_vision_model_bindings', JSON.stringify(synced));
+                    localStorage.setItem('novalunch_vision_model', JSON.stringify(visionModel));
+                } catch (_) {}
+            }, [menuCatalog, visionModel]);
 
             // Helper to find auto-match candidate product from menuCatalog
             const getAutoMatchCandidate = (clsLabel) => {
-                const clean = clsLabel.toLowerCase().replace(/_/g, ' ').replace(/-/g, ' ');
+                const clean = (clsLabel || '').toLowerCase().replace(/_/g, ' ').replace(/-/g, ' ');
                 const words = clean.split(/\s+/).filter(w => w.length > 2);
                 return (menuCatalog || []).find(p => {
-                    if (p.is_archived || p.status === 'archived' || p.available === false || p.is_available === false) return false;
-                    const prodName = p.name.toLowerCase();
+                    if (!p || p.is_archived || p.status === 'archived' || p.available === false || p.is_available === false) return false;
+                    const prodName = (p.name || '').toLowerCase();
                     const prodAi = (p.aiLabel || p.ai_label || '').toLowerCase();
-                    if (prodAi === clsLabel.toLowerCase()) return true;
+                    if (prodAi && (prodAi === (clsLabel || '').toLowerCase() || prodAi === clean)) return true;
                     if (prodName.includes(clean) || clean.includes(prodName)) return true;
                     return words.some(w => prodName.includes(w));
                 }) || null;
@@ -25963,28 +26552,29 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
             const handleAutoAssignAll = () => {
                 let boundCount = 0;
                 ptModelClasses.forEach(cls => {
-                    const isAlreadyMapped = menuCatalog.some(p => !p.is_archived && p.status !== 'archived' && (p.aiLabel || p.ai_label || '').toLowerCase() === cls.label.toLowerCase());
+                    const clsLabel = cls.label || cls.aiLabel;
+                    const isAlreadyMapped = menuCatalog.some(p => !p.is_archived && p.status !== 'archived' && (p.aiLabel || p.ai_label || '').toLowerCase() === clsLabel.toLowerCase());
                     if (!isAlreadyMapped) {
-                        const candidate = getAutoMatchCandidate(cls.label);
+                        const candidate = getAutoMatchCandidate(clsLabel);
                         if (candidate) {
-                            onUpdateProduct({ ...candidate, aiLabel: cls.label, ai_label: cls.label });
+                            onUpdateProduct({ ...candidate, aiLabel: clsLabel, ai_label: clsLabel });
                             if (window.CanteenDB && candidate.id) {
-                                window.CanteenDB.updateProductAiLabel(candidate.id, cls.label).catch(err => console.warn("AI sync error", err));
+                                window.CanteenDB.updateProductAiLabel(candidate.id, clsLabel).catch(err => console.warn("AI sync error", err));
                             }
-                            logAuditAction(`Auto-Assigned AI class "${cls.label}" to menu item "${candidate.name}"`, 'Admin System', 'ai_vision');
+                            logAuditAction(`Auto-Assigned AI class "${clsLabel}" to menu item "${candidate.name}"`, 'Admin System', 'ai_vision');
                             boundCount++;
                         }
                     }
                 });
                 if (boundCount > 0) {
-                    showToast(`Auto-assigned ${boundCount} .pt class(es) to matching menu items!`, "success");
+                    showToast(`Auto-assigned ${boundCount} model class(es) to matching menu items!`, "success");
                 } else {
-                    showToast("All .pt classes are already assigned or no matching unassigned menu items found.", "info");
+                    showToast("All model classes are already assigned or no matching unassigned menu items found.", "info");
                 }
             };
 
             const handleAutoAssignSingle = (clsLabel) => {
-                const existing = (menuCatalog || []).find(p => !p.is_archived && p.status !== 'archived' && (p.aiLabel || p.ai_label || '').toLowerCase() === clsLabel.toLowerCase());
+                const existing = (menuCatalog || []).find(p => !p.is_archived && p.status !== 'archived' && (p.aiLabel || p.ai_label || '').toLowerCase() === (clsLabel || '').toLowerCase());
                 if (existing) {
                     showToast(`AI Vision Class '${clsLabel}' is already mapped to ${existing.name}. Please unassign it first.`, "warning");
                     return;
@@ -26003,7 +26593,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
             };
 
             const handleUnlinkClass = (clsLabel) => {
-                const linkedProds = (menuCatalog || []).filter(p => (p.aiLabel || p.ai_label || '').toLowerCase() === clsLabel.toLowerCase());
+                const linkedProds = (menuCatalog || []).filter(p => (p.aiLabel || p.ai_label || '').toLowerCase() === (clsLabel || '').toLowerCase());
                 linkedProds.forEach(prod => {
                     onUpdateProduct({ ...prod, aiLabel: '', ai_label: null });
                     if (window.CanteenDB && prod.id) {
@@ -29044,330 +29634,13 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                         })()}
 
                         {/* TAB: AI VISION MODEL & MENU BINDING (Classes inside .pt file) */}
-                        {activeTab === 'ai_vision' && (() => {
-                            // Map classes strictly contained inside the PyTorch .pt model file
-                            const ptClassList = ptModelClasses.map(cls => {
-                                const matchedProduct = (menuCatalog || []).find(p =>
-                                    (p.aiLabel && p.aiLabel.toLowerCase() === cls.label.toLowerCase()) ||
-                                    (p.aiLabel && p.aiLabel.toLowerCase() === cls.name.toLowerCase())
-                                );
-                                const autoCandidate = !matchedProduct ? getAutoMatchCandidate(cls.label) : null;
-                                const isMapped = !!matchedProduct;
-                                const isAvailable = isMapped && matchedProduct.available !== false && matchedProduct.stock > 0;
-
-                                return {
-                                    classId: cls.classId,
-                                    aiLabel: cls.label,
-                                    name: cls.name,
-                                    modelFile: cls.modelFile || 'novalunch_yolo.pt',
-                                    defaultCategory: cls.defaultCategory,
-                                    matchedProduct: matchedProduct || null,
-                                    autoCandidate: autoCandidate,
-                                    status: !isMapped ? 'unmapped' : (isAvailable ? 'detectable' : 'out_of_stock')
-                                };
-                            });
-
-                            const filteredPtList = ptClassList.filter(item => {
-                                if (aiFilterTab === 'current_detectable') return item.status === 'detectable';
-                                if (aiFilterTab === 'unmapped') return item.status === 'unmapped';
-                                return true; // 'all'
-                            });
-
-                            const totalClassesCount = ptModelClasses.length;
-                            const activeBoundCount = ptClassList.filter(i => i.status === 'detectable').length;
-                            const unassignedCount = ptClassList.filter(i => i.status === 'unmapped').length;
-
-                            return (
-                                <section className="space-y-6">
-                                    {/* 1. MODEL OVERVIEW HEADER CARD */}
-                                    <div className="p-6 rounded-3xl space-y-5 bg-white border border-slate-200/80 shadow-2xs">
-                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-9 h-9 rounded-xl bg-sky-50 text-sky-700 flex items-center justify-center font-bold">
-                                                    <Icon.Eye className="w-4 h-4 text-sky-600" />
-                                                </div>
-                                                <div>
-                                                    <div className="flex items-center gap-2">
-                                                        <h2 className="font-outfit text-xl font-bold text-slate-900 tracking-tight">Vision Model</h2>
-                                                        <span className="px-2.5 py-0.5 bg-slate-100 text-slate-700 rounded-full text-[11px] font-mono font-medium">
-                                                            novalunch_yolo.pt
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={handleAutoAssignAll}
-                                                    className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95 shrink-0"
-                                                >
-                                                    <Icon.Sparkles className="w-3.5 h-3.5" />
-                                                    <span>Auto-Assign</span>
-                                                </button>
-                                                <span className="px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200/60 rounded-full text-xs font-semibold flex items-center gap-1.5">
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                                    Active
-                                                </span>
-                                            </div>
-                                        </div>
-
-                                        {/* MODEL SUMMARY METRICS */}
-                                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                                            <div className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200/60 space-y-1">
-                                                <span className="text-[11px] uppercase font-semibold text-slate-400">Model File</span>
-                                                <div className="font-mono text-sm font-semibold text-slate-900 truncate">novalunch_yolo.pt</div>
-                                                <div className="text-[11px] text-slate-500">YOLO11-OBB • 5.4 MB</div>
-                                            </div>
-                                            <div className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200/60 space-y-1">
-                                                <span className="text-[11px] uppercase font-semibold text-slate-400">Recognized Classes</span>
-                                                <div className="font-outfit text-xl font-semibold text-slate-900 tabular-nums">{totalClassesCount} Items</div>
-                                                <div className="text-[11px] text-slate-500">Camera Trained</div>
-                                            </div>
-                                            <div className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200/60 space-y-1">
-                                                <span className="text-[11px] uppercase font-semibold text-slate-400">Menu Bound</span>
-                                                <div className="font-outfit text-xl font-semibold text-slate-900 tabular-nums">{activeBoundCount} / {totalClassesCount}</div>
-                                                <div className="text-[11px] text-slate-500">POS Ready</div>
-                                            </div>
-                                            <div className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200/60 space-y-1">
-                                                <span className="text-[11px] uppercase font-semibold text-slate-400">Confidence Cutoff</span>
-                                                <div className="font-outfit text-xl font-semibold text-slate-900 tabular-nums">{aiConfidenceCutoff}%</div>
-                                                <div className="text-[11px] text-slate-500">Minimum Threshold</div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* 2. CLASSES INSIDE .PT FILE & MENU ASSIGNMENT TABLE */}
-                                    <div className="p-6 rounded-3xl space-y-5 bg-white border border-slate-200/80 shadow-2xs">
-                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
-                                            <div>
-                                                <h3 className="font-outfit text-lg font-bold text-slate-900 tracking-tight">Class Bindings</h3>
-                                            </div>
-
-                                            {/* FILTER TOGGLE BUTTONS */}
-                                            <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-full border border-slate-200/80 shrink-0">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setAiFilterTab('all')}
-                                                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-all ${aiFilterTab === 'all' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'}`}
-                                                >
-                                                    All ({totalClassesCount})
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setAiFilterTab('current_detectable')}
-                                                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 ${aiFilterTab === 'current_detectable' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'}`}
-                                                >
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                                    Ready ({activeBoundCount})
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setAiFilterTab('unmapped')}
-                                                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-all ${aiFilterTab === 'unmapped' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'}`}
-                                                >
-                                                    Unassigned ({unassignedCount})
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        {/* TABLE DISPLAY */}
-                                        <div className="overflow-x-auto rounded-2xl border border-slate-200/80 overflow-hidden">
-                                            <table className="w-full text-left text-xs">
-                                                <thead className="bg-slate-50/80 text-slate-400 font-bold uppercase tracking-wider border-b border-slate-200/80">
-                                                    <tr>
-                                                        <th className="py-2.5 px-3">Class ID & Label</th>
-                                                        <th className="py-2.5 px-3">Status</th>
-                                                        <th className="py-2.5 px-3">Assigned Item</th>
-                                                        <th className="py-2.5 px-3">Category</th>
-                                                        <th className="py-2.5 px-3 text-right">POS Price</th>
-                                                        <th className="py-2.5 px-3 text-right">Stock</th>
-                                                        <th className="py-2.5 px-3 text-center">Actions</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-slate-100">
-                                                    {filteredPtList.length === 0 ? (
-                                                        <tr>
-                                                            <td colSpan="7" className="p-8 text-center text-slate-400">
-                                                                No classes match the selected filter.
-                                                            </td>
-                                                        </tr>
-                                                    ) : (
-                                                        filteredPtList.map(item => {
-                                                            const p = item.matchedProduct;
-                                                            return (
-                                                                <tr key={item.aiLabel} className="hover:bg-slate-50/70 transition-colors">
-                                                                    {/* AI CLASS KEY */}
-                                                                    <td className="py-2.5 px-3 font-mono text-slate-900 font-medium">
-                                                                        <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md font-mono text-[11px] border border-slate-200/60">
-                                                                            #{item.classId} {item.aiLabel}
-                                                                        </span>
-                                                                    </td>
-
-                                                                    {/* STATUS BADGE */}
-                                                                    <td className="py-2.5 px-3">
-                                                                        {item.status === 'detectable' && (
-                                                                            <StatusBadge type="success" text="Ready" />
-                                                                        )}
-                                                                        {item.status === 'out_of_stock' && (
-                                                                            <StatusBadge type="warning" text="0 Stock" />
-                                                                        )}
-                                                                        {item.status === 'unmapped' && (
-                                                                            <StatusBadge type="neutral" text="Unassigned" />
-                                                                        )}
-                                                                    </td>
-
-                                                                    {/* ASSIGNED PRODUCT OR AUTO-MATCH SUGGESTION */}
-                                                                    <td className="py-2.5 px-3 font-semibold text-slate-900">
-                                                                        {p ? (
-                                                                            <div className="flex items-center gap-2">
-                                                                                {p.img && <img src={p.img} alt={p.name} onError={(e) => { e.target.src = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80"; }} className="w-7 h-7 rounded-lg object-cover border border-slate-200/80" />}
-                                                                                <span className="truncate max-w-[180px]">{p.name}</span>
-                                                                            </div>
-                                                                        ) : (
-                                                                            item.autoCandidate ? (
-                                                                                <button
-                                                                                    type="button"
-                                                                                    onClick={() => handleAutoAssignSingle(item.aiLabel)}
-                                                                                    className="px-2.5 py-1 bg-amber-50/80 hover:bg-amber-100 text-amber-900 border border-amber-200/80 rounded-full text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer active:scale-95"
-                                                                                    title="Click to assign suggested match"
-                                                                                >
-                                                                                    <Icon.Sparkles className="w-3 h-3 text-amber-600" />
-                                                                                    <span>Auto-match: {item.autoCandidate.name} (₱{(Number(item?.autoCandidate?.price) || 0).toFixed(2)})</span>
-                                                                                </button>
-                                                                            ) : (
-                                                                                <span className="text-slate-400">Unassigned</span>
-                                                                            )
-                                                                        )}
-                                                                    </td>
-
-                                                                    {/* CATEGORY */}
-                                                                    <td className="py-2.5 px-3 text-slate-500">
-                                                                        {p?.category || item.defaultCategory}
-                                                                    </td>
-
-                                                                    {/* POS PRICE */}
-                                                                    <td className="py-2.5 px-3 text-right font-outfit font-semibold text-slate-900 tabular-nums">
-                                                                        {p ? `₱${(Number(p?.price) || 0).toFixed(2)}` : '—'}
-                                                                    </td>
-
-                                                                    {/* INVENTORY STOCK */}
-                                                                    <td className="py-2.5 px-3 text-right font-medium tabular-nums">
-                                                                        {p ? (
-                                                                            <span className={p.stock > 0 ? "text-slate-700" : "text-rose-600"}>
-                                                                                {p.stock} units
-                                                                            </span>
-                                                                        ) : (
-                                                                            <span className="text-slate-400">—</span>
-                                                                        )}
-                                                                    </td>
-
-                                                                    {/* ACTIONS */}
-                                                                    <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                                                                        <div className="flex items-center justify-center gap-1.5">
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={() => {
-                                                                                    setLinkAiClass(item);
-                                                                                    setLinkAiSelectedProdId(p ? p.id : (item.autoCandidate ? item.autoCandidate.id : ''));
-                                                                                    setLinkAiModalOpen(true);
-                                                                                }}
-                                                                                className="px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-700 rounded-full text-xs font-semibold transition-all border border-slate-200/80 shadow-2xs inline-flex items-center gap-1 cursor-pointer active:scale-95"
-                                                                            >
-                                                                                <Icon.Edit className="w-3 h-3 text-slate-500" />
-                                                                                <span>{p ? "Change" : "Assign"}</span>
-                                                                            </button>
-                                                                            {p && (
-                                                                                <button
-                                                                                    type="button"
-                                                                                    onClick={() => handleUnlinkClass(item.aiLabel)}
-                                                                                    className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-rose-600 rounded-full hover:bg-rose-50 transition-colors cursor-pointer"
-                                                                                    title="Unlink product"
-                                                                                >
-                                                                                    <Icon.Trash2 className="w-3 h-3" />
-                                                                                </button>
-                                                                            )}
-                                                                        </div>
-                                                                    </td>
-                                                                </tr>
-                                                            );
-                                                        })
-                                                    )}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-
-                                    {/* MODAL: ASSIGN AI CLASS LABEL TO MENU PRODUCT */}
-                                    <CustomModal
-                                        isOpen={linkAiModalOpen}
-                                        onClose={() => setLinkAiModalOpen(false)}
-                                        title="Assign Model Class"
-                                        subtitle=""
-                                        icon={Icon.Eye}
-                                        size="md"
-                                    >
-                                        <form onSubmit={(e) => {
-                                            e.preventDefault();
-                                            if (!linkAiClass) return;
-                                            const prod = (menuCatalog || []).find(p => p.id === linkAiSelectedProdId);
-                                            if (prod) {
-                                                const cleanClass = linkAiClass.aiLabel;
-                                                const duplicateAi = (menuCatalog || []).find(p =>
-                                                    p.id !== prod.id &&
-                                                    !p.is_archived &&
-                                                    p.status !== 'archived' &&
-                                                    p.available !== false &&
-                                                    p.is_available !== false &&
-                                                    (p.aiLabel || p.ai_label || '').toLowerCase() === cleanClass.toLowerCase()
-                                                );
-                                                if (duplicateAi) {
-                                                    showToast(`AI Vision Class '${cleanClass}' is already mapped to ${duplicateAi.name}. Please unassign it first.`, "warning");
-                                                    return;
-                                                }
-                                                onUpdateProduct({ ...prod, aiLabel: cleanClass, ai_label: cleanClass });
-                                                if (window.CanteenDB && prod.id) {
-                                                    window.CanteenDB.updateProductAiLabel(prod.id, cleanClass).catch(err => console.warn("AI label cloud sync error", err));
-                                                }
-                                                logAuditAction(`Manually bound AI class "${cleanClass}" to menu item "${prod.name}" (₱${(Number(prod?.price) || 0).toFixed(2)})`, 'Admin System', 'ai_vision');
-                                                showToast(`Successfully bound AI class "${cleanClass}" to menu item "${prod.name}" (₱${(Number(prod?.price) || 0).toFixed(2)})!`, "success");
-                                            }
-                                            setLinkAiModalOpen(false);
-                                        }} className="space-y-4">
-                                            <div className="p-3 bg-brand-50 rounded-xl border border-brand-100 text-xs text-brand-900 space-y-1">
-                                                <div className="font-bold">PyTorch Class: <span className="font-mono text-brand-700 bg-white px-1.5 py-0.5 rounded border border-brand-200">{linkAiClass?.aiLabel}</span></div>
-                                                <p className="text-[11px] text-brand-800">When the kiosk overhead camera detects this object with $\ge {aiConfidenceCutoff}\%$ confidence, the system will add this menu item to the student's tray with its exact POS price.</p>
-                                            </div>
-
-                                            <div>
-                                                <label className="block text-xs font-bold text-slate-800 mb-1">Select Canteen Menu Item</label>
-                                                <select
-                                                    value={linkAiSelectedProdId}
-                                                    onChange={(e) => setLinkAiSelectedProdId(e.target.value)}
-                                                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-brand-700"
-                                                    required
-                                                >
-                                                    <option value="">-- Choose Menu Item --</option>
-                                                    {(menuCatalog || []).map(p => (
-                                                        <option key={p.id} value={p.id}>
-                                                            {p.name} — ₱{(Number(p?.price) || 0).toFixed(2)} ({p.stock} in stock) [{p.category}]
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            </div>
-
-                                            <div className="flex gap-2 pt-3 border-t border-slate-100">
-                                                <ActionButton variant="secondary" onClick={() => setLinkAiModalOpen(false)} className="w-1/3 py-2">
-                                                    Cancel
-                                                </ActionButton>
-                                                <ActionButton variant="primary" type="submit" className="w-2/3 py-2 font-bold">
-                                                    Save Assignment
-                                                </ActionButton>
-                                            </div>
-                                        </form>
-                                    </CustomModal>
-                                </section>
-                            );
-                        })()}
+                        {activeTab === 'ai_vision' && (
+                            <AdminVisionModelView
+                                menuCatalog={menuCatalog}
+                                onUpdateProduct={onUpdateProduct}
+                                showToast={showToast}
+                            />
+                        )}
 
                         {activeTab === 'system_governance' && (() => {
                             return (
@@ -30892,12 +31165,12 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                             className="w-full bg-white hover:bg-slate-50/50 focus:bg-white border border-slate-200/80 focus:border-[#7B1E22] rounded-xl pl-3.5 pr-8 py-2 text-xs font-semibold text-slate-900 appearance-none transition-all outline-hidden focus:ring-2 focus:ring-[#7B1E22]/15 shadow-2xs cursor-pointer"
                                         >
                                             <option value="">None (Manual / Barcode Only)</option>
-                                            {AI_CLASS_REGISTRY.map(cls => (
+                                            {(window.AI_CLASS_REGISTRY || []).map(cls => (
                                                 <option key={cls.label} value={cls.label}>
                                                     {cls.name} ({cls.label})
                                                 </option>
                                             ))}
-                                            {editProdAiLabel && !AI_CLASS_REGISTRY.some(cls => cls.label === editProdAiLabel) && (
+                                            {editProdAiLabel && !(window.AI_CLASS_REGISTRY || []).some(cls => cls.label === editProdAiLabel) && (
                                                 <option value={editProdAiLabel}>
                                                     {editProdAiLabel}
                                                 </option>
@@ -31917,7 +32190,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                         className="w-full bg-slate-50/70 border border-slate-200/80 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 font-medium focus:bg-white focus:ring-2 focus:ring-[#7B1E22]/15 focus:border-[#7B1E22]/40 transition-all outline-none appearance-none cursor-pointer pr-9"
                                     >
                                         <option value="">None (Manual / Barcode Only)</option>
-                                        {AI_CLASS_REGISTRY.map(cls => (
+                                        {(window.AI_CLASS_REGISTRY || []).map(cls => (
                                             <option key={cls.label} value={cls.label}>
                                                 {cls.name} ({cls.label})
                                             </option>
@@ -32866,33 +33139,11 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
 
             // ── Entity States with Multi-Tier Caching (Memory + LocalStorage + SWR) ──
             const [menuCatalog, setMenuCatalog] = useState(() => {
-                const sanitizeCatalog = (list) => {
-                    if (!list || !Array.isArray(list)) return [];
-                    return list
-                        .filter(p => p && p.name !== 'ugfiuc')
-                        .map(p => {
-                            const validAiLabels = ['Buttercream_Biscuits', 'Jack_And_Jill_Magic_Chips'];
-                            let cleanAi = (p.aiLabel || p.ai_label || null);
-                            if (cleanAi && !validAiLabels.includes(cleanAi)) {
-                                cleanAi = null;
-                            }
-                            if (p.name === 'Buttercream Biscuits') {
-                                return { ...p, ai_label: 'Buttercream_Biscuits', aiLabel: 'Buttercream_Biscuits', category: 'Snacks & Bakery', price: 30.00 };
-                            }
-                            if (p.name === "Jack 'n Jill Magic Chips" || p.name === 'Jack & Jill Magic Chips') {
-                                return { ...p, ai_label: 'Jack_And_Jill_Magic_Chips', aiLabel: 'Jack_And_Jill_Magic_Chips', category: 'Snacks & Bakery', price: 25.00 };
-                            }
-                            if (p.name === 'Buttercream Crackers') {
-                                return { ...p, ai_label: null, aiLabel: null, category: 'Snacks & Bakery', price: 35.00 };
-                            }
-                            return { ...p, ai_label: cleanAi, aiLabel: cleanAi };
-                        });
-                };
                 const cached = CanteenCache.getData('products_catalog');
                 if (cached && Array.isArray(cached) && cached.length > 0) return sanitizeCatalog(cached);
                 const local = db?.loadLocal('novalunch_products_catalog', null);
                 if (local && Array.isArray(local) && local.length > 0) return sanitizeCatalog(local);
-                return [];
+                return sanitizeCatalog(DEFAULT_ACTIVE_SNACKS);
             });
             const [registeredUsers, setRegisteredUsers] = useState(() => {
                 const memCached = CanteenCache.getData('registered_users');
@@ -33500,10 +33751,18 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                     allergens: Array.isArray(p.allergens) ? p.allergens : [],
                                     img: p.img || p.image_url || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80"
                                 }));
-                                setMenuCatalog(() => {
-                                    CanteenCache.set('products_catalog', cloudProds);
-                                    if (db && db.saveLocal) db.saveLocal('novalunch_products_catalog', cloudProds);
-                                    return cloudProds;
+                                const sanitizedCloudProds = sanitizeCatalog(cloudProds);
+                                setMenuCatalog(prev => {
+                                    const merged = sanitizedCloudProds.map(p => {
+                                        const localMatch = (prev || []).find(lp => lp.id === p.id || (lp.name && p.name && lp.name.toLowerCase() === p.name.toLowerCase()));
+                                        if (localMatch && (localMatch.ai_label || localMatch.aiLabel) && !p.ai_label) {
+                                            return { ...p, ai_label: localMatch.ai_label || localMatch.aiLabel, aiLabel: localMatch.ai_label || localMatch.aiLabel };
+                                        }
+                                        return p;
+                                    });
+                                    CanteenCache.set('products_catalog', merged);
+                                    if (db && db.saveLocal) db.saveLocal('novalunch_products_catalog', merged);
+                                    return merged;
                                 });
                                 connected = true;
                             }

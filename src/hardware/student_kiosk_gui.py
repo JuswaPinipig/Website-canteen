@@ -449,8 +449,17 @@ class DatabaseManager:
             count = c.fetchone()[0]
             if count == 0:
                 default_products = [
-                    ("b1010101-1010-1010-1010-101010101010", "Buttercream Crackers", 35.00, "SNACKS & BAKERY", "480000000010", 1, 0, 50, None),
-                    ("b1111111-1111-1111-1111-111111111111", "Jack & Jill Magic Chips", 25.00, "SNACKS & BAKERY", "480000000011", 1, 0, 45, "Jack_And_Jill_Magic_Chips"),
+                    ("1c4cdeb9-a79c-41da-8c51-20de57e83263", "Hansel", 19.99, "SNACKS & BAKERY", "480000000021", 1, 0, 50, "hansel"),
+                    ("bc0a3967-29a9-4f59-abd7-ec4ec27bf7be", "Loaded", 19.99, "SNACKS & BAKERY", "480000000022", 1, 0, 45, "loaded"),
+                    ("350f2891-c29c-4523-ba49-bf7a52c39159", "Fita", 15.99, "SNACKS & BAKERY", "480000000023", 1, 0, 60, "fita"),
+                    ("7b423713-16c8-4da4-a8a6-071f1a9a9fdc", "Piattos Cheese", 15.99, "SNACKS & BAKERY", "480000000024", 1, 0, 35, "piattos cheese"),
+                    ("054f5317-0cce-45c3-a30e-abaa468ffeae", "Sky flakes", 9.99, "SNACKS & BAKERY", "480000000025", 1, 0, 50, "sky flakes"),
+                    ("1ac49a1c-77a0-4fd9-a768-6096ce04d625", "Lemon Square", 12.99, "SNACKS & BAKERY", "480000000026", 1, 0, 30, "lemon square"),
+                    ("14b584de-e1a0-4100-bc99-4eff958ff337", "Choco Mucho", 12.99, "SNACKS & BAKERY", "480000000027", 1, 0, 45, "choco mucho"),
+                    ("957c9d2c-e215-4331-b4bd-17060992eee2", "Moby Caramel", 15.99, "SNACKS & BAKERY", "480000000028", 1, 0, 40, "moby caramel"),
+                    ("3ce0251b-e7e7-47f2-bc3a-35a6a4b1456e", "Moby Chocolate", 9.99, "SNACKS & BAKERY", "480000000029", 1, 0, 40, "moby chocolate"),
+                    ("b85e16ac-27b8-484c-8262-4630e24baf76", "Mr Chips", 15.99, "SNACKS & BAKERY", "480000000030", 1, 0, 40, "mr chips"),
+                    ("3e34ca0f-c1f7-40af-88a1-986f338f7bf9", "Cheezy", 12.99, "SNACKS & BAKERY", "480000000031", 1, 0, 40, "cheezy"),
                     ("a1111111-1111-1111-1111-111111111111", "Classic Cheeseburger", 75.00, "MEALS & MAINS", "480000000001", 1, 0, 50, None),
                     ("a2222222-2222-2222-2222-222222222222", "Crispy Chicken Bowl", 85.00, "MEALS & MAINS", "480000000002", 1, 0, 60, None),
                     ("a3333333-3333-3333-3333-333333333333", "Ham & Cheese Sandwich", 45.00, "SNACKS & BAKERY", "480000000003", 1, 0, 40, None),
@@ -1227,9 +1236,10 @@ class OfflineSyncWorker(threading.Thread):
 # ==============================================================================
 YOLO_MODEL = None
 YOLO_ATTEMPTED = False
+RESOLVED_YOLO_PATH = None
 
 def get_yolo_model(pt_path=None):
-    global YOLO_MODEL, YOLO_ATTEMPTED
+    global YOLO_MODEL, YOLO_ATTEMPTED, RESOLVED_YOLO_PATH
     if YOLO_MODEL is not None:
         return YOLO_MODEL
     if YOLO_ATTEMPTED:
@@ -1290,6 +1300,7 @@ def get_yolo_model(pt_path=None):
         break
 
     if resolved_path:
+        RESOLVED_YOLO_PATH = str(resolved_path)
         try:
             from ultralytics import YOLO
             file_size_mb = resolved_path.stat().st_size / (1024 * 1024)
@@ -1832,7 +1843,7 @@ class KioskHTTPRequestHandler(BaseHTTPRequestHandler):
             parsed = urllib.parse.urlparse(self.path)
             path = parsed.path
 
-            if path in ["/api/kiosk/status", "/api/kiosk/live", "/api/scan_tray"]:
+            if path in ["/api/kiosk/status", "/api/kiosk/live", "/api/scan_tray", "/api/kiosk/model", "/api/model/info"]:
                 self._send_cors_headers(200, "application/json")
                 self.end_headers()
             elif path in ["/api/camera/frame.jpg", "/api/camera/frame_clean.jpg", "/api/camera/frame_annotated.jpg"]:
@@ -1872,12 +1883,54 @@ class KioskHTTPRequestHandler(BaseHTTPRequestHandler):
                         "cart_items": [],
                         "cart": [],
                         "total_amount": 0.0,
-                        "timestamp": time.time()
+                        "timestamp": time.time(),
+                        "model_info": {
+                            "filename": "novalunch_yolo-2.pt",
+                            "classes_count": 41,
+                            "confidence_threshold": 0.80,
+                            "status": "Active"
+                        }
                     }
                 try:
                     self.wfile.write(json.dumps(state_data).encode('utf-8'))
                 except Exception:
                     pass
+
+            elif path in ["/api/kiosk/model", "/api/model/info"]:
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                metadata = _GLOBAL_KIOSK_REF.get_model_metadata() if _GLOBAL_KIOSK_REF else {}
+                if not metadata:
+                    classes_list = []
+                    model = get_yolo_model()
+                    if model and hasattr(model, 'names'):
+                        names = model.names
+                        if isinstance(names, dict):
+                            classes_list = [names[k] for k in sorted(names.keys())]
+                        elif isinstance(names, list):
+                            classes_list = names
+                    model_size_mb = "115.4 MB"
+                    try:
+                        p = RESOLVED_YOLO_PATH
+                        if p and os.path.exists(p):
+                            model_size_mb = f"{os.path.getsize(p) / (1024 * 1024):.1f} MB"
+                    except Exception:
+                        pass
+                    metadata = {
+                        "filename": Path(RESOLVED_YOLO_PATH).name if RESOLVED_YOLO_PATH else "novalunch_yolo-2.pt",
+                        "size": model_size_mb,
+                        "class_count": len(classes_list),
+                        "classes": classes_list,
+                        "confidence_cutoff": 0.80,
+                        "status": "Active" if len(classes_list) > 0 else "Standby"
+                    }
+                try:
+                    self.wfile.write(json.dumps(metadata).encode('utf-8'))
+                except Exception:
+                    pass
+                return
 
             elif path in ["/api/camera/frame.jpg", "/api/camera/frame_clean.jpg"]:
                 if _GLOBAL_KIOSK_REF is not None and hasattr(_GLOBAL_KIOSK_REF, 'camera_thread') and _GLOBAL_KIOSK_REF.camera_thread:
@@ -2219,6 +2272,15 @@ class NovaLunchKioskGUI:
         self.error_message = None
         self._last_settlement_info = None
 
+        # Vision Model Back-Office Configuration (novalunch_yolo-2.pt)
+        self.conf_threshold = 0.80
+        self.model = get_yolo_model()
+        self.model_path = RESOLVED_YOLO_PATH
+        if self.model_path:
+            self.model_filename = Path(self.model_path).name
+        else:
+            self.model_filename = "novalunch_yolo-2.pt"
+
         # Stability & Motion
         self.countdown_remaining = 5.0
         self.last_tick_sec = 5
@@ -2256,7 +2318,12 @@ class NovaLunchKioskGUI:
 
     @property
     def class_names(self):
-        return getattr(self.camera_thread, 'class_names', {})
+        c = getattr(self.camera_thread, 'class_names', {})
+        if not c:
+            model = get_yolo_model()
+            if model is not None:
+                c = getattr(model, 'names', {})
+        return c or {}
 
     @property
     def menu_catalog_by_ai_label(self):
@@ -2290,6 +2357,35 @@ class NovaLunchKioskGUI:
         except Exception as cloud_err:
             logger.warning(f"[CLOUD SYNC] Supabase read failed on RFID tap: {cloud_err}")
         return self.db_manager.fetch_student_by_rfid(rfid_uid)
+
+    def get_model_metadata(self):
+        classes_list = []
+        model = getattr(self, 'model', None) or get_yolo_model()
+        if model and hasattr(model, 'names'):
+            names = model.names
+            if isinstance(names, dict):
+                classes_list = [names[k] for k in sorted(names.keys())]
+            elif isinstance(names, list):
+                classes_list = names
+
+        # Calculate actual file size in MB
+        model_size_mb = "115.4 MB"
+        try:
+            model_path = getattr(self, 'model_path', None) or RESOLVED_YOLO_PATH
+            if model_path and os.path.exists(model_path):
+                size_mb = os.path.getsize(model_path) / (1024 * 1024)
+                model_size_mb = f"{size_mb:.1f} MB"
+        except Exception:
+            pass
+
+        return {
+            "filename": getattr(self, "model_filename", "novalunch_yolo-2.pt"),
+            "size": model_size_mb,
+            "class_count": len(classes_list),
+            "classes": classes_list,
+            "confidence_cutoff": float(getattr(self, "conf_threshold", 0.80)),
+            "status": "Active" if len(classes_list) > 0 else "Standby"
+        }
 
     def get_live_kiosk_data(self):
         """Returns JSON-serializable snapshot of live kiosk state for Cashier POS.
@@ -2373,6 +2469,7 @@ class NovaLunchKioskGUI:
             "preorders_count": len(self.active_preorders) if self.active_preorders else 0,
             # Pay Later double-tap pending state for CFD display
             "awaiting_pay_later_confirm": getattr(self, 'awaiting_pay_later_confirm', False),
+            "model_info": self.get_model_metadata(),
             "timestamp": time.time()
         }
 
@@ -3979,6 +4076,8 @@ class NovaLunchKioskGUI:
         self.camera_thread.stop()
         pygame.quit()
         sys.exit(0)
+
+KioskApp = NovaLunchKioskGUI
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="NovaLunch Student Kiosk CFD Monitor")

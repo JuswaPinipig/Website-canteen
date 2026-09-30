@@ -206,7 +206,7 @@
       "email": "columbina23.4@gmail.com",
       "role": "student",
       "student_id_number": "2026-130130",
-      "rfid_uid": null,
+      "rfid_uid": "",
       "balance": 200.0,
       "daily_limit": 200.0
     },
@@ -216,7 +216,7 @@
       "email": "frierenlupi@sjc.edu.ph",
       "role": "student",
       "student_id_number": "2026-71249",
-      "rfid_uid": null,
+      "rfid_uid": "",
       "balance": 200.0,
       "daily_limit": 200.0
     },
@@ -226,7 +226,7 @@
       "email": "joshua.legacy@sjc.edu.ph",
       "role": "student",
       "student_id_number": "2023-01900-LEGACY",
-      "rfid_uid": null,
+      "rfid_uid": "",
       "balance": 200.0,
       "daily_limit": 200.0
     },
@@ -236,7 +236,17 @@
       "email": "student@gmail.com",
       "role": "student",
       "student_id_number": "2023-01900",
-      "rfid_uid": null,
+      "rfid_uid": "",
+      "balance": 200.0,
+      "daily_limit": 200.0
+    },
+    {
+      "id": "f4503485-7cc3-4a15-a587-f15d85879a02",
+      "full_name": "John Ian Dequinoia",
+      "email": "jppogi@gmail.com",
+      "role": "student",
+      "student_id_number": "2026-31234",
+      "rfid_uid": "0009428309",
       "balance": 200.0,
       "daily_limit": 200.0
     }

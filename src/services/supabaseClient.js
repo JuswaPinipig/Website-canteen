@@ -137,11 +137,16 @@
                 const cloudIds = new Set((cloudProducts || []).map(cp => cp.id));
                 const cloudNames = new Set((cloudProducts || []).map(cp => (cp.name || '').toLowerCase()));
                 const localOnly = (existing || []).filter(lp => !cloudIds.has(lp.id) && !cloudNames.has((lp.name || '').toLowerCase()));
-                const merged = [...(cloudProducts || []), ...localOnly].map(p => ({
-                    ...p,
-                    ai_label: p.ai_label !== undefined ? p.ai_label : (p.aiLabel || null),
-                    aiLabel: p.ai_label !== undefined ? p.ai_label : (p.aiLabel || null)
-                }));
+                const merged = [...(cloudProducts || []), ...localOnly].map(p => {
+                    const localMatch = (existing || []).find(lp => lp.id === p.id || (lp.name && p.name && lp.name.toLowerCase() === p.name.toLowerCase()));
+                    const localAi = localMatch ? (localMatch.ai_label || localMatch.aiLabel) : null;
+                    const finalAi = p.ai_label || p.aiLabel || localAi || null;
+                    return {
+                        ...p,
+                        ai_label: finalAi,
+                        aiLabel: finalAi
+                    };
+                });
                 this.saveLocal('novalunch_products_catalog', merged);
                 return merged;
             }
