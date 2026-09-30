@@ -196,7 +196,47 @@
       "email": "quilipinossajonosbituka@sjc.edu.ph",
       "role": "student",
       "student_id_number": "2026-1923456",
-      "rfid_uid": "0009428309",
+      "rfid_uid": "009458633",
+      "balance": 200.0,
+      "daily_limit": 200.0
+    },
+    {
+      "id": "19216db9-f79e-477b-93a3-2484120ae024",
+      "full_name": "Frieren Lupisan",
+      "email": "columbina23.4@gmail.com",
+      "role": "student",
+      "student_id_number": "2026-130130",
+      "rfid_uid": null,
+      "balance": 200.0,
+      "daily_limit": 200.0
+    },
+    {
+      "id": "945f2371-51af-4ca3-b418-2a108b8dcca0",
+      "full_name": "Frieren Lupisan",
+      "email": "frierenlupi@sjc.edu.ph",
+      "role": "student",
+      "student_id_number": "2026-71249",
+      "rfid_uid": null,
+      "balance": 200.0,
+      "daily_limit": 200.0
+    },
+    {
+      "id": "68c8d0fb-59d7-47d9-a17f-1dbb62cb92ac",
+      "full_name": "Jeshua Lupisan",
+      "email": "joshua.legacy@sjc.edu.ph",
+      "role": "student",
+      "student_id_number": "2023-01900-LEGACY",
+      "rfid_uid": null,
+      "balance": 200.0,
+      "daily_limit": 200.0
+    },
+    {
+      "id": "c653fe97-2934-4fae-a8f6-18ebb4754886",
+      "full_name": "Joshua Lupisan",
+      "email": "student@gmail.com",
+      "role": "student",
+      "student_id_number": "2023-01900",
+      "rfid_uid": null,
       "balance": 200.0,
       "daily_limit": 200.0
     }

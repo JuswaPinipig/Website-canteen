@@ -133,14 +133,18 @@ POS_CATALOG_DATABASE = {}
 def lookup_pos_item(raw_label):
     """
     Dynamically resolves a detection class name to a POS catalog item.
-    1. Queries local edge database (novalunch_edge.db) by ai_label where is_available = 1.
-    2. If no record has mapped that ai_label, falls back to checking product name or barcode.
-    3. If still unfound or resolved price is 0/null: returns None (discards from cart).
+    1. Normalizes search: lowercases and checks against ai_label, name.lower(), or partial matches
+       (e.g., 'hansel' matches 'Hansel Crackers', 'loaded' matches 'Loaded Chocolate').
+    2. Queries local edge database (novalunch_edge.db) with exact and token/partial matching.
+    3. Checks in-memory POS_CATALOG_DATABASE with resilient partial matching.
+    4. If still unfound or resolved price is 0/null: returns None (discards from cart).
     """
     if not raw_label:
         return None
 
     s = str(raw_label).strip()
+    s_lower = s.lower()
+    s_clean = s_lower.replace("_", " ").replace("-", " ").strip()
 
     # 1. Query local edge SQLite database (novalunch_edge.db)
     db_path = None
@@ -154,15 +158,15 @@ def lookup_pos_item(raw_label):
             conn = sqlite3.connect(db_path, timeout=3.0)
             c = conn.cursor()
 
-            # Priority 1: Query by ai_label exact or case-insensitive (latest updated takes precedence)
+            # Priority 1: Exact or case-insensitive ai_label, name, or barcode
             c.execute("""
                 SELECT id, name, price, category, barcode, is_available, stock, ai_label, is_archived 
                 FROM products 
-                WHERE (ai_label = ? OR LOWER(ai_label) = LOWER(?)) 
+                WHERE (ai_label = ? OR LOWER(ai_label) = ? OR name = ? OR LOWER(name) = ? OR barcode = ?) 
                   AND (is_archived = 0 OR is_archived IS NULL)
                 ORDER BY updated_at DESC
                 LIMIT 1;
-            """, (s, s))
+            """, (s, s_lower, s, s_lower, s))
             row = c.fetchone()
             if row:
                 price = float(row[2]) if row[2] is not None else 0.0
@@ -183,15 +187,16 @@ def lookup_pos_item(raw_label):
                         "status": "active"
                     }
 
-            # Priority 2: Fallback to checking product name or barcode
+            # Priority 2: Resilient partial search (e.g. 'hansel' in 'Hansel Crackers', 'loaded' in 'Loaded Chocolate')
+            pattern = f"%{s_clean}%"
             c.execute("""
                 SELECT id, name, price, category, barcode, is_available, stock, ai_label, is_archived 
                 FROM products 
-                WHERE (name = ? OR barcode = ? OR LOWER(name) = LOWER(?) OR REPLACE(LOWER(name), ' ', '_') = LOWER(?) OR REPLACE(LOWER(name), '_', ' ') = LOWER(?)) 
+                WHERE (LOWER(name) LIKE ? OR LOWER(ai_label) LIKE ?)
                   AND (is_archived = 0 OR is_archived IS NULL)
                 ORDER BY updated_at DESC
                 LIMIT 1;
-            """, (s, s, s, s, s))
+            """, (pattern, pattern))
             row = c.fetchone()
             if row:
                 price = float(row[2]) if row[2] is not None else 0.0
@@ -206,28 +211,63 @@ def lookup_pos_item(raw_label):
                         "available": bool(row[5]),
                         "is_available": bool(row[5]),
                         "stock": int(row[6]) if row[6] is not None else 50,
-                        "ai_label": str(row[7]) if row[7] else None,
+                        "ai_label": str(row[7]) if row[7] else s,
                         "is_archived": bool(row[8]) if len(row) > 8 and row[8] is not None else False,
                         "requires_cashier_review": False,
                         "status": "active"
                     }
+
+            # Priority 3: Scan all active unarchived products for reverse substring matches
+            c.execute("""
+                SELECT id, name, price, category, barcode, is_available, stock, ai_label, is_archived 
+                FROM products 
+                WHERE (is_archived = 0 OR is_archived IS NULL);
+            """)
+            all_rows = c.fetchall()
             conn.close()
-        except Exception as e:
-            # Graceful error handling - avoid crashing frame loop
+            for r in all_rows:
+                p_name = (r[1] or "").lower().replace("_", " ").replace("-", " ")
+                p_ai = (r[7] or "").lower().replace("_", " ").replace("-", " ")
+                if s_clean and (s_clean in p_name or p_name in s_clean or (p_ai and (s_clean in p_ai or p_ai in s_clean))):
+                    price = float(r[2]) if r[2] is not None else 0.0
+                    if price > 0.0:
+                        return {
+                            "id": str(r[0]),
+                            "name": str(r[1]),
+                            "price": price,
+                            "category": str(r[3] or "SNACKS & BAKERY"),
+                            "barcode": str(r[4]) if r[4] else None,
+                            "available": bool(r[5]),
+                            "is_available": bool(r[5]),
+                            "stock": int(r[6]) if r[6] is not None else 50,
+                            "ai_label": str(r[7]) if r[7] else s,
+                            "is_archived": bool(r[8]) if len(r) > 8 and r[8] is not None else False,
+                            "requires_cashier_review": False,
+                            "status": "active"
+                        }
+        except Exception:
             pass
 
-    # 2. Secondary check against in-memory catalog cache
+    # 2. Secondary check against in-memory catalog cache with partial matching
     match = None
     if s in POS_CATALOG_DATABASE:
         match = dict(POS_CATALOG_DATABASE[s])
-    elif s.lower() in POS_CATALOG_DATABASE:
-        match = dict(POS_CATALOG_DATABASE[s.lower()])
-    elif s.replace("_", " ").strip() in POS_CATALOG_DATABASE:
-        match = dict(POS_CATALOG_DATABASE[s.replace("_", " ").strip()])
+    elif s_lower in POS_CATALOG_DATABASE:
+        match = dict(POS_CATALOG_DATABASE[s_lower])
+    elif s_clean in POS_CATALOG_DATABASE:
+        match = dict(POS_CATALOG_DATABASE[s_clean])
     else:
-        s_snake = s.lower().replace(" ", "_").replace("-", "_")
-        if s_snake in POS_CATALOG_DATABASE:
-            match = dict(POS_CATALOG_DATABASE[s_snake])
+        for k, v in POS_CATALOG_DATABASE.items():
+            if not isinstance(v, dict):
+                continue
+            k_lower = str(k).lower().replace("_", " ").replace("-", " ").strip()
+            v_name = str(v.get("name") or "").lower().replace("_", " ").replace("-", " ").strip()
+            v_ai = str(v.get("ai_label") or "").lower().replace("_", " ").replace("-", " ").strip()
+            if (s_clean == k_lower or s_clean == v_name or s_clean == v_ai or
+                s_clean in v_name or v_name in s_clean or
+                (v_ai and (s_clean in v_ai or v_ai in s_clean))):
+                match = dict(v)
+                break
 
     if match and match.get("is_archived") is not True and match.get("status") != "archived":
         price = float(match.get("price", 0.0) or 0.0)
@@ -835,6 +875,10 @@ class DatabaseManager:
                 conn.close()
             except Exception as e:
                 print(f"[DB WARN] deduct_product_stock error: {e}")
+
+    def decrement_product_stock(self, product_id, qty=1):
+        """Safely decrements product stock in local SQLite cache."""
+        return self.deduct_product_stock(product_id, qty)
 
     def get_active_preorders(self, student_id, student_name=None):
         try:
@@ -1662,7 +1706,8 @@ _SSE_CLIENTS = []
 _SSE_LOCK = threading.Lock()
 
 def broadcast_kiosk_event(event_type, payload):
-    data = f"event: {event_type}\ndata: {json.dumps(payload)}\n\n".encode('utf-8')
+    data_str = json.dumps(payload)
+    data = f"event: {event_type}\ndata: {data_str}\n\ndata: {data_str}\n\n".encode('utf-8')
     with _SSE_LOCK:
         dead = []
         for wfile in _SSE_CLIENTS:
@@ -1842,7 +1887,7 @@ class KioskHTTPRequestHandler(BaseHTTPRequestHandler):
                 except Exception:
                     pass
 
-            elif path == "/api/kiosk/events":
+            elif path in ["/api/kiosk/events", "/api/kiosk/stream"]:
                 # Server-Sent Events (SSE) Real-Time stream
                 self._send_cors_headers(200, "text/event-stream")
                 self.send_header("Cache-Control", "no-cache")
@@ -1856,7 +1901,7 @@ class KioskHTTPRequestHandler(BaseHTTPRequestHandler):
                 if _GLOBAL_KIOSK_REF is not None:
                     init_payload = _GLOBAL_KIOSK_REF.get_live_kiosk_data()
                     try:
-                        self.wfile.write(f"event: kiosk_update\ndata: {json.dumps(init_payload)}\n\n".encode('utf-8'))
+                        self.wfile.write(f"event: kiosk_update\ndata: {json.dumps(init_payload)}\n\ndata: {json.dumps(init_payload)}\n\n".encode('utf-8'))
                         self.wfile.flush()
                     except Exception:
                         pass
@@ -2156,15 +2201,36 @@ class NovaLunchKioskGUI:
     def menu_catalog_by_ai_label(self):
         return getattr(self.camera_thread, 'menu_catalog_by_ai_label', {})
 
+    @property
+    def state(self):
+        return STATE_NAMES.get(self.current_state, "IDLE")
+
+    @state.setter
+    def state(self, val):
+        if isinstance(val, int):
+            self.transition_to_state(val)
+        elif isinstance(val, str):
+            for k, v in STATE_NAMES.items():
+                if v.upper() == val.upper():
+                    self.transition_to_state(k)
+                    break
+
+    def speak_text(self, text):
+        speak_text(text)
+
+    def fetch_student_by_rfid(self, rfid_uid):
+        return self.db_manager.fetch_student_by_rfid(rfid_uid)
+
     def get_live_kiosk_data(self):
         """Returns JSON-serializable snapshot of live kiosk state for Cashier POS.
 
         Standardized payload (Wave 3 spec):
           - `cart_items`:         Normalized list with id/name/price/quantity fields for Cashier Order Tally.
-                                  Populated EXCLUSIVELY from active YOLO detections (no phantom items).
+                                  Populated from active YOLO detections or manual additions.
           - `cart`:               Raw internal cart_items list (backward compatibility).
           - `active_student`:     Top-level student field alias.
           - `total_amount`:       Rounded float total.
+          - `state`:              Current state string ('IDLE', 'SCANNING', etc.)
           - `kiosk_state`:        Human-readable state string.
           - `student_new_balance`:New balance after deduction (present only on SETTLEMENT event).
           - `status`:             Always 'SUCCESS' when kiosk is alive.
@@ -2177,8 +2243,7 @@ class NovaLunchKioskGUI:
             detections = self.camera_thread.get_latest_detections()
             ai_engine, fps, _ = self.camera_thread.get_ai_status()
 
-        is_active_session = self.current_state not in [STATE_IDLE, STATE_SETTLEMENT, STATE_ERROR] and self.active_student is not None
-        raw_cart = list(self.cart_items) if is_active_session else []
+        raw_cart = list(self.cart_items) if self.current_state != STATE_SETTLEMENT else []
 
         # Standardized cart_items payload: id / name / price / quantity
         normalized_cart_items = [
@@ -2186,30 +2251,32 @@ class NovaLunchKioskGUI:
                 "id":       item.get("id") or item.get("product_id") or item.get("name"),
                 "name":     item.get("name", "Unknown Item"),
                 "price":    float(item.get("price", 0.0)),
-                "quantity": int(item.get("qty", 1))
+                "quantity": int(item.get("quantity", item.get("qty", 1))),
+                "qty":      int(item.get("quantity", item.get("qty", 1)))
             }
             for item in raw_cart
         ] if raw_cart else []
 
         payload = {
             "status": "SUCCESS",
+            "state": self.state,
             "kiosk_state": STATE_NAMES.get(self.current_state, "UNKNOWN"),
             "current_state_id": self.current_state,
-            "active_student": self.active_student if is_active_session else None,
-            "student": self.active_student if is_active_session else None,
+            "active_student": self.active_student,
+            "student": self.active_student,
             # Standardized normalized cart sourced directly from YOLO inference
             "cart_items": normalized_cart_items,
             # Raw cart preserved for backward compatibility with legacy polling
-            "cart": raw_cart,
-            "detections": detections if is_active_session else [],
+            "cart": normalized_cart_items,
+            "detections": detections,
             "ai_engine": ai_engine,
             "camera_online": True,
             "fps": fps,
-            "total_amount": round(self.total_amount, 2) if is_active_session else 0.0,
+            "total_amount": float(round(self.total_amount, 2)),
             "items_count": len(normalized_cart_items) if normalized_cart_items else 0,
-            "countdown_remaining": round(self.countdown_remaining, 1) if is_active_session else 0.0,
+            "countdown_remaining": round(self.countdown_remaining, 1),
             "status_message": self.status_message,
-            "preorders_count": len(self.active_preorders) if is_active_session else 0,
+            "preorders_count": len(self.active_preorders) if self.active_preorders else 0,
             # Pay Later double-tap pending state for CFD display
             "awaiting_pay_later_confirm": getattr(self, 'awaiting_pay_later_confirm', False),
             "timestamp": time.time()
@@ -2230,7 +2297,19 @@ class NovaLunchKioskGUI:
 
     def notify_pos_update(self):
         """Broadcasts live cart/state update to all connected Cashier POS terminals."""
-        broadcast_kiosk_event("kiosk_update", self.get_live_kiosk_data())
+        payload = self.get_live_kiosk_data()
+        payload["cart_items"] = [
+            {
+                "id": ci.get("id") or ci.get("product_id") or ci.get("name"),
+                "name": ci.get("name", "Unknown Item"),
+                "price": float(ci.get("price", 0.0)),
+                "quantity": int(ci.get("quantity", ci.get("qty", 1))),
+                "qty": int(ci.get("quantity", ci.get("qty", 1)))
+            } for ci in (self.cart_items if self.current_state != STATE_SETTLEMENT else [])
+        ]
+        payload["total_amount"] = float(self.total_amount)
+        payload["state"] = self.state
+        broadcast_kiosk_event("kiosk_update", payload)
 
     def recalculate_total(self):
         valid_items = [
@@ -2488,7 +2567,13 @@ class NovaLunchKioskGUI:
             self.notify_pos_update()
             return
 
-        if not self.active_student:
+        if not self.active_student or not self.active_student.get('id'):
+            logger.warning("[RFID] Unregistered card in checkout")
+            self.state = STATE_ERROR
+            self.error_message = "⚠️ Unregistered RFID Card. Please register card at office."
+            self.status_message = self.error_message
+            self.speak_text("Unregistered card. Please register at the canteen office.")
+            self.notify_pos_update()
             return
 
         # Clear any pending Pay Later confirmation state
@@ -2591,10 +2676,48 @@ class NovaLunchKioskGUI:
 
         # ── Deduct product stock for each cart item after successful payment ────
         for item in self.cart_items:
-            prod_id = item.get("product_id") or item.get("id") or item.get("name")
-            qty = int(item.get("qty", 1))
+            prod_id = item.get("id") or item.get("product_id") or item.get("name")
+            qty = int(item.get("quantity", item.get("qty", 1)))
             if prod_id:
-                self.db_manager.deduct_product_stock(prod_id, qty)
+                # 1. Deduct in local SQLite cache
+                self.db_manager.decrement_product_stock(prod_id, qty)
+                # 2. Deduct in Supabase products table
+                def _deduct_cloud_stock(p_id, q_deduct):
+                    try:
+                        if hasattr(self, 'supabase') and self.supabase is not None:
+                            prod = self.supabase.table('products').select('stock').eq('id', p_id).maybeSingle().execute()
+                            if prod and prod.data:
+                                current_stock = int(prod.data.get('stock') or 0)
+                                new_stock = max(0, current_stock - q_deduct)
+                                self.supabase.table('products').update({'stock': new_stock}).eq('id', p_id).execute()
+                                return
+                        get_url = f"{SUPABASE_URL}/rest/v1/products?id=eq.{urllib.parse.quote(str(p_id))}&select=id,stock"
+                        req = urllib.request.Request(get_url, headers={
+                            "apikey": SUPABASE_ANON_KEY,
+                            "Authorization": f"Bearer {SUPABASE_ANON_KEY}"
+                        })
+                        with urllib.request.urlopen(req, timeout=5) as resp:
+                            p_data = json.loads(resp.read().decode('utf-8'))
+                            if p_data and len(p_data) > 0:
+                                cur_stk = int(p_data[0].get('stock') or 0)
+                                n_stk = max(0, cur_stk - q_deduct)
+                                patch_url = f"{SUPABASE_URL}/rest/v1/products?id=eq.{urllib.parse.quote(str(p_id))}"
+                                p_req = urllib.request.Request(
+                                    patch_url,
+                                    data=json.dumps({"stock": n_stk}).encode('utf-8'),
+                                    headers={
+                                        "apikey": SUPABASE_ANON_KEY,
+                                        "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
+                                        "Content-Type": "application/json",
+                                        "Prefer": "return=minimal"
+                                    },
+                                    method="PATCH"
+                                )
+                                urllib.request.urlopen(p_req, timeout=5)
+                                logger.info(f"[INVENTORY] Cloud stock deducted for {p_id}: {cur_stk} -> {n_stk}")
+                    except Exception as err:
+                        logger.error(f"[INVENTORY] Failed to update cloud stock for product {p_id}: {err}")
+                threading.Thread(target=_deduct_cloud_stock, args=(prod_id, qty), daemon=True).start()
 
         # ── CFD Settlement Status: Show paid amount + remaining balance ─────────
         self.status_message = (
@@ -2662,7 +2785,14 @@ class NovaLunchKioskGUI:
                 elif clean == active_id:
                     is_match = True
                 else:
-                    scanned_student = self.db_manager.fetch_student_by_rfid(clean)
+                    scanned_student = self.fetch_student_by_rfid(clean)
+                    if not scanned_student or not scanned_student.get('id'):
+                        logger.warning(f"[RFID] Unregistered card tapped: {clean}")
+                        self.state = STATE_ERROR
+                        self.status_message = f"⚠️ Unregistered RFID Card ({clean}). Please register card at office."
+                        self.speak_text("Unregistered card. Please register at the canteen office.")
+                        self.notify_pos_update()
+                        return
                     if scanned_student and (scanned_student.get("id") == self.active_student.get("id") or scanned_student.get("student_id_number") == self.active_student.get("student_id_number")):
                         is_match = True
 
@@ -2741,28 +2871,30 @@ class NovaLunchKioskGUI:
             # Hardened RFID resolution: SQLite cache first, live Supabase cloud
             # fallback second (which UPSERTs the profile for instant future taps).
             # Returns None on an unregistered card — NEVER a default/mock student.
-            student = self.db_manager.fetch_student_by_rfid(clean)
-            if student:
-                self.active_student = student
-                self.cart_manual_override_lock = False
-                bal = float(student.get("balance", 0.0) or student.get("wallet_balance", 0.0) or 0.0)
-                student.setdefault("wallet_balance", bal)
-                if bal <= 0:
-                    self.status_message = f"⚠️ Low/Zero Balance (₱{bal:.2f}). You may use Pay Later at Cashier."
-                else:
-                    self.status_message = f"Welcome {student.get('name', 'Student')}! Balance: ₱{bal:.2f}"
+            student = self.fetch_student_by_rfid(clean)
+            if not student or not student.get('id'):
+                logger.warning(f"[RFID] Unregistered card tapped: {clean}")
+                self.state = STATE_ERROR
+                self.status_message = f"⚠️ Unregistered RFID Card ({clean}). Please register card at office."
+                self.speak_text("Unregistered card. Please register at the canteen office.")
+                self.notify_pos_update()
+                return
 
-                self.active_preorders = self.db_manager.get_active_preorders(student["id"], student.get("name"))
-                if self.active_preorders:
-                    self.transition_to_state(STATE_PREORDER_ANNOUNCEMENT)
-                else:
-                    self.transition_to_state(STATE_GREET)
+            self.active_student = student
+            self.cart_manual_override_lock = False
+            bal = float(student.get("balance", 0.0) or student.get("wallet_balance", 0.0) or 0.0)
+            student.setdefault("wallet_balance", bal)
+            if bal <= 0:
+                self.status_message = f"⚠️ Low/Zero Balance (₱{bal:.2f}). You may use Pay Later at Cashier."
             else:
-                # FAIL CLOSED — unregistered card. No default user is substituted.
-                self.error_message = f"⚠️ Unregistered RFID Card ({clean}). Please register card."
-                self.status_message = self.error_message
-                speak_text("Unregistered card. Please register at the canteen office.")
-                self.transition_to_state(STATE_ERROR)
+                self.status_message = f"Welcome {student.get('name', 'Student')}! Balance: ₱{bal:.2f}"
+
+            self.active_preorders = self.db_manager.get_active_preorders(student["id"], student.get("name"))
+            if self.active_preorders:
+                self.transition_to_state(STATE_PREORDER_ANNOUNCEMENT)
+            else:
+                self.transition_to_state(STATE_GREET)
+            self.notify_pos_update()
             return
 
         # Keyboard / simulation step navigation (requires explicit simulation advance)

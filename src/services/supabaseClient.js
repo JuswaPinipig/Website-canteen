@@ -387,6 +387,14 @@
             return [cleanPayload];
         },
 
+        async decrementProductStock(productId, qty = 1) {
+            const currentProducts = this.loadLocal('novalunch_products_catalog', []);
+            const prod = currentProducts.find(p => p.id === productId || p.name === productId);
+            const currentStock = prod ? Number(prod.stock ?? prod.stock_quantity ?? 50) : 50;
+            const newStock = Math.max(0, currentStock - Number(qty || 1));
+            return await this.updateProduct(prod ? prod.id : productId, { stock: newStock });
+        },
+
         async deleteProduct(productId) {
             let targetUUID = this.isUUID(productId) ? productId : (KNOWN_MOCK_PRODUCT_UUIDS[productId] || null);
             // Always update local cache

@@ -786,11 +786,14 @@
             }
 
             #printableReceipt,
-            #printableReceipt * {
+            #printableReceipt *,
+            #printableZRead,
+            #printableZRead * {
                 visibility: visible;
             }
 
-            #printableReceipt {
+            #printableReceipt,
+            #printableZRead {
                 position: absolute;
                 left: 0;
                 top: 0;
@@ -3363,16 +3366,14 @@
                             {
                                 section: 'Cashier Counter',
                                 items: [
-                                    { id: 'register', label: 'Register', icon: Icon.ShoppingCart },
-                                    { id: 'salary_deductions', label: 'Payroll Deductions', icon: Icon.Briefcase }
+                                    { id: 'register', label: 'Register', icon: Icon.ShoppingCart }
                                 ]
                             },
                             {
                                 section: 'Shift & Register',
                                 items: [
                                     { id: 'shift_history', label: 'Transaction History', icon: Icon.Clock },
-                                    { id: 'shift', label: 'Cash Drawer', icon: Icon.DollarSign },
-                                    { id: 'sales_report', label: 'Shift Summary', icon: Icon.BarChart2 }
+                                    { id: 'shift', label: 'Shift & Drawer', icon: Icon.Clock }
                                 ]
                             }
                         ];
@@ -7516,6 +7517,7 @@
         // 4. ADMIN REFUNDS, RETURNS & DISPUTES MANAGEMENT MODULE
         // =====================================================================
         function AdminRefundsView({
+            orders = [],
             registeredUsers = [],
             setRegisteredUsers = () => { },
             recentOrders = [],
@@ -7572,14 +7574,40 @@
             const [rejectModalItem, setRejectModalItem] = useState(null);
             const [rejectionReasonText, setRejectionReasonText] = useState('Non-refundable cooked meal per SJC food policy.');
 
-            // Support unified shared state or fallback to initial list
-            const [localRefundsList, setLocalRefundsList] = useState(typeof INITIAL_REFUNDS_LIST !== 'undefined' ? INITIAL_REFUNDS_LIST : []);
+            // Support unified shared state or live state — discard static placeholders
+            const [localRefundsList, setLocalRefundsList] = useState([]);
             const refundsList = propRefundsList || localRefundsList;
             const setRefundsList = propSetRefundsList || setLocalRefundsList;
 
-            // Filter completed transactions from recentOrders
+            // Bind directly to live orders and resolve student names and item summaries
+            const activeOrdersSource = (orders && orders.length > 0) ? orders : (recentOrders || []);
+            const refundEligibleOrders = useMemo(() => {
+                return (activeOrdersSource || []).map(order => {
+                    // Resolve real student name
+                    const student = (registeredUsers || []).find(u => 
+                        String(u.id) === String(order.student_id || order.studentId || order.user_id) || 
+                        String(u.student_id || u.studentId || u.student_id_number) === String(order.student_id || order.studentId) ||
+                        (order.rfidUid && u.rfidUid && String(u.rfidUid).replace(/^0+/, '') === String(order.rfidUid).replace(/^0+/, ''))
+                    );
+                    const customerName = student?.name || student?.full_name || order.customer_name || order.student || order.student_name || 'Walk-in Customer';
+                    
+                    // Format line items: "4× Fita, 1× Hansel"
+                    const itemSummary = Array.isArray(order.items) && order.items.length > 0
+                        ? order.items.map(i => `${i.quantity || i.qty || 1}× ${i.name || i.product_name}`).join(', ')
+                        : (order.item_summary || order.items_summary || 'Purchased Items');
+
+                    return {
+                        ...order,
+                        resolvedCustomer: customerName,
+                        resolvedItems: itemSummary,
+                        formattedDate: new Date(order.created_at || order.timestamp || order.date || Date.now()).toLocaleString()
+                    };
+                });
+            }, [activeOrdersSource, registeredUsers]);
+
+            // Filter completed transactions from live refundEligibleOrders
             const filteredCompletedOrders = useMemo(() => {
-                const list = Array.isArray(recentOrders) ? recentOrders : [];
+                const list = Array.isArray(refundEligibleOrders) ? refundEligibleOrders : [];
                 return list.filter(order => {
                     const status = String(order.status || 'PAID').toUpperCase();
                     if (status === 'VOIDED' && orderStatusFilter !== 'ALL') return false;
@@ -7597,14 +7625,14 @@
                     if (orderSearchQuery.trim()) {
                         const q = orderSearchQuery.toLowerCase().trim();
                         const orderNo = String(order.orderNo || order.id || order.ref_no || '').toLowerCase();
-                        const custName = String(order.student || order.student_name || order.customer_name || '').toLowerCase();
+                        const custName = String(order.resolvedCustomer || order.student || order.student_name || order.customer_name || '').toLowerCase();
                         const custId = String(order.studentId || order.customer_id || '').toLowerCase();
-                        const items = String(order.items_summary || (Array.isArray(order.items) ? order.items.map(i => i.name).join(' ') : '')).toLowerCase();
+                        const items = String(order.resolvedItems || order.items_summary || (Array.isArray(order.items) ? order.items.map(i => i.name).join(' ') : '')).toLowerCase();
                         return orderNo.includes(q) || custName.includes(q) || custId.includes(q) || items.includes(q);
                     }
                     return true;
                 });
-            }, [recentOrders, orderStatusFilter, orderMethodFilter, orderSearchQuery]);
+            }, [refundEligibleOrders, orderStatusFilter, orderMethodFilter, orderSearchQuery]);
 
             const paginatedOrders = useMemo(() => {
                 const start = (ordersPage - 1) * ordersPerPage;
@@ -8221,27 +8249,18 @@
                                             ) : (
                                                 paginatedOrders.map((ord) => {
                                                     const ordId = ord.orderNo || ord.id || ord.ref_no || 'ORD-000';
-                                                    const custName = ord.student || ord.student_name || ord.customer_name || 'Walk-in Customer';
+                                                    const custName = ord.resolvedCustomer || ord.student || ord.student_name || ord.customer_name || 'Walk-in Customer';
                                                     const custId = ord.studentId || ord.customer_id || 'N/A';
-                                                    const amt = parseFloat(ord.total || ord.final_amount || ord.total_amount || 0);
+                                                    const amt = parseFloat(ord.total_amount || ord.total || ord.final_amount || 0);
                                                     const pm = String(ord.paymentMethod || ord.payment_method || 'RFID').toUpperCase();
                                                     const status = String(ord.status || 'PAID').toUpperCase();
                                                     const isRefunded = status === 'REFUNDED';
                                                     const isVoided = status === 'VOIDED';
 
-                                                    let dateStr = 'Today';
-                                                    let timeStr = '';
-                                                    if (ord.timestamp || ord.created_at || ord.date) {
-                                                        const d = new Date(ord.timestamp || ord.created_at || ord.date);
-                                                        if (!isNaN(d.getTime())) {
-                                                            dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                                                            timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-                                                        }
-                                                    }
-
-                                                    const itemsDisplay = Array.isArray(ord.items) && ord.items.length > 0
-                                                        ? ord.items.map(it => `${it.quantity || it.qty || 1}x ${it.name || it.item_name}`).join(', ')
-                                                        : (ord.items_summary || 'Meal items');
+                                                    const dateStr = ord.formattedDate || (ord.timestamp || ord.created_at ? new Date(ord.timestamp || ord.created_at).toLocaleString() : 'Recent');
+                                                    const itemsDisplay = ord.resolvedItems || (Array.isArray(ord.items) && ord.items.length > 0
+                                                        ? ord.items.map(it => `${it.quantity || it.qty || 1}× ${it.name || it.item_name}`).join(', ')
+                                                        : (ord.items_summary || 'Purchased Items'));
 
                                                     return (
                                                         <tr key={ordId} className="hover:bg-slate-50/70 transition-colors group">
@@ -8249,12 +8268,12 @@
                                                                 {ordId}
                                                             </td>
                                                             <td className="py-3 px-4">
-                                                                <div className="font-bold text-slate-900">{custName}</div>
+                                                                <div className="font-bold text-slate-900">{ord.resolvedCustomer || custName}</div>
                                                                 <div className="font-mono text-[10px] text-slate-400">ID: {custId}</div>
                                                             </td>
                                                             <td className="py-3 px-4 max-w-xs sm:max-w-md">
-                                                                <div className="text-slate-800 font-medium truncate" title={itemsDisplay}>
-                                                                    {itemsDisplay}
+                                                                <div className="text-slate-800 font-medium truncate" title={ord.resolvedItems || itemsDisplay}>
+                                                                    {ord.resolvedItems || itemsDisplay}
                                                                 </div>
                                                                 {Array.isArray(ord.items) && ord.items.length > 0 && (
                                                                     <div className="text-[10px] text-slate-400">
@@ -8263,8 +8282,7 @@
                                                                 )}
                                                             </td>
                                                             <td className="py-3 px-4 whitespace-nowrap">
-                                                                <div className="font-semibold text-slate-800">{dateStr}</div>
-                                                                {timeStr && <div className="text-[10px] text-slate-400 font-mono">{timeStr}</div>}
+                                                                <div className="font-semibold text-slate-800">{ord.formattedDate || dateStr}</div>
                                                             </td>
                                                             <td className="py-3 px-4 whitespace-nowrap">
                                                                 <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
@@ -21152,7 +21170,7 @@
         // =====================================================================
         // 4. CASHIER POS MODULE (WITH DIETARY LOCK ALERTS & SHIFT DRAWER TALLY)
         // =====================================================================
-        function CashierView({ posCart, posTotal, menuCatalog, registeredUsers, setRegisteredUsers = null, recentOrders = [], setRecentOrders = null, preorders = [], inventoryBatches = [], onClaimPreorderPos, onUpdatePreorderStatus, onRefundPackagedPreorder, onAddToCart, onUpdateQty, onDeleteItem, onClearCart, onCompleteCheckout, onVoidOrder, onSettleDebt, activeTab = 'register', setActiveTab, onSignOut, onSelectRoleQuick, isCloudConnected, onRefreshCloud, notifications = [], onMarkNotifRead, onMarkAllNotifRead, onDeleteNotif, onClearReadNotifs, onActionClick, onRespondLinkRequest, onOpenCommandPalette, onOpenShiftZRead, onOpenMobileSidebar, kdsOrders = [], setKdsOrders, currentUser = null, showToast = () => { },
+        function CashierView({ posCart, setPosCart = () => { }, posTotal, menuCatalog, setMenuCatalog = null, registeredUsers, setRegisteredUsers = null, recentOrders = [], setRecentOrders = null, preorders = [], inventoryBatches = [], onClaimPreorderPos, onUpdatePreorderStatus, onRefundPackagedPreorder, onAddToCart, onUpdateQty, onDeleteItem, onClearCart, onCompleteCheckout, onVoidOrder, onSettleDebt, activeTab = 'register', setActiveTab, onSignOut, onSelectRoleQuick, isCloudConnected, onRefreshCloud, notifications = [], onMarkNotifRead, onMarkAllNotifRead, onDeleteNotif, onClearReadNotifs, onActionClick, onRespondLinkRequest, onOpenCommandPalette, onOpenShiftZRead, onOpenMobileSidebar, kdsOrders = [], setKdsOrders, currentUser = null, showToast = () => { },
             parentStudentLinks = [],
             // ── Governance Policy Props (sourced from canteen_settings DB via root app state) ──
             globalPayLaterCap = 1000.00,
@@ -21665,8 +21683,9 @@
                 : false);
             const isPayLaterDisallowed = isPayLater5OrdersExceeded || isPayLaterCeilingExceeded || (isStudentAccount && !customerHasLinkedParent && !isStaffOrTeacher);
 
-            const currentStudentBalance = activeCustomerProfile ? (parseFloat(activeCustomerProfile.balance) || 0) : 0;
-            const isRfidShortage = paymentMethod === 'rfid' && netTotal > currentStudentBalance;
+            const hasValidRegisteredStudent = Boolean(selectedStudent && !isGuestCustomer && selectedStudent.id && activeCustomerProfile);
+            const currentStudentBalance = hasValidRegisteredStudent ? (parseFloat(activeCustomerProfile.balance) || 0) : null;
+            const isRfidShortage = paymentMethod === 'rfid' && hasValidRegisteredStudent && currentStudentBalance !== null && netTotal > currentStudentBalance;
             const cashTenderedVal = parseFloat(cashTendered) || 0;
             const cashChange = cashTenderedVal - netTotal;
 
@@ -21867,9 +21886,10 @@
                     // ── Wave 3 Task 3: ORDER_COMPLETED / Settlement clearing ──────────────
                     // When kiosk transitions to SETTLEMENT (payment approved) or broadcasts an
                     // empty cart from IDLE (after session wipe), clear the Cashier Order Tally.
-                    const isSettlementTransition = data.kiosk_state === 'SETTLEMENT';
+                    const currentKioskState = data.kiosk_state || data.state || 'IDLE';
+                    const isSettlementTransition = currentKioskState === 'SETTLEMENT';
                     const isEmptyCartBroadcast = (
-                        (data.kiosk_state === 'IDLE' || data.kiosk_state === 'SETTLEMENT') &&
+                        (currentKioskState === 'IDLE' || currentKioskState === 'SETTLEMENT') &&
                         (!data.cart_items || data.cart_items.length === 0) &&
                         (!data.cart || data.cart.length === 0)
                     );
@@ -21880,56 +21900,50 @@
                         return; // Don't re-populate cart on settlement/idle events
                     }
 
-                    // ── Wave 3 Task 1: Direct cart_items → posCart sync ────────────────
-                    // Use the standardized normalized cart_items array from the kiosk payload.
-                    // This replaces the old add-missing-only logic with a full authoritative sync.
-                    const kioskCartItems = data.cart_items && data.cart_items.length > 0
-                        ? data.cart_items
-                        : (data.cart && data.cart.length > 0 ? data.cart : null);
-
-                    const activeKioskStates = ['SCANNING', 'COUNTDOWN', 'CONFIRMATION', 'PAYMENT_CONFIRMATION'];
-                    if (autoMirrorKiosk && isRegisterIdle && kioskCartItems && kioskCartItems.length > 0 && activeKioskStates.includes(data.kiosk_state)) {
-                        const currentCatalog = menuCatalogRef.current || [];
-                        const currentDismissed = dismissedAILabelsRef.current;
-
-                        // Build a full replacement cart from the kiosk's canonical item list.
-                        // Quantities and prices come directly from the AI-detected payload.
-                        const newPosCart = [];
-                        kioskCartItems.forEach(kItem => {
-                            const itemNameKey = (kItem.name || '').toLowerCase().trim();
-                            if (currentDismissed && currentDismissed.has(itemNameKey)) return;
-                            // Resolve against local catalog for category / stock fields
-                            const catalogMatch = currentCatalog.find(m =>
-                                m.name.toLowerCase().includes(itemNameKey) ||
-                                itemNameKey.includes(m.name.toLowerCase())
-                            );
-                            const qty = kItem.quantity || kItem.qty || 1;
-                            const baseItem = catalogMatch || {
-                                id:       kItem.id || `kiosk-${(kItem.name || '').replace(/\s+/g, '-').toLowerCase()}`,
-                                name:     kItem.name,
-                                price:    parseFloat(kItem.price) || 0,
-                                category: kItem.category || 'Meals & Mains',
-                                stock:    kItem.stock || 50
-                            };
-                            newPosCart.push({ ...baseItem, qty });
-                        });
-
-                        if (newPosCart.length > 0) {
-                            setPosCart(newPosCart);
+                    // ── Fix Kiosk AI Scan Mirroring to Cashier POS (Order Tally) ────────────────
+                    if (Array.isArray(data.cart_items) && !isProcessingCheckoutRef.current) {
+                        if (data.cart_items.length > 0 && currentKioskState !== 'SETTLEMENT') {
+                            const currentCatalog = menuCatalogRef.current || [];
+                            const currentDismissed = dismissedAILabelsRef.current;
+                            const newPosCart = [];
+                            data.cart_items.forEach(ci => {
+                                const itemNameKey = (ci.name || '').toLowerCase().trim();
+                                if (currentDismissed && currentDismissed.has(itemNameKey)) return;
+                                const catalogMatch = currentCatalog.find(m =>
+                                    m.name.toLowerCase().includes(itemNameKey) ||
+                                    itemNameKey.includes(m.name.toLowerCase())
+                                );
+                                const qty = parseInt(ci.quantity || ci.qty || 1);
+                                newPosCart.push({
+                                    id: ci.id || ci.product_id || catalogMatch?.id || `kiosk-${(ci.name || '').replace(/\s+/g, '-').toLowerCase()}`,
+                                    name: ci.name,
+                                    price: parseFloat(ci.price || catalogMatch?.price || 0),
+                                    quantity: qty,
+                                    qty: qty,
+                                    category: ci.category || catalogMatch?.category || 'Meals & Mains',
+                                    stock: catalogMatch?.stock ?? ci.stock ?? 50
+                                });
+                            });
+                            if (newPosCart.length > 0) {
+                                setPosCart(newPosCart);
+                            }
                         }
                     }
                 };
 
                 try {
+                    // Connect to port 8085 kiosk SSE endpoint (events / stream)
                     eventSource = new EventSource('http://localhost:8085/api/kiosk/events');
-                    eventSource.addEventListener('kiosk_update', (e) => {
+                    const handleEventData = (e) => {
                         try {
                             const d = JSON.parse(e.data);
                             processKioskUpdate(d);
                         } catch (err) {
                             console.warn('[KIOSK SSE PARSE WARN]', err);
                         }
-                    });
+                    };
+                    eventSource.addEventListener('kiosk_update', handleEventData);
+                    eventSource.onmessage = handleEventData;
                     eventSource.onerror = () => {
                         setKioskStatus(prev => ({ ...prev, online: false }));
                     };
@@ -22171,7 +22185,8 @@
                     return byStudentId;
                 }
 
-                setRfidScanError(`No student account found matching RFID UID "${rawQuery}". The card may not be registered in the system.`);
+                setRfidScanError(`Unregistered RFID Card (${rawQuery}). Please register card at the canteen office.`);
+                showToast(`Unregistered RFID Card (${rawQuery}). Please register card at office.`, "danger");
                 return null;
             };
 
@@ -22227,7 +22242,14 @@
             const handleCheckoutSubmit = async (bypassManagerPin = false) => {
                 const isBypass = typeof bypassManagerPin === 'boolean' ? bypassManagerPin : Boolean(bypassManagerPin?.bypassManagerPin || bypassManagerPin);
                 if (posCart.length === 0) return showToast("Please select items to add to the checkout order.", "warning");
-                if (paymentMethod === 'rfid' && isRfidShortage) return showToast("Cannot complete checkout: Customer RFID balance is insufficient.", "danger");
+                if (paymentMethod === 'rfid') {
+                    if (!selectedStudent || isGuestCustomer || !selectedStudent.id) {
+                        return showToast("Unregistered Card: No registered student account linked to this RFID. Please register card at office.", "danger");
+                    }
+                    if (isRfidShortage) {
+                        return showToast("Cannot complete checkout: Customer RFID balance is insufficient.", "danger");
+                    }
+                }
                 if (paymentMethod === 'cash' && (isNaN(cashTenderedVal) || cashTenderedVal < netTotal || cashTenderedVal <= 0)) {
                     return showToast("Cannot complete checkout: Please enter a valid cash tendered amount equal to or greater than the order total.", "danger");
                 }
@@ -22363,6 +22385,23 @@
 
                     setLastCompletedOrder(orderData);
                     await onCompleteCheckout(orderData);
+
+                    // Live inventory stock deduction on every purchase
+                    posCart.forEach(item => {
+                        const currentStock = Number(item.stock ?? 0);
+                        const itemQty = Number(item.quantity || item.qty || 1);
+                        const newStock = Math.max(0, currentStock - itemQty);
+                        if (window.CanteenDB?.updateProduct && item.id) {
+                            window.CanteenDB.updateProduct(item.id, { stock: newStock }).catch(e => console.warn("Stock update warning:", e));
+                        }
+                    });
+                    if (typeof setMenuCatalog === 'function') {
+                        setMenuCatalog(prev => prev.map(p => {
+                            const cartMatch = posCart.find(ci => ci.id === p.id);
+                            return cartMatch ? { ...p, stock: Math.max(0, Number(p.stock ?? 0) - (cartMatch.quantity || cartMatch.qty || 1)) } : p;
+                        }));
+                    }
+
                     if (typeof window !== 'undefined' && window.dispatchEvent) {
                         window.dispatchEvent(new CustomEvent('canteen:transaction-updated', {
                             detail: {
@@ -22384,9 +22423,8 @@
                 }
             };
 
-            const isDrawerTab = activeTab === 'drawer' || activeTab === 'shift';
-            const isSummaryTab = activeTab === 'summary' || activeTab === 'sales_report';
-            const currentTab = isDrawerTab ? 'shift' : isSummaryTab ? 'sales_report' : ['register', 'shift_history', 'salary_deductions'].includes(activeTab) ? activeTab : 'register';
+            const isShiftDrawerTab = activeTab === 'shift' || activeTab === 'drawer' || activeTab === 'summary' || activeTab === 'sales_report';
+            const currentTab = isShiftDrawerTab ? 'shift' : ['register', 'shift_history', 'salary_deductions'].includes(activeTab) ? activeTab : 'register';
 
             return (
                 <div className="lg:pl-72 pl-0 h-screen max-h-screen bg-[#F8FAFC] text-slate-800 flex flex-col overflow-hidden transition-all">
@@ -23457,282 +23495,403 @@
                         />
                     )}
 
-                    {/* SUB-TAB 5: SHIFT Z-READ & DRAWER RECONCILIATION */}
+                    {/* SUB-TAB: UNIFIED SHIFT RECONCILIATION & CASH DRAWER (APPLE DESIGN 2026) */}
                     {currentTab === 'shift' && (
                         <div className="flex-1 p-6 space-y-6 overflow-y-auto">
-                            <div className="enterprise-card p-6 sm:p-7 rounded-3xl bg-white space-y-6 shadow-xs border border-slate-200/80">
-                                {(() => {
-                                    const floatAmt = parseFloat(activeShift?.openingFloat) || 0;
-                                    const shiftStartTime = activeShift?.startTime || activeShift?.openedAt || new Date(0).toISOString();
-                                    const shiftTime = new Date(shiftStartTime).getTime();
+                            {(() => {
+                                const openingFloat = Number(activeShift?.openingFloat) || 0;
+                                const shiftStartTime = activeShift?.startTime || activeShift?.openedAt || new Date(0).toISOString();
+                                const shiftTime = new Date(shiftStartTime).getTime();
 
-                                    const shiftCashOrders = (recentOrders || []).filter(o => {
-                                        const pm = (o.paymentMethod || o.payment_method || '').toLowerCase();
-                                        const isCash = pm === 'cash';
-                                        const isNotRefunded = o.status !== 'VOIDED' && o.status !== 'REFUNDED';
-                                        const orderTime = new Date(o.created_at || o.timestamp || o.date || 0).getTime();
-                                        return isCash && isNotRefunded && (isNaN(shiftTime) || orderTime >= shiftTime);
-                                    });
-                                    const cashSales = shiftCashOrders.reduce((sum, o) => sum + (parseFloat(o.total || o.final_amount || o.total_amount || 0) || 0), 0);
-                                    const payoutsList = activeShift?.cashPayouts || [];
-                                    const totalPayouts = payoutsList.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
-                                    const expectedCashInDrawer = floatAmt + cashSales - totalPayouts;
-                                    const actualCounted = actualCashCountedInput !== '' ? parseFloat(actualCashCountedInput) : (activeShift?.actualCashCounted !== null && activeShift?.actualCashCounted !== undefined ? parseFloat(activeShift.actualCashCounted) : null);
-                                    const variance = actualCounted !== null ? (actualCounted - expectedCashInDrawer) : 0;
-                                    const isShiftOpen = activeShift?.status !== 'CLOSED';
+                                const activeOrders = (recentOrders || []).filter(o => {
+                                    const isNotRefunded = o.status !== 'VOIDED' && o.status !== 'REFUNDED';
+                                    const orderTime = new Date(o.created_at || o.timestamp || o.date || 0).getTime();
+                                    return isNotRefunded && (isNaN(shiftTime) || orderTime >= shiftTime);
+                                });
 
-                                    return (
-                                        <div className="space-y-6">
-                                            {/* HEADER & ACTIONS */}
-                                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-5">
-                                                <div className="flex items-center gap-3.5">
-                                                    <div className="w-10 h-10 rounded-2xl bg-[#7B1E22]/10 border border-[#7B1E22]/20 text-[#7B1E22] flex items-center justify-center shadow-2xs shrink-0">
-                                                        <Icon.DollarSign className="w-5 h-5 stroke-[2.2]" />
-                                                    </div>
-                                                    <div>
-                                                        <div className="flex items-center gap-2">
-                                                            <h2 className="font-outfit text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Cash Drawer Ledger</h2>
-                                                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
-                                                                isShiftOpen ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-100 text-slate-600 border-slate-200'
-                                                            }`}>
-                                                                <span className={`w-1.5 h-1.5 rounded-full ${isShiftOpen ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></span>
-                                                                {isShiftOpen ? `Shift Active (${activeShift?.shiftId || activeShift?.id || 'SH-ACTIVE'})` : 'Shift Closed'}
-                                                            </span>
-                                                        </div>
-                                                        <p className="text-xs text-slate-500 font-normal mt-0.5">
-                                                            Shift started: {new Date(shiftStartTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • Cashier: {activeShift?.cashierName || currentUser?.name || 'Cashier'}
-                                                        </p>
-                                                    </div>
+                                // Section B: 4 KPI Metrics
+                                const cashOrders = activeOrders.filter(o => {
+                                    const pm = String(o.paymentMethod || o.payment_method || '').toLowerCase();
+                                    return pm === 'cash';
+                                });
+                                const shiftCashSales = cashOrders.reduce((sum, o) => sum + (Number(o.total || o.final_amount || o.total_amount || 0) || 0), 0);
+                                const cashCount = cashOrders.length;
+
+                                const rfidOrders = activeOrders.filter(o => {
+                                    const pm = String(o.paymentMethod || o.payment_method || '').toLowerCase();
+                                    return pm === 'rfid' || pm.includes('wallet') || pm.includes('card');
+                                });
+                                const shiftRfidSales = rfidOrders.reduce((sum, o) => sum + (Number(o.total || o.final_amount || o.total_amount || 0) || 0), 0);
+                                const rfidCount = rfidOrders.length;
+
+                                const creditOrders = activeOrders.filter(o => {
+                                    const pm = String(o.paymentMethod || o.payment_method || '').toLowerCase();
+                                    return pm.includes('pay_later') || pm.includes('credit') || pm.includes('tab') || pm.includes('salary') || pm.includes('payroll');
+                                });
+                                const shiftCreditSales = creditOrders.reduce((sum, o) => sum + (Number(o.total || o.final_amount || o.total_amount || 0) || 0), 0);
+                                const creditCount = creditOrders.length;
+
+                                const shiftTotalSales = activeOrders.reduce((sum, o) => sum + (Number(o.total || o.final_amount || o.total_amount || 0) || 0), 0);
+                                const totalOrders = activeOrders.length;
+
+                                // Section C: Drawer Composition & Z-Reading Closeout
+                                const payoutsList = activeShift?.cashPayouts || [];
+                                const shiftPayouts = payoutsList.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+                                const expectedCash = openingFloat + shiftCashSales - shiftPayouts;
+
+                                const isCountEntered = actualCashCounted !== '' && !isNaN(Number(actualCashCounted));
+                                const countedValue = isCountEntered ? Number(actualCashCounted) : null;
+                                const diff = isCountEntered ? (countedValue - expectedCash) : null;
+
+                                const handleCloseShiftAndPrint = () => {
+                                    if (actualCashCounted === '') return;
+                                    const finalCounted = Number(actualCashCounted) || 0;
+                                    const finalDiscrepancy = finalCounted - expectedCash;
+                                    const shiftId = activeShift?.shiftId || activeShift?.id || ('SH-' + Date.now());
+
+                                    const archiveItem = {
+                                        id: shiftId,
+                                        shiftId: shiftId,
+                                        cashierId: activeShift?.cashierId || currentUser?.id || 'cashier-01',
+                                        cashierName: activeShift?.cashierName || currentUser?.name || 'Cashier',
+                                        status: 'CLOSED',
+                                        openedAt: activeShift?.startTime || activeShift?.openedAt,
+                                        closedAt: new Date().toISOString(),
+                                        openingFloat: openingFloat,
+                                        cashSales: shiftCashSales,
+                                        cashPayouts: payoutsList,
+                                        totalPayouts: shiftPayouts,
+                                        expectedCash: expectedCash,
+                                        actualCounted: finalCounted,
+                                        variance: finalDiscrepancy,
+                                        discrepancy: finalDiscrepancy,
+                                        totalOrders: totalOrders,
+                                        totalRevenue: shiftTotalSales,
+                                        breakdown: {
+                                            cash: { count: cashCount, amount: shiftCashSales },
+                                            rfid: { count: rfidCount, amount: shiftRfidSales },
+                                            credit: { count: creditCount, amount: shiftCreditSales },
+                                            total: { count: totalOrders, amount: shiftTotalSales }
+                                        }
+                                    };
+
+                                    try {
+                                        const prevArchives = JSON.parse(localStorage.getItem('novalunch_shift_archives') || '[]');
+                                        localStorage.setItem('novalunch_shift_archives', JSON.stringify([archiveItem, ...prevArchives]));
+                                    } catch (e) {
+                                        console.warn('Failed to archive shift report', e);
+                                    }
+
+                                    const discrepancyStr = Math.abs(finalDiscrepancy) < 0.01
+                                        ? 'Exact ₱0.00'
+                                        : `${finalDiscrepancy >= 0 ? '+' : ''}₱${finalDiscrepancy.toFixed(2)}`;
+
+                                    if (typeof logAuditAction === 'function') {
+                                        logAuditAction('SHIFT_CLOSED', `Shift #${shiftId} closed. Expected: ₱${expectedCash.toFixed(2)}, Actual: ₱${finalCounted.toFixed(2)}, Discrepancy: ${discrepancyStr}`, currentUser?.name || 'Cashier', 'financial');
+                                    } else if (window.CanteenDB && typeof window.CanteenDB.logAuditEvent === 'function') {
+                                        window.CanteenDB.logAuditEvent({
+                                            action: `SHIFT_CLOSED: Shift #${shiftId} closed. Expected: ₱${expectedCash.toFixed(2)}, Actual: ₱${finalCounted.toFixed(2)}, Discrepancy: ${discrepancyStr}`,
+                                            actor: currentUser?.name || 'Cashier',
+                                            event_type: 'financial'
+                                        }).catch(() => {});
+                                    }
+
+                                    // Clear novalunch_active_shift, reset state to null (opens "Start New Shift" prompt), and trigger print
+                                    localStorage.removeItem('novalunch_active_shift');
+                                    setActiveShift(null);
+                                    setOpeningFloatInput('1000.00');
+                                    setActualCashCounted('');
+
+                                    showToast("Shift closed and archived. Generating Z-Reading...", "success");
+                                    window.print();
+                                };
+
+                                return (
+                                    <div className="space-y-6">
+                                        {/* SECTION A: HEADER & SHIFT META */}
+                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                            <div className="space-y-1">
+                                                <div className="flex items-center gap-3">
+                                                    <h2 className="font-outfit text-2xl font-bold text-slate-900 tracking-tight">
+                                                        Shift Reconciliation &amp; Cash Drawer
+                                                    </h2>
+                                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200/80 shadow-2xs">
+                                                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                                                        Shift Active: {activeShift?.shiftId || activeShift?.id || 'SH-ACTIVE'}
+                                                    </span>
                                                 </div>
-                                                <div className="flex items-center gap-2 flex-wrap">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setOpeningFloatInput(String(floatAmt.toFixed(2)));
-                                                            setOpenDrawerModalOpen(true);
-                                                        }}
-                                                        className="h-9 px-3.5 bg-white hover:bg-slate-50 border border-slate-200/90 text-slate-700 font-semibold text-xs rounded-xl shadow-2xs transition-all active:scale-98 flex items-center gap-1.5 cursor-pointer"
-                                                    >
-                                                        <Icon.Edit3 className="w-3.5 h-3.5 text-slate-500" />
-                                                        <span>{isShiftOpen ? 'Adjust Float' : 'Open Drawer'}</span>
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setCashPayoutAmountInput('');
-                                                            setCashPayoutReasonInput('');
-                                                            setCashPayoutModalOpen(true);
-                                                        }}
-                                                        className="h-9 px-3.5 bg-amber-50 hover:bg-amber-100 border border-amber-200/80 text-amber-800 font-semibold text-xs rounded-xl shadow-2xs transition-all active:scale-98 flex items-center gap-1.5 cursor-pointer"
-                                                    >
-                                                        <Icon.MinusCircle className="w-3.5 h-3.5 text-amber-700" />
-                                                        <span>Record Cash Payout</span>
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => window.print()}
-                                                        className="h-9 px-3.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl shadow-2xs transition-all active:scale-98 flex items-center gap-2 cursor-pointer"
-                                                    >
-                                                        <Icon.Printer className="w-3.5 h-3.5 text-slate-300" />
-                                                        <span>Print Z-Read</span>
-                                                    </button>
+                                                <p className="text-xs text-slate-500">
+                                                    Cashier: {activeShift?.cashierName || currentUser?.name || 'Cashier'} &bull; Started: {new Date(shiftStartTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                </p>
+                                            </div>
+
+                                            <div className="flex items-center gap-2.5">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setCashPayoutAmountInput('');
+                                                        setCashPayoutReasonInput('');
+                                                        setCashPayoutModalOpen(true);
+                                                    }}
+                                                    className="h-10 px-4 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/80 font-semibold text-xs rounded-xl shadow-2xs transition-all active:scale-[0.98] flex items-center gap-2 cursor-pointer"
+                                                >
+                                                    <Icon.Plus className="w-3.5 h-3.5 text-amber-700" />
+                                                    <span>+ Record Cash Payout</span>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* SECTION B: SALES VOLUME BREAKDOWN (4 CLEAN KPI CARDS) */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                            {/* 1. CASH TENDERS */}
+                                            <div className="enterprise-card p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-xs font-semibold text-slate-500">Cash Tenders</span>
+                                                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+                                                        {cashCount} orders
+                                                    </span>
+                                                </div>
+                                                <div className="font-outfit text-2xl font-bold text-slate-900 tabular-nums">
+                                                    ₱{shiftCashSales.toFixed(2)}
                                                 </div>
                                             </div>
 
-                                            {/* REAL-TIME DRAWER COMPOSITION FORMULA BANNER */}
-                                            <div className="space-y-2">
-                                                <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                                                    Real-Time Drawer Composition Formula
+                                            {/* 2. RFID E-WALLET */}
+                                            <div className="enterprise-card p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-xs font-semibold text-slate-500">RFID E-Wallet</span>
+                                                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200/60">
+                                                        {rfidCount} orders
+                                                    </span>
                                                 </div>
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-                                                    {/* CARD 1: OPENING FLOAT */}
-                                                    <div className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/70 space-y-1 relative">
-                                                        <div className="flex items-center justify-between">
-                                                            <span className="text-xs font-medium text-slate-500">Opening Base Float</span>
+                                                <div className="font-outfit text-2xl font-bold text-slate-900 tabular-nums">
+                                                    ₱{shiftRfidSales.toFixed(2)}
+                                                </div>
+                                            </div>
+
+                                            {/* 3. PAY LATER / PAYROLL */}
+                                            <div className="enterprise-card p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-xs font-semibold text-slate-500">Pay Later / Payroll</span>
+                                                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200/60">
+                                                        {creditCount} orders
+                                                    </span>
+                                                </div>
+                                                <div className="font-outfit text-2xl font-bold text-slate-900 tabular-nums">
+                                                    ₱{shiftCreditSales.toFixed(2)}
+                                                </div>
+                                            </div>
+
+                                            {/* 4. TOTAL GROSS SALES */}
+                                            <div className="enterprise-card p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-xs font-semibold text-slate-500">Total Gross Sales</span>
+                                                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200/60">
+                                                        {totalOrders} orders
+                                                    </span>
+                                                </div>
+                                                <div className="font-outfit text-2xl font-bold text-slate-900 tabular-nums">
+                                                    ₱{shiftTotalSales.toFixed(2)}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* SECTION C: DRAWER COMPOSITION & Z-READING CLOSEOUT */}
+                                        <div className="enterprise-card p-6 sm:p-7 rounded-3xl bg-white border border-slate-200/80 shadow-xs space-y-6">
+                                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-stretch">
+                                                {/* LEFT COLUMN: DRAWER BALANCE BREAKDOWN */}
+                                                <div className="lg:col-span-6 flex flex-col justify-between p-5 rounded-2xl bg-slate-50/70 border border-slate-200/70 space-y-4">
+                                                    <div>
+                                                        <div className="flex items-center justify-between pb-3 border-b border-slate-200/60">
+                                                            <h3 className="font-outfit text-base font-bold text-slate-900">Drawer Balance Breakdown</h3>
                                                             <button
                                                                 type="button"
                                                                 onClick={() => {
-                                                                    setOpeningFloatInput(String(floatAmt.toFixed(2)));
+                                                                    setOpeningFloatInput(String(openingFloat.toFixed(2)));
                                                                     setOpenDrawerModalOpen(true);
                                                                 }}
-                                                                className="text-[10px] font-semibold text-[#7B1E22] hover:underline cursor-pointer"
+                                                                className="text-xs font-semibold text-[#7B1E22] hover:underline cursor-pointer"
                                                             >
-                                                                Edit
+                                                                Adjust Float
                                                             </button>
                                                         </div>
-                                                        <div className="font-outfit text-2xl font-bold text-slate-900 tabular-nums">
-                                                            ₱{floatAmt.toFixed(2)}
+
+                                                        <div className="space-y-3 pt-3 text-xs">
+                                                            <div className="flex justify-between items-center text-slate-600">
+                                                                <span>Opening Base Float</span>
+                                                                <span className="font-mono font-semibold text-slate-800 tabular-nums">₱{openingFloat.toFixed(2)}</span>
+                              </div>
+                                                            <div className="flex justify-between items-center text-emerald-800">
+                                                                <span>(+) Shift Cash Collected</span>
+                                                                <span className="font-mono font-semibold text-emerald-700 tabular-nums">+₱{shiftCashSales.toFixed(2)}</span>
+                                                            </div>
+                                                            <div className="flex justify-between items-center text-amber-800">
+                                                                <span>(-) Drawer Payouts / Petty Cash</span>
+                                                                <span className="font-mono font-semibold text-amber-700 tabular-nums">-₱{shiftPayouts.toFixed(2)}</span>
+                                                            </div>
                                                         </div>
-                                                        <div className="text-[11px] text-slate-400">Shift starting cash balance</div>
                                                     </div>
 
-                                                    {/* CARD 2: TOTAL CASH SALES */}
-                                                    <div className="p-4 bg-emerald-50/50 rounded-2xl border border-emerald-200/60 space-y-1">
-                                                        <div className="flex items-center justify-between">
-                                                            <span className="text-xs font-semibold text-emerald-800">+ Shift Cash Sales</span>
-                                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                                                                {shiftCashOrders.length} orders
-                                                            </span>
+                                                    <div className="pt-4 border-t border-slate-200/80 flex items-center justify-between">
+                                                        <div>
+                                                            <div className="text-xs font-medium text-slate-500">Expected Cash in Drawer</div>
                                                         </div>
-                                                        <div className="font-outfit text-2xl font-bold text-emerald-900 tabular-nums">
-                                                            +₱{cashSales.toFixed(2)}
+                                                        <div className="font-mono text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums tracking-tight">
+                                                            ₱{expectedCash.toFixed(2)}
                                                         </div>
-                                                        <div className="text-[11px] text-emerald-700/80">Completed shift cash tenders</div>
+                                                    </div>
+                                                </div>
+
+                                                {/* RIGHT COLUMN: ACTUAL COUNT & CLOSEOUT */}
+                                                <div className="lg:col-span-6 flex flex-col justify-between p-5 rounded-2xl bg-white border border-slate-200/80 shadow-2xs space-y-5">
+                                                    <div className="space-y-4">
+                                                        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                                                            <h3 className="font-outfit text-base font-bold text-slate-900">Actual Count &amp; Closeout</h3>
+                                                            {/* LIVE DISCREPANCY PILL */}
+                                                            {diff === null ? (
+                                                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                                                                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                                                                    Awaiting Count
+                                                                </span>
+                                                            ) : Math.abs(diff) < 0.005 ? (
+                                                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                                                    <Icon.CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                                                    Exact / Balanced (₱0.00)
+                                                                </span>
+                                                            ) : diff > 0 ? (
+                                                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-800 border border-blue-200">
+                                                                    <Icon.TrendingUp className="w-3.5 h-3.5 text-blue-600" />
+                                                                    Over (+₱{diff.toFixed(2)})
+                                                                </span>
+                                                            ) : (
+                                                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-800 border border-rose-200">
+                                                                    <Icon.AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                                                                    Short (-₱{Math.abs(diff).toFixed(2)})
+                                                                </span>
+                                                            )}
+                                                        </div>
+
+                                                        <div className="space-y-1.5">
+                                                            <label className="block text-xs font-semibold text-slate-700">
+                                                                Actual Counted Cash (₱)
+                                                            </label>
+                                                            <div className="relative">
+                                                                <span className="absolute left-3.5 top-2.5 font-bold text-slate-400 text-base">₱</span>
+                                                                <input
+                                                                    type="number"
+                                                                    step="0.01"
+                                                                    min="0"
+                                                                    placeholder="0.00"
+                                                                    value={actualCashCounted}
+                                                                    onChange={(e) => setActualCashCounted(e.target.value)}
+                                                                    className="w-full bg-slate-50/70 border border-slate-200 rounded-xl pl-8 pr-4 py-2.5 text-xl font-bold font-mono text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#7B1E22]/20 focus:border-[#7B1E22] transition-all"
+                                                                />
+                                                            </div>
+                                                        </div>
                                                     </div>
 
-                                                    {/* CARD 3: CASH PAYOUTS */}
-                                                    <div className="p-4 bg-amber-50/50 rounded-2xl border border-amber-200/60 space-y-1">
-                                                        <div className="flex items-center justify-between">
-                                                            <span className="text-xs font-semibold text-amber-800">- Cash Payouts</span>
-                                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800">
-                                                                {payoutsList.length} withdrawals
-                                                            </span>
-                                                        </div>
-                                                        <div className="font-outfit text-2xl font-bold text-amber-900 tabular-nums">
-                                                            -₱{totalPayouts.toFixed(2)}
-                                                        </div>
-                                                        <div className="text-[11px] text-amber-700/80">Petty cash & drawer payouts</div>
-                                                    </div>
-
-                                                    {/* CARD 4: EXPECTED DRAWER CASH */}
-                                                    <div className="p-4 bg-slate-900 text-white rounded-2xl border border-slate-800 space-y-1 shadow-xs">
-                                                        <div className="flex items-center justify-between">
-                                                            <span className="text-xs font-medium text-slate-400">= Expected Physical Cash</span>
-                                                            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                                                        </div>
-                                                        <div className="font-outfit text-2xl font-bold text-emerald-400 tabular-nums">
-                                                            ₱{expectedCashInDrawer.toFixed(2)}
-                                                        </div>
-                                                        <div className="text-[11px] text-slate-400">Float + Cash Sales - Payouts</div>
+                                                    <div className="pt-2">
+                                                        <button
+                                                            type="button"
+                                                            disabled={actualCashCounted === ''}
+                                                            onClick={handleCloseShiftAndPrint}
+                                                            className={`w-full h-11 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-xs cursor-pointer ${
+                                                                actualCashCounted !== ''
+                                                                    ? 'bg-[#7B1E22] hover:bg-[#681418] text-white active:scale-[0.98]'
+                                                                    : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
+                                                            }`}
+                                                        >
+                                                            <Icon.Printer className="w-4 h-4" />
+                                                            <span>Close Shift &amp; Print Z-Reading</span>
+                                                        </button>
                                                     </div>
                                                 </div>
                                             </div>
+                                        </div>
 
-                                            {/* PHYSICAL DRAWER CASH COUNT & OVER/SHORT AUDIT */}
-                                            <div className="p-5 sm:p-6 bg-slate-50/70 rounded-2xl border border-slate-200/80 space-y-4">
-                                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                                                    <div>
-                                                        <h3 className="font-outfit text-base font-bold text-slate-900">
-                                                            Cash Count & Live Over/Short Reconciliation
-                                                        </h3>
-                                                        <p className="text-xs text-slate-500 font-normal">
-                                                            Enter actual counted physical bills and coins to verify against expected drawer total
-                                                        </p>
+                                        {/* ITEMIZED CASH LOGS & PAYOUTS AUDIT TRAY */}
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                            {/* RECORDED PAYOUTS */}
+                                            <div className="enterprise-card p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-3">
+                                                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                                                    <div className="flex items-center gap-2">
+                                                        <Icon.MinusCircle className="w-4 h-4 text-amber-600" />
+                                                        <h4 className="font-outfit text-sm font-bold text-slate-900">Recorded Cash Payouts</h4>
                                                     </div>
-                                                    {/* LIVE RECONCILIATION BADGE */}
-                                                    {actualCounted === null ? (
-                                                        <span className="px-3 py-1 rounded-full text-xs font-medium bg-slate-200/70 text-slate-600 border border-slate-300/60">
-                                                            Awaiting Drawer Count
-                                                        </span>
-                                                    ) : Math.abs(variance) < 0.01 ? (
-                                                        <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1.5 shadow-2xs">
-                                                            <Icon.CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
-                                                            <span>Balanced / Exact ₱0.00</span>
-                                                        </span>
-                                                    ) : variance > 0 ? (
-                                                        <span className="px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-300 flex items-center gap-1.5 shadow-2xs">
-                                                            <Icon.TrendingUp className="w-3.5 h-3.5 text-blue-700" />
-                                                            <span>Over: +₱{variance.toFixed(2)}</span>
-                                                        </span>
-                                                    ) : (
-                                                        <span className="px-3 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-1.5 shadow-2xs">
-                                                            <Icon.AlertTriangle className="w-3.5 h-3.5 text-rose-700" />
-                                                            <span>Short: -₱{Math.abs(variance).toFixed(2)}</span>
-                                                        </span>
-                                                    )}
-                                                </div>
-
-                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
-                                                    <div className="sm:col-span-2">
-                                                        <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                                                            Actual Counted Cash in Drawer (₱)
-                                                        </label>
-                                                        <div className="relative">
-                                                            <span className="absolute left-3.5 top-2.5 font-bold text-slate-400 text-base">₱</span>
-                                                            <input
-                                                                type="number"
-                                                                step="0.01"
-                                                                placeholder="0.00"
-                                                                value={actualCashCountedInput}
-                                                                onChange={(e) => setActualCashCountedInput(e.target.value)}
-                                                                className="w-full bg-white border border-slate-300 rounded-xl pl-8 pr-4 py-2.5 text-lg font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#7B1E22]/20 focus:border-[#7B1E22] transition-all"
-                                                            />
-                                                        </div>
-                                                    </div>
-
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            const countedNum = parseFloat(actualCashCountedInput);
-                                                            if (isNaN(countedNum) || countedNum < 0) {
-                                                                showToast("Please enter a valid cash amount.", "error");
-                                                                return;
-                                                            }
-                                                            const updated = {
-                                                                ...activeShift,
-                                                                actualCashCounted: countedNum
-                                                            };
-                                                            updateCashierShift(updated);
-                                                            showToast(`Saved drawer count of ₱${countedNum.toFixed(2)}`, "success");
-                                                        }}
-                                                        className="h-11 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs transition-all active:scale-98 shadow-xs flex items-center justify-center gap-2 cursor-pointer"
-                                                    >
-                                                        <Icon.Check className="w-4 h-4 text-emerald-400" />
-                                                        <span>Save Cash Count</span>
-                                                    </button>
-                                                </div>
-                                            </div>
-
-                                            {/* SCROLLABLE TABLE: COMPLETED CASH TRANSACTIONS IN CURRENT SHIFT */}
-                                            <div className="space-y-3">
-                                                <div className="flex items-center justify-between">
-                                                    <div>
-                                                        <h4 className="font-outfit text-sm font-bold text-slate-900">Shift Cash Transactions</h4>
-                                                        <p className="text-[11px] text-slate-500">Itemized cash sales processed during this active shift session</p>
-                                                    </div>
-                                                    <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full">
-                                                        {shiftCashOrders.length} Completed Tenders
+                                                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200/60">
+                                                        {payoutsList.length} Entries
                                                     </span>
                                                 </div>
 
-                                                {shiftCashOrders.length === 0 ? (
-                                                    <div className="p-8 text-center bg-slate-50/60 rounded-2xl border border-slate-200/60 text-slate-400 text-xs">
-                                                        No completed cash transactions recorded during this active shift.
+                                                {payoutsList.length === 0 ? (
+                                                    <div className="p-6 text-center text-slate-400 text-xs">
+                                                        No drawer payouts or petty cash recorded for this shift.
                                                     </div>
                                                 ) : (
-                                                    <div className="overflow-x-auto max-h-72 overflow-y-auto rounded-2xl border border-slate-200/70 bg-white">
+                                                    <div className="overflow-x-auto max-h-48 overflow-y-auto">
                                                         <table className="w-full text-left text-xs">
-                                                            <thead className="sticky top-0 bg-slate-50/90 backdrop-blur-xs z-10">
-                                                                <tr className="border-b border-slate-100 text-slate-400 text-[10.5px] font-semibold uppercase tracking-wider">
-                                                                    <th className="py-2.5 px-3.5">Order Ref #</th>
-                                                                    <th className="py-2.5 px-3.5">Time</th>
-                                                                    <th className="py-2.5 px-3.5">Customer</th>
-                                                                    <th className="py-2.5 px-3.5">Items</th>
-                                                                    <th className="py-2.5 px-3.5 text-right">Cash Amount</th>
+                                                            <thead>
+                                                                <tr className="border-b border-slate-100 text-slate-400 text-[10px] font-semibold uppercase tracking-wider">
+                                                                    <th className="py-2 px-2.5">Time</th>
+                                                                    <th className="py-2 px-2.5">Reason</th>
+                                                                    <th className="py-2 px-2.5 text-right">Amount</th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody className="divide-y divide-slate-100">
-                                                                {shiftCashOrders.map((o, idx) => {
+                                                                {payoutsList.map((p, idx) => (
+                                                                    <tr key={p.id || idx} className="hover:bg-slate-50/50">
+                                                                        <td className="py-2 px-2.5 font-mono text-slate-500 text-[11px]">{p.timestamp || '---'}</td>
+                                                                        <td className="py-2 px-2.5 font-medium text-slate-800 max-w-[180px] truncate" title={p.reason}>{p.reason}</td>
+                                                                        <td className="py-2 px-2.5 text-right font-mono font-bold text-amber-800 tabular-nums">
+                                                                            -₱{(Number(p.amount) || 0).toFixed(2)}
+                                                                        </td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* RECENT CASH ORDERS */}
+                                            <div className="enterprise-card p-5 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-3">
+                                                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                                                    <div className="flex items-center gap-2">
+                                                        <Icon.Banknote className="w-4 h-4 text-emerald-600" />
+                                                        <h4 className="font-outfit text-sm font-bold text-slate-900">Shift Cash Tenders</h4>
+                                                    </div>
+                                                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200/60">
+                                                        {cashOrders.length} Tenders
+                                                    </span>
+                                                </div>
+
+                                                {cashOrders.length === 0 ? (
+                                                    <div className="p-6 text-center text-slate-400 text-xs">
+                                                        No completed cash tenders recorded during this active shift.
+                                                    </div>
+                                                ) : (
+                                                    <div className="overflow-x-auto max-h-48 overflow-y-auto">
+                                                        <table className="w-full text-left text-xs">
+                                                            <thead>
+                                                                <tr className="border-b border-slate-100 text-slate-400 text-[10px] font-semibold uppercase tracking-wider">
+                                                                    <th className="py-2 px-2.5">Order Ref</th>
+                                                                    <th className="py-2 px-2.5">Time</th>
+                                                                    <th className="py-2 px-2.5 text-right">Amount</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="divide-y divide-slate-100">
+                                                                {cashOrders.slice(0, 10).map((o, idx) => {
                                                                     const orderTime = o.created_at || o.timestamp || o.date;
                                                                     const timeStr = orderTime ? new Date(orderTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '---';
-                                                                    const custName = o.customer_name || o.student_name || o.userName || 'Walk-in Customer';
-                                                                    const itemsStr = Array.isArray(o.items) && o.items.length > 0
-                                                                        ? o.items.map(i => `${i.name || i.item_name || 'Item'} (x${i.quantity || i.qty || 1})`).join(', ')
-                                                                        : 'Canteen Order';
-                                                                    const orderAmt = parseFloat(o.total || o.final_amount || o.total_amount || 0) || 0;
-
+                                                                    const amt = Number(o.total || o.final_amount || o.total_amount || 0) || 0;
                                                                     return (
-                                                                        <tr key={o.id || o.order_id || idx} className="hover:bg-slate-50/60 transition-colors">
-                                                                            <td className="py-2.5 px-3.5 font-mono font-semibold text-slate-700">
-                                                                                #{String(o.id || o.order_id || '').slice(-6) || 'ORD'}
+                                                                        <tr key={o.id || o.orderNo || idx} className="hover:bg-slate-50/50">
+                                                                            <td className="py-2 px-2.5 font-mono font-semibold text-slate-700">
+                                                                                #{String(o.orderNo || o.id || '').slice(-6) || 'ORD'}
                                                                             </td>
-                                                                            <td className="py-2.5 px-3.5 text-slate-500 font-mono">{timeStr}</td>
-                                                                            <td className="py-2.5 px-3.5 font-medium text-slate-800">{custName}</td>
-                                                                            <td className="py-2.5 px-3.5 text-slate-600 max-w-xs truncate" title={itemsStr}>
-                                                                                {itemsStr}
-                                                                            </td>
-                                                                            <td className="py-2.5 px-3.5 text-right font-outfit font-bold text-emerald-800 tabular-nums">
-                                                                                ₱{orderAmt.toFixed(2)}
+                                                                            <td className="py-2 px-2.5 font-mono text-slate-500 text-[11px]">{timeStr}</td>
+                                                                            <td className="py-2 px-2.5 text-right font-mono font-bold text-emerald-700 tabular-nums">
+                                                                                ₱{amt.toFixed(2)}
                                                                             </td>
                                                                         </tr>
                                                                     );
@@ -23742,352 +23901,45 @@
                                                     </div>
                                                 )}
                                             </div>
-
-                                            {/* RECORDED PAYOUTS LOG TABLE */}
-                                            <div className="space-y-3">
-                                                <div className="flex items-center justify-between">
-                                                    <div>
-                                                        <h4 className="font-outfit text-sm font-bold text-slate-900">Recorded Cash Payouts & Petty Cash</h4>
-                                                        <p className="text-[11px] text-slate-500">Expenditures deducted from drawer during this cashier shift</p>
-                                                    </div>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setCashPayoutAmountInput('');
-                                                            setCashPayoutReasonInput('');
-                                                            setCashPayoutModalOpen(true);
-                                                        }}
-                                                        className="text-xs font-semibold text-amber-800 hover:underline flex items-center gap-1 cursor-pointer"
-                                                    >
-                                                        <Icon.Plus className="w-3.5 h-3.5" />
-                                                        <span>Add Payout</span>
-                                                    </button>
-                                                </div>
-
-                                                {payoutsList.length === 0 ? (
-                                                    <div className="p-6 text-center bg-slate-50/60 rounded-2xl border border-slate-200/60 text-slate-400 text-xs">
-                                                        No cash payouts or petty cash withdrawals recorded in this shift.
-                                                    </div>
-                                                ) : (
-                                                    <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white">
-                                                        <table className="w-full text-left text-xs">
-                                                            <thead>
-                                                                <tr className="border-b border-slate-100 text-slate-400 text-[10.5px] font-semibold uppercase tracking-wider bg-slate-50/60">
-                                                                    <th className="py-2.5 px-3.5">Time</th>
-                                                                    <th className="py-2.5 px-3.5">Reason / Justification</th>
-                                                                    <th className="py-2.5 px-3.5">Authorized By</th>
-                                                                    <th className="py-2.5 px-3.5 text-right">Amount Deducted</th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody className="divide-y divide-slate-100">
-                                                                {payoutsList.map((p, idx) => (
-                                                                    <tr key={p.id || idx} className="hover:bg-slate-50/50">
-                                                                        <td className="py-2.5 px-3.5 font-mono text-slate-500">{p.timestamp}</td>
-                                                                        <td className="py-2.5 px-3.5 font-medium text-slate-800">{p.reason}</td>
-                                                                        <td className="py-2.5 px-3.5 text-slate-500">{p.cashier || currentUser?.name || 'Cashier'}</td>
-                                                                        <td className="py-2.5 px-3.5 text-right font-outfit font-bold text-amber-800 tabular-nums">
-                                                                            -₱{(parseFloat(p.amount) || 0).toFixed(2)}
-                                                                        </td>
-                                                                    </tr>
-                                                                ))}
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    );
-                                })()}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* SUB-TAB 6: SHIFT SALES REPORT & Z-READ SUMMARY MODULE */}
-                    {currentTab === 'sales_report' && (
-                        <div className="flex-1 p-6 space-y-6 overflow-y-auto">
-                            {/* ACTIVE CASHIER SESSION RECONCILIATION & Z-READING EXECUTIVE BANNER */}
-                            {(() => {
-                                const floatAmt = parseFloat(activeShift?.openingFloat) || 0;
-                                const shiftStartTime = activeShift?.startTime || activeShift?.openedAt || new Date(0).toISOString();
-                                const shiftTime = new Date(shiftStartTime).getTime();
-
-                                const activeOrders = (recentOrders || []).filter(o => {
-                                    const isNotRefunded = o.status !== 'VOIDED' && o.status !== 'REFUNDED';
-                                    const orderTime = new Date(o.created_at || o.timestamp || o.date || 0).getTime();
-                                    return isNotRefunded && (isNaN(shiftTime) || orderTime >= shiftTime);
-                                });
-                                const grandTotal = activeOrders.reduce((sum, o) => sum + (parseFloat(o.total || o.final_amount || o.total_amount || 0) || 0), 0);
-
-                                const cashOrders = activeOrders.filter(o => (o.paymentMethod || o.payment_method || '').toLowerCase() === 'cash');
-                                const cashSales = cashOrders.reduce((sum, o) => sum + (parseFloat(o.total || o.final_amount || o.total_amount || 0) || 0), 0);
-
-                                const rfidOrders = activeOrders.filter(o => (o.paymentMethod || o.payment_method || '').toLowerCase() === 'rfid');
-                                const rfidSales = rfidOrders.reduce((sum, o) => sum + (parseFloat(o.total || o.final_amount || o.total_amount || 0) || 0), 0);
-
-                                const payLaterOrders = activeOrders.filter(o => (o.paymentMethod || o.payment_method || '').toLowerCase().includes('pay_later'));
-                                const payLaterSales = payLaterOrders.reduce((sum, o) => sum + (parseFloat(o.total || o.final_amount || o.total_amount || 0) || 0), 0);
-
-                                const payrollOrders = activeOrders.filter(o => {
-                                    const pm = (o.paymentMethod || o.payment_method || '').toLowerCase();
-                                    return pm.includes('salary') || pm.includes('payroll');
-                                });
-                                const payrollSales = payrollOrders.reduce((sum, o) => sum + (parseFloat(o.total || o.final_amount || o.total_amount || 0) || 0), 0);
-
-                                const payoutsList = activeShift?.cashPayouts || [];
-                                const totalPayouts = payoutsList.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
-                                const expectedCashInDrawer = floatAmt + cashSales - totalPayouts;
-                                const actualCounted = actualCashCountedInput !== '' ? parseFloat(actualCashCountedInput) : (activeShift?.actualCashCounted !== null && activeShift?.actualCashCounted !== undefined ? parseFloat(activeShift.actualCashCounted) : null);
-                                const variance = actualCounted !== null ? (actualCounted - expectedCashInDrawer) : 0;
-                                const isShiftOpen = activeShift?.status !== 'CLOSED';
-
-                                const handleEndShiftAndPrint = () => {
-                                    const finalCounted = actualCounted !== null ? actualCounted : expectedCashInDrawer;
-                                    const finalDiscrepancy = finalCounted - expectedCashInDrawer;
-                                    const shiftId = activeShift?.shiftId || activeShift?.id || ('SH-' + Date.now());
-                                    const archiveItem = {
-                                        id: shiftId,
-                                        shiftId: shiftId,
-                                        cashierId: activeShift?.cashierId || currentUser?.id || 'cashier-01',
-                                        cashierName: activeShift?.cashierName || currentUser?.name || 'Cashier',
-                                        status: 'CLOSED',
-                                        openedAt: activeShift?.startTime || activeShift?.openedAt,
-                                        closedAt: new Date().toISOString(),
-                                        openingFloat: floatAmt,
-                                        cashSales: cashSales,
-                                        cashPayouts: payoutsList,
-                                        totalPayouts: totalPayouts,
-                                        expectedCash: expectedCashInDrawer,
-                                        actualCounted: finalCounted,
-                                        variance: finalDiscrepancy,
-                                        discrepancy: finalDiscrepancy,
-                                        totalOrders: activeOrders.length,
-                                        totalRevenue: grandTotal,
-                                        breakdown: {
-                                            cash: { count: cashOrders.length, amount: cashSales },
-                                            rfid: { count: rfidOrders.length, amount: rfidSales },
-                                            payLater: { count: payLaterOrders.length, amount: payLaterSales },
-                                            payroll: { count: payrollOrders.length, amount: payrollSales }
-                                        }
-                                    };
-                                    try {
-                                        const prevArchives = JSON.parse(localStorage.getItem('novalunch_shift_archives') || '[]');
-                                        localStorage.setItem('novalunch_shift_archives', JSON.stringify([archiveItem, ...prevArchives]));
-                                    } catch (e) { }
-
-                                    const discrepancyStr = Math.abs(finalDiscrepancy) < 0.01
-                                        ? 'Exact ₱0.00'
-                                        : `${finalDiscrepancy >= 0 ? '+' : ''}₱${finalDiscrepancy.toFixed(2)}`;
-
-                                    if (typeof logAuditAction === 'function') {
-                                        logAuditAction('SHIFT_CLOSED', `Shift #${shiftId} closed. Expected: ₱${expectedCashInDrawer.toFixed(2)}, Actual: ₱${finalCounted.toFixed(2)}, Discrepancy: ${discrepancyStr}`, currentUser?.name || 'Cashier', 'financial');
-                                    } else if (window.CanteenDB && typeof window.CanteenDB.logAuditEvent === 'function') {
-                                        window.CanteenDB.logAuditEvent({
-                                            action: `SHIFT_CLOSED: Shift #${shiftId} closed. Expected: ₱${expectedCashInDrawer.toFixed(2)}, Actual: ₱${finalCounted.toFixed(2)}, Discrepancy: ${discrepancyStr}`,
-                                            actor: currentUser?.name || 'Cashier',
-                                            event_type: 'financial'
-                                        }).catch(() => {});
-                                    }
-
-                                    // Remove active shift from localStorage and reset state to null to prompt for next opening float
-                                    localStorage.removeItem('novalunch_active_shift');
-                                    setActiveShift(null);
-                                    setOpeningFloatInput('1000.00');
-                                    setActualCashCounted('');
-
-                                    showToast("Shift ended and archived. Launching Z-Read Print...", "success");
-                                    window.print();
-                                };
-
-                                return (
-                                    <div className="enterprise-card p-6 sm:p-7 rounded-3xl bg-slate-950 text-white space-y-6 shadow-md border border-slate-800">
-                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-5">
-                                            <div className="flex items-center gap-3.5">
-                                                <div className="w-10 h-10 rounded-2xl bg-slate-800 text-amber-400 flex items-center justify-center shadow-xs shrink-0">
-                                                    <Icon.BarChart2 className="w-5 h-5" />
-                                                </div>
-                                                <div>
-                                                    <div className="flex items-center gap-2.5">
-                                                        <h3 className="font-outfit text-xl font-bold text-white tracking-tight">Active Shift Reconciliation & Z-Reading</h3>
-                                                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
-                                                            isShiftOpen ? 'bg-emerald-950 text-emerald-300 border-emerald-800' : 'bg-slate-800 text-slate-400 border-slate-700'
-                                                        }`}>
-                                                            <span className={`w-1.5 h-1.5 rounded-full ${isShiftOpen ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`}></span>
-                                                            {isShiftOpen ? `Shift Active (${activeShift?.shiftId || activeShift?.id || 'SH-ACTIVE'})` : 'Shift Closed'}
-                                                        </span>
-                                                    </div>
-                                                    <p className="text-xs text-slate-400 font-normal mt-0.5">
-                                                        Cashier: {activeShift?.cashierName || currentUser?.name || 'Cashier'} • Started: {new Date(shiftStartTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                    </p>
-                                                </div>
-                                            </div>
-
-                                            <div className="flex items-center gap-2.5 flex-wrap">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => window.print()}
-                                                    className="h-9 px-3.5 bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs rounded-xl shadow-2xs transition-all active:scale-98 flex items-center gap-1.5 cursor-pointer"
-                                                >
-                                                    <Icon.Printer className="w-3.5 h-3.5 text-slate-300" />
-                                                    <span>Print Slip</span>
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={handleEndShiftAndPrint}
-                                                    className="h-9 px-4 bg-[#7B1E22] hover:bg-[#681418] text-white font-semibold text-xs rounded-xl shadow-xs transition-all active:scale-98 flex items-center gap-2 cursor-pointer"
-                                                >
-                                                    <Icon.Lock className="w-3.5 h-3.5 text-amber-300" />
-                                                    <span>End Shift & Archive Z-Reading</span>
-                                                </button>
-                                            </div>
                                         </div>
 
-                                        {/* 4-WAY PAYMENT METHOD BREAKDOWN */}
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                            {/* CASH */}
-                                            <div className="p-4 bg-slate-900/90 rounded-2xl border border-slate-800/90 space-y-1">
-                                                <div className="flex justify-between items-center text-xs text-slate-400 font-medium">
-                                                    <span>Cash Tenders</span>
-                                                    <span className="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded">{cashOrders.length} orders</span>
-                                                </div>
-                                                <div className="font-outfit text-2xl font-bold text-white tabular-nums">
-                                                    ₱{cashSales.toFixed(2)}
-                                                </div>
+                                        {/* HIDDEN PRINTABLE THERMAL Z-READING SLIP */}
+                                        <div id="printableZRead" className="hidden print:block p-6 font-mono text-xs text-black bg-white max-w-sm mx-auto">
+                                            <div className="text-center pb-3 border-b border-black">
+                                                <h3 className="font-bold text-sm">SAINT JOSEPH COLLEGE OF NOVALICHES</h3>
+                                                <p className="text-[10px]">NovaLunch Canteen POS &bull; Shift Z-Reading</p>
+                                                <p className="text-[10px] font-bold mt-1">Shift Ref: {activeShift?.shiftId || activeShift?.id || 'SH-ACTIVE'}</p>
                                             </div>
-
-                                            {/* RFID */}
-                                            <div className="p-4 bg-slate-900/90 rounded-2xl border border-slate-800/90 space-y-1">
-                                                <div className="flex justify-between items-center text-xs text-slate-400 font-medium">
-                                                    <span>RFID E-Wallet</span>
-                                                    <span className="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded">{rfidOrders.length} orders</span>
-                                                </div>
-                                                <div className="font-outfit text-2xl font-bold text-white tabular-nums">
-                                                    ₱{rfidSales.toFixed(2)}
-                                                </div>
+                                            <div className="py-2 border-b border-black space-y-1 text-[11px]">
+                                                <div>Cashier: {activeShift?.cashierName || currentUser?.name || 'Cashier'}</div>
+                                                <div>Opened: {new Date(shiftStartTime).toLocaleString()}</div>
+                                                <div>Printed: {new Date().toLocaleString()}</div>
                                             </div>
-
-                                            {/* PAY LATER */}
-                                            <div className="p-4 bg-slate-900/90 rounded-2xl border border-slate-800/90 space-y-1">
-                                                <div className="flex justify-between items-center text-xs text-slate-400 font-medium">
-                                                    <span>Pay Later Tabs</span>
-                                                    <span className="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded">{payLaterOrders.length} orders</span>
-                                                </div>
-                                                <div className="font-outfit text-2xl font-bold text-white tabular-nums">
-                                                    ₱{payLaterSales.toFixed(2)}
-                                                </div>
+                                            <div className="py-2 border-b border-black space-y-1">
+                                                <div className="flex justify-between"><span>Opening Float:</span><span>₱{openingFloat.toFixed(2)}</span></div>
+                                                <div className="flex justify-between"><span>Cash Collected:</span><span>+₱{shiftCashSales.toFixed(2)}</span></div>
+                                                <div className="flex justify-between"><span>Cash Payouts:</span><span>-₱{shiftPayouts.toFixed(2)}</span></div>
+                                                <div className="flex justify-between font-bold pt-1 border-t border-dotted border-black"><span>Expected Drawer:</span><span>₱{expectedCash.toFixed(2)}</span></div>
+                                                <div className="flex justify-between font-bold"><span>Actual Counted:</span><span>₱{(Number(actualCashCounted) || 0).toFixed(2)}</span></div>
+                                                <div className="flex justify-between font-bold"><span>Variance:</span><span>{diff !== null ? (Math.abs(diff) < 0.005 ? '₱0.00 (Balanced)' : `${diff > 0 ? '+' : '-'}₱${Math.abs(diff).toFixed(2)}`) : 'N/A'}</span></div>
                                             </div>
-
-                                            {/* PAYROLL */}
-                                            <div className="p-4 bg-slate-900/90 rounded-2xl border border-slate-800/90 space-y-1">
-                                                <div className="flex justify-between items-center text-xs text-slate-400 font-medium">
-                                                    <span>Payroll Deductions</span>
-                                                    <span className="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded">{payrollOrders.length} orders</span>
-                                                </div>
-                                                <div className="font-outfit text-2xl font-bold text-white tabular-nums">
-                                                    ₱{payrollSales.toFixed(2)}
-                                                </div>
+                                            <div className="py-2 border-b border-black space-y-1">
+                                                <div className="font-bold">Sales Volume Breakdown:</div>
+                                                <div className="flex justify-between"><span>Cash ({cashCount}):</span><span>₱{shiftCashSales.toFixed(2)}</span></div>
+                                                <div className="flex justify-between"><span>RFID Wallet ({rfidCount}):</span><span>₱{shiftRfidSales.toFixed(2)}</span></div>
+                                                <div className="flex justify-between"><span>Pay Later / Payroll ({creditCount}):</span><span>₱{shiftCreditSales.toFixed(2)}</span></div>
+                                                <div className="flex justify-between font-bold pt-1 border-t border-dotted border-black"><span>Total Gross Sales:</span><span>₱{shiftTotalSales.toFixed(2)}</span></div>
                                             </div>
-                                        </div>
-
-                                        {/* CASH RECONCILIATION EXPECTED VS ACTUAL WITH LIVE INDICATOR & DIRECT INPUT */}
-                                        <div className="p-5 bg-slate-900 rounded-2xl border border-slate-800 space-y-4">
-                                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                                                <div className="space-y-1">
-                                                    <div className="text-xs text-slate-400">Total Shift Gross Volume</div>
-                                                    <div className="font-outfit text-3xl font-bold text-white tabular-nums">
-                                                        ₱{grandTotal.toFixed(2)}
-                                                        <span className="text-xs font-normal text-slate-400 ml-2">({activeOrders.length} total shift orders)</span>
-                                                    </div>
+                                            <div className="pt-6 space-y-8 text-[10px]">
+                                                <div className="flex justify-between">
+                                                    <div className="text-center w-28 border-t border-black pt-1">Cashier Signature</div>
+                                                    <div className="text-center w-28 border-t border-black pt-1">Manager Signature</div>
                                                 </div>
-
-                                                <div className="flex flex-wrap items-center gap-5">
-                                                    <div className="space-y-0.5 md:text-right">
-                                                        <div className="text-[11px] text-slate-400">Expected Physical Cash</div>
-                                                        <div className="font-outfit text-xl font-bold text-emerald-400 tabular-nums">
-                                                            ₱{expectedCashInDrawer.toFixed(2)}
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="space-y-0.5 md:text-right">
-                                                        <div className="text-[11px] text-slate-400">Actual Counted</div>
-                                                        <div className="font-outfit text-xl font-bold text-white tabular-nums">
-                                                            {actualCounted !== null ? `₱${actualCounted.toFixed(2)}` : 'Not Counted'}
-                                                        </div>
-                                                    </div>
-
-                                                    <div>
-                                                        {actualCounted === null ? (
-                                                            <span className="px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-800 text-slate-300 border border-slate-700">
-                                                                Pending Count
-                                                            </span>
-                                                        ) : Math.abs(variance) < 0.01 ? (
-                                                            <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-950 text-emerald-300 border border-emerald-700 flex items-center gap-1.5">
-                                                                <Icon.CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                                                                <span>Balanced / Exact ₱0.00</span>
-                                                            </span>
-                                                        ) : variance > 0 ? (
-                                                            <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-blue-950 text-blue-300 border border-blue-700 flex items-center gap-1.5">
-                                                                <Icon.TrendingUp className="w-3.5 h-3.5 text-blue-400" />
-                                                                <span>Over: +₱{variance.toFixed(2)}</span>
-                                                            </span>
-                                                        ) : (
-                                                            <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-rose-950 text-rose-300 border border-rose-700 flex items-center gap-1.5">
-                                                                <Icon.AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
-                                                                <span>Short: -₱{Math.abs(variance).toFixed(2)}</span>
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            {/* CASH COUNT INPUT FIELD DIRECTLY ON Z-READ SCREEN */}
-                                            <div className="pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row items-center gap-3">
-                                                <div className="relative flex-1 w-full">
-                                                    <span className="absolute left-3.5 top-2.5 font-bold text-slate-400 text-sm">₱</span>
-                                                    <input
-                                                        type="number"
-                                                        step="0.01"
-                                                        placeholder="Enter counted physical cash..."
-                                                        value={actualCashCountedInput}
-                                                        onChange={(e) => setActualCashCountedInput(e.target.value)}
-                                                        className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-8 pr-4 py-2 text-sm font-bold text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#7B1E22] transition-all"
-                                                    />
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        const countedNum = parseFloat(actualCashCountedInput);
-                                                        if (isNaN(countedNum) || countedNum < 0) {
-                                                            showToast("Please enter a valid cash amount.", "error");
-                                                            return;
-                                                        }
-                                                        const updated = {
-                                                            ...activeShift,
-                                                            actualCashCounted: countedNum
-                                                        };
-                                                        updateCashierShift(updated);
-                                                        showToast(`Saved drawer count of ₱${countedNum.toFixed(2)}`, "success");
-                                                    }}
-                                                    className="w-full sm:w-auto h-9 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs transition-all active:scale-98 flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
-                                                >
-                                                    <Icon.Check className="w-3.5 h-3.5 text-emerald-400" />
-                                                    <span>Update Count</span>
-                                                </button>
                                             </div>
                                         </div>
                                     </div>
                                 );
                             })()}
-
-                            <PortalErrorBoundary viewName="Shift Sales Report">
-                                <SalesReportView
-                                    role="CASHIER"
-                                    recentOrders={recentOrders}
-                                    menuCatalog={menuCatalog}
-                                    registeredUsers={registeredUsers}
-                                    cashierName={currentUser?.name || "Elena Rostova"}
-                                    currentUser={currentUser}
-                                />
-                            </PortalErrorBoundary>
                         </div>
                     )}
 
@@ -28788,6 +28640,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                         {(activeTab === 'refunds' || activeTab === 'disputes') && (
                             <PortalErrorBoundary viewName="Refunds & Returns Management">
                                 <AdminRefundsView
+                                    orders={recentOrders}
                                     registeredUsers={registeredUsers}
                                     setRegisteredUsers={setRegisteredUsers}
                                     recentOrders={recentOrders}
@@ -35174,8 +35027,16 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                         }
                     }
 
-                    // Step B: Deduct FIFO Stock for each item
+                    // Step B: Deduct FIFO Stock & Products Table Stock for each item
                     if (window.CanteenDB) {
+                        cartItems.forEach(it => {
+                            const currentStock = Number(it.stock ?? 0);
+                            const itemQty = Number(it.quantity || it.qty || 1);
+                            const newStock = Math.max(0, currentStock - itemQty);
+                            if (it.id) {
+                                window.CanteenDB.updateProduct(it.id, { stock: newStock }).catch(e => console.warn("Stock update warning:", e));
+                            }
+                        });
                         const stockPayload = cartItems.map(it => ({ id: it.id, qty: it.qty, name: it.name }));
                         await window.CanteenDB.deductCartStockFifo(stockPayload);
                         stockDeducted = true;
@@ -35444,8 +35305,10 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                 <PortalErrorBoundary viewName="Cashier POS Terminal" onGoHome={handleSignOut}>
                                     <CashierView
                                         posCart={posCart}
+                                        setPosCart={setPosCart}
                                         posTotal={posTotal}
                                         menuCatalog={menuCatalog}
+                                        setMenuCatalog={setMenuCatalog}
                                         inventoryBatches={inventoryBatches}
                                         registeredUsers={registeredUsers}
                                         setRegisteredUsers={setRegisteredUsers}
@@ -35763,8 +35626,18 @@ const currBal = Number(matchedStud.balance ?? matchedStud.wallet_balance ?? 0);
                                                 }
 
                                                 // 2. DEDUCT CART STOCK & FIFO BATCHES (Executed only after payment deduction succeeds)
-                                                if (window.CanteenDB && order.items && order.items.length > 0) {
-                                                    await window.CanteenDB.deductCartStockFifo(order.items).catch(err => console.warn("Cart stock deduction notice:", err));
+                                                if (order.items && order.items.length > 0) {
+                                                    order.items.forEach(item => {
+                                                        const currentStock = Number(item.stock ?? 0);
+                                                        const itemQty = Number(item.quantity || item.qty || 1);
+                                                        const newStock = Math.max(0, currentStock - itemQty);
+                                                        if (window.CanteenDB?.updateProduct && item.id) {
+                                                            window.CanteenDB.updateProduct(item.id, { stock: newStock }).catch(err => console.warn("Product stock update error:", err));
+                                                        }
+                                                    });
+                                                    if (window.CanteenDB?.deductCartStockFifo) {
+                                                        await window.CanteenDB.deductCartStockFifo(order.items).catch(err => console.warn("Cart stock deduction notice:", err));
+                                                    }
                                                 }
 
                                                 // Update local catalog stock & batches
