@@ -4010,6 +4010,9 @@ class NovaLunchKioskGUI:
                         self.rfid_scan_buffer = ""
                     elif event.key == pygame.K_SPACE:
                         self.handle_rfid_tap()
+                    elif event.key == pygame.K_x:
+                        print("[HARDWARE SIM] Key 'X' pressed -> Simulating RFID Tap: 0009458633")
+                        self.handle_rfid_tap("0009458633")
                     elif event.key == pygame.K_p:
                         self.execute_pay_later_checkout()
                     elif event.key == pygame.K_w:
