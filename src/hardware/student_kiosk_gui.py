@@ -1368,8 +1368,7 @@ class CameraThread(threading.Thread):
                 c.execute("""
                     SELECT id, name, price, category, barcode, is_available, stock, ai_label, is_archived 
                     FROM products 
-                    WHERE (is_archived = 0 OR is_archived IS NULL)
-                      AND (is_available = 1 OR is_available IS NULL);
+                    WHERE (is_archived = 0 OR is_archived IS NULL);
                 """)
                 for row in c.fetchall():
                     price = float(row[2]) if row[2] is not None else 0.0
@@ -2372,6 +2371,8 @@ class NovaLunchKioskGUI:
         self.cart_manual_override_lock = False
         self.error_message = None
         self._last_settlement_info = None
+        self.out_of_stock_detected_names = []
+        self._last_oos_voice_time = 0.0
 
         # Vision Model Back-Office Configuration (novalunch_yolo-2.pt)
         self.conf_threshold = 0.80
@@ -2628,8 +2629,8 @@ class NovaLunchKioskGUI:
 
         Detections are grouped by AI label so N objects of the same class collapse into a
         single line with `quantity == N`. A label is only admitted when it resolves to a
-        priced, non-archived catalog product — an unresolved label is DROPPED rather than
-        injected as a phantom line item, so it can never be charged to a student.
+        priced, non-archived catalog product with stock > 0. Out-of-stock items are tracked in
+        `self.out_of_stock_detected_names` and excluded from `synced_cart`.
         """
         label_counts = {}
         label_seed = {}
@@ -2647,17 +2648,32 @@ class NovaLunchKioskGUI:
                 label_seed[lbl] = seed
 
         synced_cart = []
+        detected_oos = []
         # Sorted by label for frame-to-frame determinism: unsorted dict order flips with
         # the YOLO output order, which would emit a spurious SSE broadcast every frame.
         for lbl in sorted(label_counts):
             count = int(label_counts[lbl])
             seed = label_seed.get(lbl) or {}
-            # The camera thread already resolves detections to catalog products; only fall
-            # back to the catalog resolver (an extra SQLite read) when it did not.
-            item = seed if float(seed.get("price", 0.0) or 0.0) > 0.0 else (self.lookup_pos_item(lbl) or {})
+            # Query stock via lookup_pos_item
+            pos_item = self.lookup_pos_item(lbl) or {}
+            item = {**seed, **pos_item} if pos_item else seed
 
             price = float(item.get("price", 0.0) or 0.0)
             prod_id = str(item.get("id") or item.get("product_id") or "").strip()
+            item_name = item.get("name") or lbl.replace('_', ' ').title()
+
+            # Query live stock count
+            stock_raw = pos_item.get("stock") if "stock" in pos_item else item.get("stock")
+            try:
+                stock_qty = int(stock_raw if stock_raw is not None else 0)
+            except (ValueError, TypeError):
+                stock_qty = 0
+
+            # Guard: If item is out of stock (stock <= 0), do not append to payable cart
+            if stock_qty <= 0 and (price > 0.0 or prod_id or item.get("name")):
+                detected_oos.append(item_name)
+                continue
+
             if (price <= 0.0
                     or not prod_id
                     or item.get("requires_cashier_review")
@@ -2668,15 +2684,17 @@ class NovaLunchKioskGUI:
             synced_cart.append({
                 "id":         prod_id,
                 "product_id": prod_id,
-                "name":       item.get("name") or lbl.replace('_', ' ').title(),
+                "name":       item_name,
                 "label":      lbl,
                 "ai_label":   lbl,
                 "category":   item.get("category", "ITEM"),
                 "price":      price,
-                "stock":      int(item.get("stock", 50) or 0),
+                "stock":      stock_qty,
                 "quantity":   count,
                 "qty":        count
             })
+
+        self.out_of_stock_detected_names = list(set(detected_oos))
         return synced_cart
 
     def sync_cart_from_detections(self, current_detections):
@@ -2688,6 +2706,18 @@ class NovaLunchKioskGUI:
         cart actually changed and a broadcast was emitted.
         """
         synced_cart = self.build_cart_snapshot(current_detections)
+
+        # Trigger voice and status alert if out of stock item detected on platform
+        if self.out_of_stock_detected_names:
+            item_list_str = ", ".join(self.out_of_stock_detected_names)
+            self.status_message = f"{item_list_str} is currently out of stock. Please reach out to an admin/cashier to update the stocks for this time."
+
+            # Voice announcement with cooldown (don't spam every frame)
+            current_time = time.time()
+            if current_time - getattr(self, '_last_oos_voice_time', 0.0) > 8.0:
+                self._last_oos_voice_time = current_time
+                self.speak_prompt(f"{item_list_str} is currently out of stock. Please reach out to canteen staff.")
+
         if synced_cart == self.cart_items:
             return False
         self.cart_items = synced_cart
@@ -2816,6 +2846,7 @@ class NovaLunchKioskGUI:
             self.cart_manual_override_lock = False
             self.awaiting_pay_later_confirm = False
             self.error_message = None
+            self.out_of_stock_detected_names = []
             self.status_message = "Welcome to NovaLunch! Tap Student RFID Card to begin."
 
         elif new_state == STATE_PREORDER_ANNOUNCEMENT:
@@ -2823,6 +2854,7 @@ class NovaLunchKioskGUI:
             # the settled cart survives into STATE_SETTLEMENT — a tap inside the thank-you
             # window would otherwise start the next session holding a paid order.
             self.cart_items = []
+            self.out_of_stock_detected_names = []
             self.total_amount = 0.0
             self.last_detection_hash = ""
             self.stable_start_time = 0.0
@@ -2838,6 +2870,7 @@ class NovaLunchKioskGUI:
         elif new_state == STATE_GREET:
             # New session boundary — drop any cart carried over from a settled order.
             self.cart_items = []
+            self.out_of_stock_detected_names = []
             self.total_amount = 0.0
             self.last_detection_hash = ""
             self.stable_start_time = 0.0
@@ -3216,6 +3249,13 @@ class NovaLunchKioskGUI:
                 return  # Hardware debounce
             self.rfid_anti_passback_cache[clean] = now
 
+            # ── Out-of-Stock Checkout Guard (Tap 2 Block) ─────────────────────────
+            if self.active_student is not None and self.total_amount <= 0.0 and getattr(self, 'out_of_stock_detected_names', []):
+                self.status_message = "Cannot proceed to payment: Detected items are out of stock. Please remove them from the tray."
+                self.speak_prompt("Cannot checkout. Items on tray are out of stock.")
+                self.notify_pos_update()
+                return
+
             # ── Payment Settlement Tap (Tap 2 / Tap 3) ───────────────────────────
             # Active student is set, cart has items, and student taps card to pay or confirm Pay Later.
             is_payment_tap = (
@@ -3539,8 +3579,36 @@ class NovaLunchKioskGUI:
         elif self.current_state == STATE_SETTLEMENT:
             self.render_settlement_banner(video_area)
 
+        # Prominent alert banner if out of stock item is detected on platform
+        if getattr(self, "out_of_stock_detected_names", []):
+            self.render_out_of_stock_alert_banner(video_area)
+
         # Simulation Step Toolbar
         self.render_toolbar()
+
+    def render_out_of_stock_alert_banner(self, video_area):
+        if not getattr(self, "out_of_stock_detected_names", []):
+            return
+        items_str = ", ".join(self.out_of_stock_detected_names)
+        header_text = "[!] OUT OF STOCK DETECTED"
+        body_text = f"{items_str} is currently out of stock. Please reach out to an admin/cashier to update the stocks for this time."
+
+        header_surf = self.font_subtitle_bold.render(header_text, True, (254, 202, 202))
+        body_surf = self.font_brand_sub.render(body_text, True, COLOR_WHITE)
+
+        box_width = min(video_area.width - 24, max(header_surf.get_width(), body_surf.get_width()) + 32)
+        box_height = 54
+        box_x = video_area.centerx - box_width // 2
+        box_y = video_area.top + 14
+
+        bg_rect = pygame.Rect(box_x, box_y, box_width, box_height)
+        banner_surf = pygame.Surface((box_width, box_height), pygame.SRCALPHA)
+        banner_surf.fill((159, 18, 57, 235))
+        self.screen.blit(banner_surf, (box_x, box_y))
+        pygame.draw.rect(self.screen, (225, 29, 72), bg_rect, width=2, border_radius=8)
+
+        self.screen.blit(header_surf, (box_x + 16, box_y + 8))
+        self.screen.blit(body_surf, (box_x + 16, box_y + 30))
 
     def render_countdown_gauge(self, video_area):
         banner_bg = COLOR_AMBER_BG if self.motion_detected else COLOR_EMERALD_BG

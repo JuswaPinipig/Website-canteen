@@ -7824,15 +7824,23 @@
                         String(u.student_id || u.studentId || u.student_id_number) === String(order.student_id || order.studentId) ||
                         (order.rfidUid && u.rfidUid && String(u.rfidUid).replace(/^0+/, '') === String(order.rfidUid).replace(/^0+/, ''))
                     );
-                    const customerName = student?.name || student?.full_name || order.customer_name || order.student || order.student_name || 'Walk-in Customer';
+                    const customerName = student?.name || student?.full_name || order.student_name || order.customer_name || order.student || 'Walk-in Student';
                     
                     // Format line items: e.g. "4x Fita, 1x Hansel"
                     const itemSummary = formatOrderItemsSummary(order);
+                    const refId = order.reference_id || order.id || order.order_id || order.orderNo || order.ref_no || 'ORD-000';
+                    const totalAmt = Number(order.total || order.total_amount || order.final_amount || 0);
 
                     return {
                         ...order,
+                        reference_id: refId,
+                        orderNo: order.orderNo || refId,
+                        student_name: customerName,
+                        customer_name: customerName,
                         resolvedCustomer: customerName,
                         resolvedItems: itemSummary,
+                        total_amount: totalAmt,
+                        total: totalAmt,
                         formattedDate: new Date(order.created_at || order.timestamp || order.date || Date.now()).toLocaleString()
                     };
                 });
@@ -7842,10 +7850,18 @@
             const filteredCompletedOrders = useMemo(() => {
                 const list = Array.isArray(refundEligibleOrders) ? refundEligibleOrders : [];
                 return list.filter(order => {
-                    const status = String(order.status || 'PAID').toUpperCase();
-                    if (status === 'VOIDED' && orderStatusFilter !== 'ALL') return false;
-                    if (orderStatusFilter === 'PAID' && status !== 'PAID') return false;
-                    if (orderStatusFilter === 'REFUNDED' && status !== 'REFUNDED') return false;
+                    const status = String(order.status || '').toLowerCase().trim();
+                    const isCompleted = (!status || status === 'completed' || status === 'paid' || status === 'settled');
+                    const isRefunded = status === 'refunded';
+                    const isVoided = status === 'voided';
+
+                    if (orderStatusFilter === 'PAID') {
+                        if (!isCompleted || isRefunded || isVoided) return false;
+                    } else if (orderStatusFilter === 'REFUNDED') {
+                        if (!isRefunded) return false;
+                    } else if (orderStatusFilter !== 'ALL') {
+                        if (status !== orderStatusFilter.toLowerCase()) return false;
+                    }
 
                     const pm = String(order.paymentMethod || order.payment_method || 'CASH').toUpperCase();
                     if (orderMethodFilter !== 'ALL') {
@@ -7857,8 +7873,8 @@
 
                     if (orderSearchQuery.trim()) {
                         const q = orderSearchQuery.toLowerCase().trim();
-                        const orderNo = String(order.orderNo || order.id || order.ref_no || '').toLowerCase();
-                        const custName = String(order.resolvedCustomer || order.student || order.student_name || order.customer_name || '').toLowerCase();
+                        const orderNo = String(order.reference_id || order.orderNo || order.id || order.ref_no || '').toLowerCase();
+                        const custName = String(order.resolvedCustomer || order.student_name || order.customer_name || '').toLowerCase();
                         const custId = String(order.studentId || order.customer_id || '').toLowerCase();
                         const items = String(order.resolvedItems || order.items_summary || (Array.isArray(order.items) ? (order?.items || []).map(i => i.name).join(' ') : '')).toLowerCase();
                         return orderNo.includes(q) || custName.includes(q) || custId.includes(q) || items.includes(q);
@@ -9363,6 +9379,11 @@
                     )}
                 </div>
             );
+        }
+
+        if (typeof window !== 'undefined') {
+            window.AdminRefundsView = AdminRefundsView;
+            window.AdminDisputesRefundsView = AdminRefundsView;
         }
         // =====================================================================
         // 5. ADMIN TUITION BILLING & SAFETY NET LEDGER VIEW
@@ -21462,6 +21483,7 @@
         // =====================================================================
         function CashierView({ posCart, setPosCart = () => { }, posTotal, menuCatalog, setMenuCatalog = null, registeredUsers, setRegisteredUsers = null, recentOrders = [], setRecentOrders = null, preorders = [], inventoryBatches = [], onClaimPreorderPos, onUpdatePreorderStatus, onRefundPackagedPreorder, onAddToCart, onUpdateQty, onDeleteItem, onClearCart, onCompleteCheckout, onVoidOrder, onSettleDebt, activeTab = 'register', setActiveTab, onSignOut, onSelectRoleQuick, isCloudConnected, onRefreshCloud, notifications = [], onMarkNotifRead, onMarkAllNotifRead, onDeleteNotif, onClearReadNotifs, onActionClick, onRespondLinkRequest, onOpenCommandPalette, onOpenShiftZRead, onOpenMobileSidebar, kdsOrders = [], setKdsOrders, currentUser = null, showToast = () => { },
             parentStudentLinks = [],
+            deductInventoryRoot = null,
             // ── Governance Policy Props (sourced from canteen_settings DB via root app state) ──
             globalPayLaterCap = 1000.00,
             globalDailySpendingDefault = 200.00,
@@ -22212,13 +22234,24 @@
                             ? [...currentCartItems]
                             : ((posCartRef.current && posCartRef.current.length > 0) ? [...posCartRef.current] : [...(data.cart_items || [])]);
 
+                        if (finalKioskItems && finalKioskItems.length > 0) {
+                            if (typeof deductInventoryRoot === 'function') {
+                                deductInventoryRoot(finalKioskItems);
+                            } else if (typeof window.deductInventoryRoot === 'function') {
+                                window.deductInventoryRoot(finalKioskItems);
+                            }
+                        }
+
                         const newOrder = {
                             id: 'ord_' + Date.now(),
                             orderNo: orderNo,
                             order_number: orderNo,
+                            reference_id: orderNo,
                             total: parseFloat(data.total_amount || data.amount_paid || settledInfo.paid || data.total || 0) || 0,
                             total_amount: parseFloat(data.total_amount || data.amount_paid || settledInfo.paid || data.total || 0) || 0,
                             student: data.student_name || settledInfo.student_name || data.active_student?.name || 'Kiosk Customer',
+                            student_name: data.student_name || settledInfo.student_name || data.active_student?.name || 'Kiosk Customer',
+                            customer_name: data.student_name || settledInfo.student_name || data.active_student?.name || 'Kiosk Customer',
                             studentId: data.student_id_settled || settledInfo.student_id || data.active_student?.studentId || null,
                             paymentMethod: data.payment_method || settledInfo.payment_method || 'RFID',
                             payment_method: data.payment_method || settledInfo.payment_method || 'RFID',
@@ -22230,7 +22263,7 @@
 
                         if (typeof setRecentOrders === 'function') {
                             setRecentOrders(prev => {
-                                if ((prev || []).some(o => (o.orderNo && o.orderNo === orderNo) || (o.order_number && o.order_number === orderNo))) return prev;
+                                if ((prev || []).some(o => (o.orderNo && o.orderNo === orderNo) || (o.order_number && o.order_number === orderNo) || (o.reference_id && o.reference_id === orderNo))) return prev;
                                 return [newOrder, ...(prev || [])];
                             });
                         }
@@ -22837,26 +22870,28 @@
                     await onCompleteCheckout(orderData);
 
                     // ── Dual-layer stock decrement on every completed purchase ────────
-                    // Supabase is decremented from the authoritative cloud value (never
-                    // from a locally derived guess), then projected onto the in-memory
-                    // catalog so every open register reflects the sale immediately.
-                    for (const cartItem of posCart) {
-                        const qty = Number(cartItem.qty || cartItem.quantity || 1);
-                        if (window.CanteenDB?.decrementProductStock) {
-                            window.CanteenDB.decrementProductStock(cartItem.id, qty)
-                                .catch(e => console.warn('[CanteenDB] Stock decrement warning:', e));
-                        }
-                    }
-
-                    if (typeof setMenuCatalog === 'function') {
-                        setMenuCatalog(prev => prev.map(prod => {
-                            const match = (posCart || []).find(ci => String(ci.id) === String(prod.id) || ci.name === prod.name);
-                            if (match) {
-                                const qty = Number(match.qty || match.quantity || 1);
-                                return { ...prod, stock: Math.max(0, Number(prod.stock ?? 0) - qty) };
+                    if (typeof deductInventoryRoot === 'function') {
+                        await deductInventoryRoot(posCart);
+                    } else if (typeof window.deductInventoryRoot === 'function') {
+                        await window.deductInventoryRoot(posCart);
+                    } else {
+                        for (const cartItem of posCart) {
+                            const qty = Number(cartItem.qty || cartItem.quantity || 1);
+                            if (window.CanteenDB?.decrementProductStock) {
+                                window.CanteenDB.decrementProductStock(cartItem.id, qty)
+                                    .catch(e => console.warn('[CanteenDB] Stock decrement warning:', e));
                             }
-                            return prod;
-                        }));
+                        }
+                        if (typeof setMenuCatalog === 'function') {
+                            setMenuCatalog(prev => prev.map(prod => {
+                                const match = (posCart || []).find(ci => String(ci.id) === String(prod.id) || ci.name === prod.name);
+                                if (match) {
+                                    const qty = Number(match.qty || match.quantity || 1);
+                                    return { ...prod, stock: Math.max(0, Number(prod.stock ?? 0) - qty) };
+                                }
+                                return prod;
+                            }));
+                        }
                     }
 
                     if (typeof window !== 'undefined' && window.dispatchEvent) {
@@ -26423,7 +26458,91 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
             window.AdminVisionModelView = AdminVisionModelView;
         }
 
-        function AdminView({ gcashQueue, menuCatalog, registeredUsers, setRegisteredUsers = () => { }, recentOrders = [], setRecentOrders = () => { }, refundsList = [], setRefundsList = () => { }, inventoryBatches = [], setInventoryBatches = () => { }, preorders = [], onUnarchivePreorder, onApproveTopup, onRejectTopup, onAddProduct, onUpdateProduct, onArchiveProduct, onAddNewStudent, onBatchAddStudents, onUpdateStudent, onArchiveStudent, onSettleDebt = null, activeTab = 'command', setActiveTab, onSignOut, onSelectRoleQuick, isCloudConnected, onRefreshCloud, notifications = [], onMarkNotifRead, onMarkAllNotifRead, onDeleteNotif, onClearReadNotifs, onActionClick, onRespondLinkRequest, onOpenCommandPalette, onOpenMobileSidebar, onExportMenuCSV, onExportStudentsCSV, onUnarchiveStudent, onUnarchiveProduct, onRestoreOrder, onRestoreBatch, onRestoreTopup, onPurgeItem, rawIngredients = [], setRawIngredients, setMenuCatalog = () => { }, kdsOrders = [], setKdsOrders, showToast = () => { }, isLoading = false, isSyncing = false }) {
+        // =====================================================================
+        // LIVE FINANCIAL ANALYTICS VIEW (REACTIVE KPI AGGREGATOR)
+        // =====================================================================
+        function AdminFinancialAnalyticsView({ orders = [], recentOrders = [] }) {
+            const activeOrders = (orders && orders.length > 0) ? orders : (recentOrders || []);
+            const financialMetrics = React.useMemo(() => {
+                const valid = (activeOrders || []).filter(o => {
+                    const st = String(o.status || o.order_status || '').toLowerCase().trim();
+                    return st === 'completed' || st === 'paid' || st === 'settled' || !st;
+                });
+
+                const grossRev = valid.reduce((sum, o) => sum + (Number(o.total || o.total_amount || o.final_amount || 0)), 0);
+                const payLaterRev = valid
+                    .filter(o => {
+                        const pm = String(o.payment_method || o.paymentMethod || '').toLowerCase();
+                        return pm.includes('pay later') || pm.includes('credit');
+                    })
+                    .reduce((sum, o) => sum + (Number(o.total || o.total_amount || o.final_amount || 0)), 0);
+
+                return {
+                    grossRevenue: grossRev,
+                    totalTransactions: valid.length,
+                    payLaterTotal: payLaterRev,
+                    averageOrderValue: valid.length > 0 ? (grossRev / valid.length) : 0
+                };
+            }, [activeOrders]);
+
+            return (
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 p-4">
+                    <div className="p-5 rounded-3xl bg-white border border-slate-200/80 shadow-2xs space-y-2">
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Gross Revenue</span>
+                        <div className="font-outfit text-3xl font-semibold text-slate-900 tracking-tight tabular-nums">
+                            ₱{(Number(financialMetrics.grossRevenue) || 0).toFixed(2)}
+                        </div>
+                    </div>
+                    <div className="p-5 rounded-3xl bg-white border border-slate-200/80 shadow-2xs space-y-2">
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Settled Orders</span>
+                        <div className="font-outfit text-3xl font-semibold text-slate-900 tracking-tight tabular-nums">
+                            {financialMetrics.totalTransactions}
+                        </div>
+                    </div>
+                    <div className="p-5 rounded-3xl bg-white border border-slate-200/80 shadow-2xs space-y-2">
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Average Order Value</span>
+                        <div className="font-outfit text-3xl font-semibold text-slate-900 tracking-tight tabular-nums">
+                            ₱{(Number(financialMetrics.averageOrderValue) || 0).toFixed(2)}
+                        </div>
+                    </div>
+                    <div className="p-5 rounded-3xl bg-white border border-slate-200/80 shadow-2xs space-y-2">
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Pay Later Total</span>
+                        <div className="font-outfit text-3xl font-semibold text-slate-900 tracking-tight tabular-nums">
+                            ₱{(Number(financialMetrics.payLaterTotal) || 0).toFixed(2)}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+        if (typeof window !== 'undefined') {
+            window.AdminFinancialAnalyticsView = AdminFinancialAnalyticsView;
+        }
+
+        function AdminView({ gcashQueue, menuCatalog, registeredUsers, setRegisteredUsers = () => { }, orders = null, recentOrders = [], setRecentOrders = () => { }, refundsList = [], setRefundsList = () => { }, inventoryBatches = [], setInventoryBatches = () => { }, preorders = [], onUnarchivePreorder, onApproveTopup, onRejectTopup, onAddProduct, onUpdateProduct, onArchiveProduct, onAddNewStudent, onBatchAddStudents, onUpdateStudent, onArchiveStudent, onSettleDebt = null, activeTab = 'command', setActiveTab, onSignOut, onSelectRoleQuick, isCloudConnected, onRefreshCloud, notifications = [], onMarkNotifRead, onMarkAllNotifRead, onDeleteNotif, onClearReadNotifs, onActionClick, onRespondLinkRequest, onOpenCommandPalette, onOpenMobileSidebar, onExportMenuCSV, onExportStudentsCSV, onUnarchiveStudent, onUnarchiveProduct, onRestoreOrder, onRestoreBatch, onRestoreTopup, onPurgeItem, rawIngredients = [], setRawIngredients, setMenuCatalog = () => { }, kdsOrders = [], setKdsOrders, showToast = () => { }, isLoading = false, isSyncing = false }) {
+            const activeOrders = (orders && orders.length > 0) ? orders : (recentOrders || []);
+
+            const financialMetrics = useMemo(() => {
+                const valid = (activeOrders || []).filter(o => {
+                    const st = String(o.status || o.order_status || '').toLowerCase().trim();
+                    return st === 'completed' || st === 'paid' || st === 'settled' || !st;
+                });
+
+                const grossRev = valid.reduce((sum, o) => sum + (Number(o.total || o.total_amount || o.final_amount || 0)), 0);
+                const payLaterRev = valid
+                    .filter(o => {
+                        const pm = String(o.payment_method || o.paymentMethod || '').toLowerCase();
+                        return pm.includes('pay later') || pm.includes('credit');
+                    })
+                    .reduce((sum, o) => sum + (Number(o.total || o.total_amount || o.final_amount || 0)), 0);
+
+                return {
+                    grossRevenue: grossRev,
+                    totalTransactions: valid.length,
+                    payLaterTotal: payLaterRev,
+                    averageOrderValue: valid.length > 0 ? (grossRev / valid.length) : 0
+                };
+            }, [activeOrders]);
+
             // ── LIVE AUDIT LOG STATE & DISPATCHER ──────────────────────────────────
             const [auditLogs, setAuditLogs] = useState(() => {
                 try {
@@ -27975,26 +28094,10 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                 : 0;
 
                             // ── 4 Clean Operational KPI Cards (Replacement for redundant queue cards) ──
-                            // Today's Total Revenue: sum of orders created today where status !== 'REFUNDED'
-                            const todayRevenue = validOrders
-                                .filter(o => {
-                                    const d = new Date(o.created_at || o.timestamp || o.date);
-                                    const isToday = (!isNaN(d.getTime()) && d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()) || (!o.created_at && !o.timestamp && !o.date);
-                                    const isRefunded = String(o.status || o.order_status || '').toUpperCase() === 'REFUNDED';
-                                    return isToday && !isRefunded;
-                                })
-                                .reduce((sum, o) => sum + (Number(o.total ?? o.total_amount ?? o.final_amount ?? 0) || 0), 0);
-
-                            // Total Settled Orders: count of all non-refunded orders from orders array
-                            const totalCompletedOrders = validOrders
-                                .filter(o => String(o.status || o.order_status || '').toUpperCase() !== 'REFUNDED')
-                                .length;
-
-                            // Average Order Value: totalRevenue / totalCompletedOrders
-                            const totalRevenueAll = validOrders
-                                .filter(o => String(o.status || o.order_status || '').toUpperCase() !== 'REFUNDED')
-                                .reduce((sum, o) => sum + (Number(o.total ?? o.total_amount ?? o.final_amount ?? 0) || 0), 0);
-                            const avgOrderValue = totalCompletedOrders > 0 ? (totalRevenueAll / totalCompletedOrders) : 0;
+                            // Live Financial Analytics metrics wired directly to reactive financialMetrics
+                            const todayRevenue = financialMetrics.grossRevenue;
+                            const totalCompletedOrders = financialMetrics.totalTransactions;
+                            const avgOrderValue = financialMetrics.averageOrderValue;
 
                             // Active Registered Students
                             const registeredStudentsCount = (registeredUsers || []).filter(u =>
@@ -33430,17 +33533,53 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
             }, [gcashQueue, preorders, parentStudentLinkRequests, refundsList]);
 
             // ── Reactive Inventory Deduction & Global Helpers ──
-            const deductInventoryRoot = (cartItems) => {
-                if (!cartItems || !Array.isArray(cartItems) || cartItems.length === 0) return;
-                setMenuCatalog(prev => (prev || []).map(prod => {
-                    const match = cartItems.find(ci => String(ci.id) === String(prod.id) || ci.name === prod.name);
-                    if (match) {
-                        const qty = Number(match.quantity || match.qty || 1);
-                        const newStock = Math.max(0, (Number(prod.stock) || 0) - qty);
-                        return { ...prod, stock: newStock };
+            const deductInventoryRoot = async (purchasedItems) => {
+                if (!Array.isArray(purchasedItems) || purchasedItems.length === 0) return;
+
+                // 1. Immediately update root menuCatalog in React state
+                setMenuCatalog(prevCatalog => {
+                    return (prevCatalog || []).map(product => {
+                        const match = purchasedItems.find(item => 
+                            (item.id && product.id && String(item.id) === String(product.id)) || 
+                            (item.name && product.name && item.name.toLowerCase().trim() === product.name.toLowerCase().trim()) ||
+                            (item.label && product.ai_label && item.label.toLowerCase().trim() === product.ai_label.toLowerCase().trim()) ||
+                            (item.ai_label && product.ai_label && item.ai_label.toLowerCase().trim() === product.ai_label.toLowerCase().trim())
+                        );
+                        if (!match) return product;
+                        const qtyDeducted = Number(match.quantity || match.qty || 1);
+                        const currentStock = Number(product.stock ?? 50);
+                        const newStock = Math.max(0, currentStock - qtyDeducted);
+                        return { ...product, stock: newStock, stock_quantity: newStock };
+                    });
+                });
+
+                // 2. Persist stock decrement to Supabase products table
+                const sbClient = (typeof window !== 'undefined') ? (window.supabaseClient || window.supabase) : null;
+                if (sbClient) {
+                    for (const item of purchasedItems) {
+                        const qty = Number(item.quantity || item.qty || 1);
+                        const targetId = item.id || item.product_id;
+                        if (!targetId || String(targetId).startsWith('kiosk_')) continue;
+
+                        try {
+                            const { data: prod } = await sbClient
+                                .from('products')
+                                .select('id, stock')
+                                .eq('id', targetId)
+                                .maybeSingle();
+
+                            if (prod) {
+                                const updatedStock = Math.max(0, (Number(prod.stock) || 0) - qty);
+                                await sbClient
+                                    .from('products')
+                                    .update({ stock: updatedStock, updated_at: new Date().toISOString() })
+                                    .eq('id', targetId);
+                            }
+                        } catch (err) {
+                            console.warn('[STOCK DEDUCT ERROR] Failed to update cloud stock for item:', targetId, err);
+                        }
                     }
-                    return prod;
-                }));
+                }
             };
 
             // Expose globally for cross-component access, kiosk events, and automated test runners
@@ -33628,7 +33767,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                 const orderNo = d.order_number || info.order_number || info.orderNo || `KIOSK-${Date.now()}`;
                                 if (orderNo) {
                                     setRecentOrders(prev => {
-                                        if ((prev || []).some(o => o.orderNo === orderNo || o.order_number === orderNo)) return prev;
+                                        if ((prev || []).some(o => (o.orderNo && o.orderNo === orderNo) || (o.order_number && o.order_number === orderNo) || (o.reference_id && o.reference_id === orderNo))) return prev;
                                         const finalItems = settledCart && settledCart.length > 0
                                             ? [...settledCart]
                                             : ((window.posCart && window.posCart.length > 0) ? [...window.posCart] : [...(d.cart_items || [])]);
@@ -33636,9 +33775,12 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                             id: 'ord_' + Date.now(),
                                             orderNo: orderNo,
                                             order_number: orderNo,
+                                            reference_id: orderNo,
                                             total: Number(d.amount || info.amount || d.total || d.total_amount || 0),
                                             total_amount: Number(d.amount || info.amount || d.total || d.total_amount || 0),
                                             student: d.student_name || info.student_name || 'Kiosk Customer',
+                                            student_name: d.student_name || info.student_name || 'Kiosk Customer',
+                                            customer_name: d.student_name || info.student_name || 'Kiosk Customer',
                                             studentId: d.student_id_settled || info.student_id || null,
                                             paymentMethod: d.payment_method || info.payment_method || 'RFID',
                                             payment_method: d.payment_method || info.payment_method || 'RFID',
@@ -36231,6 +36373,7 @@ SJC-2026-104,Beatriz,Ramos,Grade 10 - St. Joseph,beatriz.ramos@sjc.edu.ph,000940
                                         posTotal={posTotal}
                                         menuCatalog={menuCatalog}
                                         setMenuCatalog={setMenuCatalog}
+                                        deductInventoryRoot={deductInventoryRoot}
                                         inventoryBatches={inventoryBatches}
                                         registeredUsers={registeredUsers}
                                         setRegisteredUsers={setRegisteredUsers}
@@ -36631,7 +36774,24 @@ const currBal = Number(matchedStud.balance ?? matchedStud.wallet_balance ?? 0);
                                                 }
 
                                                 // 3. Append order to shift history
-                                                setRecentOrders(prev => [order, ...prev]);
+                                                const normalizedOrder = {
+                                                    ...order,
+                                                    reference_id: order.reference_id || order.orderNo || order.id,
+                                                    student_name: order.student_name || order.student || (matchedStud ? matchedStud.name : 'Walk-in Student'),
+                                                    customer_name: order.customer_name || order.student || (matchedStud ? matchedStud.name : 'Walk-in Student'),
+                                                    total: Number(order.total || order.total_amount || 0),
+                                                    total_amount: Number(order.total || order.total_amount || 0),
+                                                    status: order.status || 'COMPLETED'
+                                                };
+                                                setRecentOrders(prevOrders => {
+                                                    const exists = (prevOrders || []).some(o => 
+                                                        (o.id && normalizedOrder.id && o.id === normalizedOrder.id) || 
+                                                        (o.reference_id && normalizedOrder.reference_id && o.reference_id === normalizedOrder.reference_id) ||
+                                                        (o.orderNo && normalizedOrder.orderNo && o.orderNo === normalizedOrder.orderNo)
+                                                    );
+                                                    if (exists) return prevOrders;
+                                                    return [normalizedOrder, ...(prevOrders || [])];
+                                                });
 
                                                 // 4. Persist to Supabase (with offline localStorage fallback)
                                                 if (window.CanteenDB) {
@@ -36772,6 +36932,7 @@ const currBal = Number(matchedStud.balance ?? matchedStud.wallet_balance ?? 0);
                                         menuCatalog={menuCatalog}
                                         registeredUsers={registeredUsers}
                                         setRegisteredUsers={setRegisteredUsers}
+                                        orders={recentOrders}
                                         recentOrders={recentOrders}
                                         setRecentOrders={setRecentOrders}
                                         refundsList={refundsList}
